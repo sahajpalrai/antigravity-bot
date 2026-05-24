@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>V1 Antigravity Smart Bot - Premium Dashboard</title>
+  <!-- Modern Outfit Typography from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="glow-sphere glow-primary"></div>
+  <div class="glow-sphere glow-secondary"></div>
+
+  <div class="container">
+    <!-- Header -->
+    <header class="header glass-card">
+      <div class="brand">
+        <span class="logo-orb"></span>
+        <div>
+          <h1>V1 ANTIGRAVITY</h1>
+          <p class="subtitle">AI-SMART FUTURES TRADING ENGINE</p>
+        </div>
+      </div>
+      
+      <!-- Live Schedulers and Regime Controls -->
+      <div class="regime-status-wrapper">
+        <div class="regime-indicator" id="regime-badge">
+          <span class="pulse-dot active" id="regime-pulse"></span>
+          <span id="regime-text">Loading Regime...</span>
+        </div>
+        <div class="schedule-indicator" id="schedule-badge">
+          <span id="schedule-text">Checking Market Hours...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Master Portfolio KPI Grid -->
+    <section class="kpi-grid">
+      <!-- Master Equity Card -->
+      <div class="glass-card kpi-card glow-on-hover">
+        <h3>Master Equity</h3>
+        <div class="value" id="kpi-equity">$0.00</div>
+        <div class="metric-footer">
+          <span>Global Balance: <strong id="kpi-balance">$0.00</strong></span>
+        </div>
+      </div>
+
+      <!-- Real-Time Open P&L Card -->
+      <div class="glass-card kpi-card glow-on-hover">
+        <h3>Open Profit / Loss</h3>
+        <div class="value neutral" id="kpi-open-pnl">$0.00</div>
+        <div class="metric-footer">
+          <span>Active Trades: <strong id="kpi-active-trades">0</strong></span>
+        </div>
+      </div>
+
+      <!-- Daily Target Card -->
+      <div class="glass-card kpi-card glow-on-hover">
+        <h3>Master APX Target</h3>
+        <div class="value" id="kpi-target">$53,000.00</div>
+        <div class="metric-footer">
+          <span class="progress-container">
+            <span class="progress-bar" id="kpi-progress" style="width: 0%"></span>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Account Details per Symbol -->
+    <section class="symbol-accounts-section">
+      <h2 class="section-title">Futures Sub-Accounts (APX 50K Model)</h2>
+      <div class="accounts-grid" id="accounts-container">
+        <!-- Dynically populated account cards (NQ, ES, CL, GC) -->
+      </div>
+    </section>
+
+    <!-- Main Dynamic Interface Layout (Two Columns) -->
+    <div class="dashboard-layout">
+      <!-- Left Column: Positions and Controls -->
+      <main class="main-column">
+        <!-- Live Open Positions -->
+        <div class="glass-card position-panel">
+          <h2 class="panel-title">Active Positions</h2>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Direction</th>
+                  <th>Contracts</th>
+                  <th>Entry Price</th>
+                  <th>Current Price</th>
+                  <th>Stops / Target</th>
+                  <th>Unrealized P&L</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="positions-table-body">
+                <tr>
+                  <td colspan="8" class="text-center text-muted">No active open positions. Scanning markets...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Strategy Backtest & Configuration Controls -->
+        <div class="glass-card config-panel">
+          <h2 class="panel-title">AI Cognitive Engine Configuration</h2>
+          <div class="config-grid">
+            <div class="input-group">
+              <label for="tt-client-id">Tastytrade Username</label>
+              <input type="text" id="tt-client-id" placeholder="Tastytrade API Username" readonly>
+            </div>
+            <div class="input-group">
+              <label for="webhook-url">Google Sheets Webhook URL</label>
+              <input type="password" id="webhook-url" placeholder="https://script.google.com/macros/s/..." onchange="updateWebhookUrl(this.value)">
+            </div>
+            <div class="button-row">
+              <button class="btn btn-primary" onclick="runBacktester()">⚡ Run 2-3 Yr Backtest</button>
+              <button class="btn btn-secondary" onclick="runOptimizer()">🧠 Optimize ML Parameters</button>
+            </div>
+          </div>
+          <div class="backtest-results-box" id="backtest-results" style="display: none;">
+            <!-- Historical results injection -->
+          </div>
+        </div>
+      </main>
+
+      <!-- Right Column: News and Trade Logs -->
+      <aside class="sidebar-column">
+        <!-- Economic Calendar Widget -->
+        <div class="glass-card news-panel">
+          <h2 class="panel-title">Forex Factory Economic Calendar</h2>
+          <div class="news-list" id="news-events-container">
+            <div class="text-muted text-center py-4">Fetching economic news calendar...</div>
+          </div>
+        </div>
+
+        <!-- Yahoo Finance Live Market News -->
+        <div class="glass-card news-panel">
+          <h2 class="panel-title">Yahoo Finance Live Market News</h2>
+          <div class="news-list" id="yahoo-news-container">
+            <div class="text-muted text-center py-4">Streaming live financial news...</div>
+          </div>
+        </div>
+
+        <!-- Recent Trade Logs -->
+        <div class="glass-card logs-panel">
+          <h2 class="panel-title">Recent Trade History</h2>
+          <div class="logs-list" id="trade-history-container">
+            <div class="text-muted text-center py-4">No closed trades recorded yet.</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

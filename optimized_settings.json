@@ -1,0 +1,58 @@
+{
+  "NQ=F": {
+    "RTH": {
+      "emaFast": 8,
+      "emaSlow": 20
+    },
+    "ETH": {
+      "bbPeriod": 20,
+      "bbStdDev": 2.2,
+      "rsiOversold": 33,
+      "rsiOverbought": 67,
+      "stochOversold": 20,
+      "stochOverbought": 80
+    }
+  },
+  "ES=F": {
+    "RTH": {
+      "emaFast": 8,
+      "emaSlow": 24
+    },
+    "ETH": {
+      "bbPeriod": 20,
+      "bbStdDev": 1.8,
+      "rsiOversold": 28,
+      "rsiOverbought": 72,
+      "stochOversold": 20,
+      "stochOverbought": 80
+    }
+  },
+  "CL=F": {
+    "RTH": {
+      "emaFast": 9,
+      "emaSlow": 21
+    },
+    "ETH": {
+      "bbPeriod": 20,
+      "bbStdDev": 2.2,
+      "rsiOversold": 28,
+      "rsiOverbought": 72,
+      "stochOversold": 20,
+      "stochOverbought": 80
+    }
+  },
+  "GC=F": {
+    "RTH": {
+      "emaFast": 12,
+      "emaSlow": 21
+    },
+    "ETH": {
+      "bbPeriod": 20,
+      "bbStdDev": 2,
+      "rsiOversold": 33,
+      "rsiOverbought": 67,
+      "stochOversold": 20,
+      "stochOverbought": 80
+    }
+  }
+}

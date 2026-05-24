@@ -1,0 +1,18 @@
+{
+  "name": "antigravity-smart-bot-v1",
+  "version": "1.0.0",
+  "description": "V1 Antigravity Smart Trading Bot for NQ, ES, CL, GC with Tastytrade, NT8, and APX Drawdown Engine.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
+  },
+  "author": "Antigravity AI",
+  "license": "ISC"
+}
