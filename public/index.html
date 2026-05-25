@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/terminal.css">
+  <link rel="stylesheet" href="css/e2-dashboard.css">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -32,6 +33,9 @@
       </button>
       <button class="sidebar-tab-btn" id="tab-auditor" data-tooltip="Deep Loss Diagnostics" onclick="switchTab('auditor')">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/></svg>
+      </button>
+      <button class="sidebar-tab-btn" id="tab-exits" data-tooltip="Exits — TP/SL/BE/Trail Override" onclick="switchTab('exits')">
+        <svg viewBox="0 0 24 24"><path d="M3 12h12M11 8l4 4-4 4M21 4v16" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/></svg>
       </button>
       <button class="sidebar-tab-btn" id="tab-settings" data-tooltip="API Settings" onclick="switchTab('settings')">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -102,37 +106,39 @@
           </div>
         </section>
 
-        <!-- Trading Floor Terminal — split screen: operations LEFT, live event stream RIGHT -->
-        <section class="terminal-split">
+        <!-- E2: D-style cards on LEFT (1-column), live event stream sidebar RIGHT (40% sticky) -->
+        <section class="e2-split">
 
-          <!-- LEFT: per-symbol operation cards -->
-          <div class="terminal-ops-pane">
-            <div class="terminal-pane-header">
-              <span class="terminal-pane-title">⚙️ OPERATIONS</span>
-              <span class="terminal-pane-sub" id="ops-pane-sub">4 symbols · monitoring</span>
-            </div>
-            <div id="ops-cards" class="ops-cards-stack">
-              <!-- Populated by renderOpsCards(). One card per symbol. -->
-              <div class="ops-card-placeholder">Waiting for first NT8 bar push on TCP :4000…</div>
-            </div>
-          </div>
-
-          <!-- RIGHT: live event stream -->
-          <div class="terminal-stream-pane">
-            <div class="terminal-pane-header">
-              <span class="terminal-pane-title">📡 LIVE EVENT STREAM</span>
-              <div class="stream-controls">
-                <button class="stream-filter-btn active" data-filter="ALL" onclick="setStreamFilter('ALL')">ALL</button>
-                <button class="stream-filter-btn" data-filter="NQ=F" onclick="setStreamFilter('NQ=F')">NQ</button>
-                <button class="stream-filter-btn" data-filter="ES=F" onclick="setStreamFilter('ES=F')">ES</button>
-                <button class="stream-filter-btn" data-filter="CL=F" onclick="setStreamFilter('CL=F')">CL</button>
-                <button class="stream-filter-btn" data-filter="GC=F" onclick="setStreamFilter('GC=F')">GC</button>
-                <button class="stream-filter-btn" data-filter="ERRORS" onclick="setStreamFilter('ERRORS')">⚠ errors</button>
-                <button class="stream-pause-btn" id="stream-pause-btn" onclick="toggleStreamPause()" title="Pause/resume live stream">⏸</button>
+          <!-- LEFT: 4 stacked D-style cards (sparkline + gauge rings) -->
+          <div class="e2-ops-pane">
+            <div class="e2-ops-head">
+              <span class="e2-ops-title" id="opsContractTitle">⚙️ OPERATIONS · MINI</span>
+              <div class="e2-contract-toggle" id="contractToggle">
+                <button class="active" data-c="MINI">MINI</button>
+                <button data-c="MICRO">MICRO</button>
               </div>
             </div>
-            <div id="event-stream" class="event-stream"></div>
+            <div id="e2-cards" class="e2-cards-stack">
+              <div class="e2-card-placeholder">Waiting for first NT8 bar push on TCP :4000…</div>
+            </div>
           </div>
+
+          <!-- RIGHT: sticky event stream sidebar (40%) -->
+          <aside class="e2-stream-pane">
+            <div class="e2-stream-head">
+              <span class="e2-stream-title"><span class="live-pulse"></span> LIVE EVENT STREAM</span>
+              <button class="stream-pause-btn" id="stream-pause-btn" onclick="toggleStreamPause()" title="Pause/resume live stream">⏸</button>
+            </div>
+            <div class="e2-stream-filters">
+              <button class="stream-filter-btn active" data-filter="ALL" onclick="setStreamFilter('ALL')">ALL</button>
+              <button class="stream-filter-btn" data-filter="NQ" onclick="setStreamFilter('NQ')">NQ</button>
+              <button class="stream-filter-btn" data-filter="ES" onclick="setStreamFilter('ES')">ES</button>
+              <button class="stream-filter-btn" data-filter="CL" onclick="setStreamFilter('CL')">CL</button>
+              <button class="stream-filter-btn" data-filter="GC" onclick="setStreamFilter('GC')">GC</button>
+              <button class="stream-filter-btn" data-filter="ERRORS" onclick="setStreamFilter('ERRORS')">⚠</button>
+            </div>
+            <div id="event-stream" class="e2-stream-body"></div>
+          </aside>
         </section>
 
         <!-- Below the terminal: active positions, news, calendar, trades (slimmer rows) -->
@@ -388,6 +394,27 @@
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
             <p>🔧 <strong>Global Broker Integration:</strong> Webhook credentials and Tastytrade integrations are written directly to your local encrypted process memory and synchronized asynchronously to your `.env` workspace variables for permanent system persistence across bot runtime starts.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- View Tab 6: Exits — TP/SL/BE/Trail overrides (RTH vs ETH) -->
+      <div id="view-exits" class="tab-view" style="display: none;">
+        <div style="max-width: 1100px; margin: 0 auto; display:flex; flex-direction:column; gap: 18px;">
+          <div class="glass-card gradient-glow-card" style="padding: 22px 28px;">
+            <h2 class="panel-title" style="font-size: 20px; font-weight: 800; color: var(--cyan-glow); margin: 0 0 6px 0;">📐 Exits Override</h2>
+            <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.6;">
+              Default behavior: <strong style="color:var(--text-primary);">ATR-based dynamic exits</strong> (SL=1.5×ATR, TP=2.7×ATR, BE@0.8×ATR, trail@1.2×ATR — same exits the walkforward backtest was measured against).
+              Turn on a session below to replace dynamic exits with fixed point values for that session.
+            </p>
+          </div>
+
+          <div id="exits-warning" style="display:none; padding: 14px 18px; background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.4); border-radius: 10px; font-size: 13px; color: var(--neon-orange); line-height: 1.6;">
+            ⚠ <strong>Fixed exits are active for at least one session.</strong> The walkforward backtest metrics (58.6% weighted WR, PF 2-3) were measured with ATR-dynamic exits — they no longer apply to your live behavior. Run a fresh paper period before judging results.
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;" id="exits-cards">
+            <!-- RTH and ETH cards populated by JS -->
           </div>
         </div>
       </div>

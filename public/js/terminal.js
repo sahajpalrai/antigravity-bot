@@ -1,27 +1,30 @@
 // ═════════════════════════════════════════════════════════════════════════
-// ANTIGRAVITY v2 — TRADING FLOOR TERMINAL
-// Renders the new dashboard split layout: operation cards (LEFT) + live
-// event stream (RIGHT). Hooks into existing /api/state polling via
-// window.terminalOnState. Maintains its own /api/events poller for the stream.
+// ANTIGRAVITY v2 — DASHBOARD (E2 layout)
+// D-style cards on left (1-column stack with sparklines + gauge rings + price
+// + change%) and live event stream on right (sticky sidebar, 40%).
+// Hooks into existing /api/state polling via window.terminalOnState.
+// Maintains its own /api/events + /api/paper + /api/models pollers.
 // ═════════════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
 
   // ── State ──────────────────────────────────────────────────────────────
   let lastEventSeq = 0;
-  let streamFilter = 'ALL';   // 'ALL' | 'NQ=F' | 'ES=F' | 'CL=F' | 'GC=F' | 'ERRORS'
+  let streamFilter = 'ALL';   // 'ALL' | 'NQ' | 'ES' | 'CL' | 'GC' | 'ERRORS'
   let streamPaused = false;
-  let eventBuffer = [];        // ring of recent events for re-rendering on filter change
+  let eventBuffer = [];
   const MAX_EVENT_RENDER = 220;
 
-  const SYMBOLS = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
+  // Sparkline price history (rolling buffer of last 30 closes per family)
+  const sparkBuffers = { NQ: [], ES: [], CL: [], GC: [] };
+  const SPARK_LEN = 30;
 
   // ── Public hooks (called from app.js) ──────────────────────────────────
   window.terminalOnState = function (data) {
     if (!data) return;
     renderKpiStrip(data);
-    renderOpsCards(data);
-    updateOpsPaneSub(data);
+    renderE2Cards(data);
+    renderContractToggle(data);
   };
 
   window.setStreamFilter = function (filter) {
@@ -52,165 +55,264 @@
       openEl.textContent = (openPnl >= 0 ? '+' : '') + formatCurrency(openPnl);
       openEl.className = 'tk-value ' + (openPnl > 0 ? 'profit' : (openPnl < 0 ? 'loss' : 'neutral'));
     }
+    const accounts = data.accounts || {};
+    const activeSyms = (data.contractMode === 'MICRO') ? (data.microSymbols || []) : (data.miniSymbols || []);
     let active = 0;
-    for (const s of SYMBOLS) if (data.accounts && data.accounts[s] && data.accounts[s].activePosition) active++;
+    for (const s of activeSyms) if (accounts[s] && accounts[s].activePosition) active++;
     set('kpi-active-trades', String(active));
-
-    // APX progress bar (matches existing logic)
     const profitMade = Math.max(0, (data.totalBalance || 0) - 200000);
     const pct = Math.min(100, (profitMade / 12000) * 100);
     const bar = document.getElementById('kpi-progress');
     if (bar) bar.style.width = pct.toFixed(1) + '%';
   }
 
-  // ── Operations cards (LEFT pane) ───────────────────────────────────────
-  function renderOpsCards(data) {
-    const container = document.getElementById('ops-cards');
+  // ── MINI/MICRO toggle wiring ──────────────────────────────────────────
+  function renderContractToggle(data) {
+    const mode = data.contractMode || 'MINI';
+    document.querySelectorAll('#contractToggle button').forEach(b => {
+      b.classList.toggle('active', b.dataset.c === mode);
+    });
+    const title = document.getElementById('opsContractTitle');
+    if (title) title.textContent = `⚙️ OPERATIONS · ${mode}`;
+  }
+  // Click handler on the MINI/MICRO buttons (delegated, attached once on first render)
+  let _toggleWired = false;
+  function wireContractToggle() {
+    if (_toggleWired) return;
+    const tg = document.getElementById('contractToggle');
+    if (!tg) return;
+    tg.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', async () => {
+        const mode = b.dataset.c;
+        try {
+          await fetch('/api/contract-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+          // Optimistic toggle until next state refresh
+          tg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+          b.classList.add('active');
+          const title = document.getElementById('opsContractTitle');
+          if (title) title.textContent = `⚙️ OPERATIONS · ${mode}`;
+        } catch (e) { console.warn('contract-mode toggle failed', e); }
+      });
+    });
+    _toggleWired = true;
+  }
+
+  // ── E2 symbol cards (left pane) ───────────────────────────────────────
+  function renderE2Cards(data) {
+    wireContractToggle();
+    const container = document.getElementById('e2-cards');
     if (!container) return;
 
+    const mode = data.contractMode || 'MINI';
+    const symbols = mode === 'MICRO' ? (data.microSymbols || []) : (data.miniSymbols || []);
+    if (symbols.length === 0) {
+      // Fallback if state doesn't include the lists yet
+      symbols.push('NQ=F', 'ES=F', 'CL=F', 'GC=F');
+    }
     const decisions = data.lastDecisions || {};
     const livePrices = data.livePrices || {};
     const accounts = data.accounts || {};
+    const specs = data.contractSpecs || {};
 
-    const cards = SYMBOLS.map(sym => {
-      const decision = decisions[sym];
-      const acc = accounts[sym] || {};
+    // Update sparkline buffers from current prices (one snapshot per state refresh)
+    for (const sym of symbols) {
+      const fam = sym.replace(/^M/, '').replace('=F', '');
+      if (!sparkBuffers[fam]) sparkBuffers[fam] = [];
       const px = livePrices[sym] || 0;
-      return buildOpsCard(sym, decision, acc, px);
-    });
-    container.innerHTML = cards.join('');
+      if (px > 0 && (sparkBuffers[fam].length === 0 || sparkBuffers[fam][sparkBuffers[fam].length - 1] !== px)) {
+        sparkBuffers[fam].push(px);
+        if (sparkBuffers[fam].length > SPARK_LEN) sparkBuffers[fam].shift();
+      }
+    }
+
+    container.innerHTML = symbols.map(sym => buildE2Card(sym, decisions[sym], accounts[sym], livePrices[sym], specs[sym])).join('');
   }
 
-  function buildOpsCard(sym, decision, acc, px) {
-    const cleanSym = sym.replace('=F', '');
-    const balance = formatCurrency(acc.balance || 0);
-    const todayPnl = (acc.realizedPnL || 0) + (acc.unrealizedPnL || 0);
-    const pnlClass = todayPnl > 0 ? 'pnl-pos' : (todayPnl < 0 ? 'pnl-neg' : '');
-    const pnlSign = todayPnl >= 0 ? '+' : '';
+  function buildE2Card(sym, decision, acc, px, spec) {
+    const family = (spec && spec.family) || sym.replace(/^M/, '').replace('=F', '');
+    const isMicro = spec && spec.isMicro;
+    const displaySym = sym.replace('=F', '');
+    const balance = acc ? acc.balance : 0;
+    const todayPnl = acc ? (acc.realizedPnL || 0) + (acc.unrealizedPnL || 0) : 0;
+    const enabled = acc ? acc.enabled !== false : true;
 
-    // No decision yet → placeholder
-    if (!decision) {
-      return `<div class="ops-card" style="opacity:0.55;">
-        <div class="ops-card-head">
-          <span class="ops-card-symbol">${cleanSym}</span>
-          <span class="ops-card-balance">${balance}</span>
-        </div>
-        <div class="specialist-line">waiting for first bar…</div>
-      </div>`;
-    }
-
-    const regime = decision.regime || 'CHOP';
-    const session = decision.session || '—';
+    // Decision-derived state
+    const action = decision ? decision.action : null;
+    const regime = decision ? decision.regime : null;
+    const session = decision ? decision.session : '—';
     const isChop = regime === 'CHOP';
-    const fireClass =
-      decision.action === 'BUY' ? 'fire-long' :
-      decision.action === 'SELL' ? 'fire-short' :
-      isChop ? 'chop' : '';
+    const probs = (decision && decision.probabilities) || {};
+    const longP = probs.long;
+    const shortP = probs.short;
+    const longTh = probs.longTh;
+    const shortTh = probs.shortTh;
+    const longBundle = (decision && decision.longBundle) || 'OK';
+    const shortBundle = (decision && decision.shortBundle) || 'OK';
 
-    const regimePillClass =
-      regime === 'TREND_UP' ? 'trend-up' :
-      regime === 'TREND_DOWN' ? 'trend-down' :
-      regime === 'VOL_EXPANSION' ? 'vol-exp' : 'chop';
+    // Classes for fire/chop states
+    let fireClass = '';
+    if (action === 'BUY')  fireClass = 'fire-long';
+    else if (action === 'SELL') fireClass = 'fire-short';
+    else if (isChop) fireClass = 'chop';
+    if (!enabled) fireClass = 'off';
 
-    const regimeShort = regime.replace('TREND_', 'TREND ').replace('_', ' ');
+    // Regime pill class
+    const rClass = regime === 'TREND_UP' ? 'up'
+                 : regime === 'TREND_DOWN' ? 'down'
+                 : regime === 'VOL_EXPANSION' ? 'vol'
+                 : 'chop';
+    const regimeText = regime ? regime.replace('TREND_', 'TREND ').replace('_', ' ') : 'waiting';
 
-    // Specialist + probabilities
-    const probs = decision.probabilities || {};
-    const longP = probs.long !== undefined ? probs.long : (decision.action === 'BUY' ? decision.probability : null);
-    const shortP = probs.short !== undefined ? probs.short : (decision.action === 'SELL' ? decision.probability : null);
-    const longTh = probs.longTh !== undefined ? probs.longTh : (decision.action === 'BUY' ? decision.threshold : null);
-    const shortTh = probs.shortTh !== undefined ? probs.shortTh : (decision.action === 'SELL' ? decision.threshold : null);
+    // Verdict pill
+    let verdictHtml;
+    if (action === 'BUY')       verdictHtml = `<span class="e2-verdict long">▲ FIRE LONG</span>`;
+    else if (action === 'SELL') verdictHtml = `<span class="e2-verdict short">▼ FIRE SHORT</span>`;
+    else if (isChop)            verdictHtml = `<span class="e2-verdict wait">CHOP</span>`;
+    else                        verdictHtml = `<span class="e2-verdict wait">WAIT</span>`;
 
-    const longBundleStatus = decision.longBundle || 'OK';
-    const shortBundleStatus = decision.shortBundle || 'OK';
-
-    let specialistText;
-    if (isChop) {
-      specialistText = 'CHOP — no specialist active';
-    } else if (longBundleStatus === 'DISABLED' && shortBundleStatus === 'DISABLED') {
-      specialistText = '<span style="color:var(--neon-red);">all bundles gated off (low quality)</span>';
-    } else if (longBundleStatus === 'MISSING' && shortBundleStatus === 'MISSING') {
-      specialistText = '<span style="color:var(--neon-orange);">no model trained for this regime</span>';
+    // Specialist line
+    let specLine;
+    if (!decision) {
+      specLine = '<em style="opacity:0.6;">waiting for first NT8 bar push…</em>';
+    } else if (isChop) {
+      specLine = 'CHOP — no specialist active';
+    } else if (longBundle === 'DISABLED' && shortBundle === 'DISABLED') {
+      specLine = '<span style="color:var(--neon-red);">all bundles gated off (low quality)</span>';
+    } else if (longBundle === 'MISSING' && shortBundle === 'MISSING') {
+      specLine = '<span style="color:var(--neon-orange);">no model trained for this regime</span>';
     } else {
-      const which =
-        decision.action === 'BUY' ? `${cleanSym}_${session}_${regime}_long` :
-        decision.action === 'SELL' ? `${cleanSym}_${session}_${regime}_short` :
-        `${cleanSym}_${session}_${regime}_{long|short}`;
-      specialistText = `active: <strong>${which}</strong>`;
+      const fam = isMicro ? family : family;
+      const dir = action === 'BUY' ? 'long' : (action === 'SELL' ? 'short' : '{long|short}');
+      specLine = `<strong>${fam}_${session}_${regime}_${dir}</strong>`;
     }
+
+    // Sparkline
+    const sparkPoints = sparkBuffers[family] || [];
+    const sparkSvg = buildSparkline(sparkPoints, todayPnl);
+
+    // Gauges
+    const longGauge = buildGauge('long', longP, longTh, longBundle);
+    const shortGauge = buildGauge('short', shortP, shortTh, shortBundle);
+
+    // Change percentage placeholder (computed from sparkline)
+    const chgPct = sparkPoints.length >= 2
+      ? ((sparkPoints[sparkPoints.length - 1] - sparkPoints[0]) / sparkPoints[0]) * 100
+      : 0;
+    const chgClass = chgPct > 0.01 ? 'pos' : (chgPct < -0.01 ? 'neg' : 'flat');
+    const chgText = (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%';
 
     // Position strip
-    const pos = acc.activePosition;
+    const pos = acc && acc.activePosition;
     const posHtml = pos
-      ? `<div class="ops-position-strip has-pos"><span>${pos.direction} × ${pos.qty} @ ${pos.entryPrice.toFixed(2)}</span><strong style="color:${(pos.unrealizedPnL||0) >= 0 ? 'var(--neon-green)' : 'var(--neon-red)'};">${(pos.unrealizedPnL||0) >= 0 ? '+' : ''}${formatCurrency(pos.unrealizedPnL || 0)}</strong></div>`
-      : `<div class="ops-position-strip"><span>no open position</span><span>px ${px ? px.toFixed(2) : '—'}</span></div>`;
+      ? `<div class="e2-pos-status">${pos.direction} × ${pos.qty} @ ${pos.entryPrice ? pos.entryPrice.toFixed(2) : '—'}</div>
+         <div class="e2-pos-pnl ${(pos.unrealizedPnL || 0) >= 0 ? 'pos' : 'neg'}">${(pos.unrealizedPnL || 0) >= 0 ? '+' : ''}${formatCurrency(pos.unrealizedPnL || 0)}</div>`
+      : `<div class="e2-pos-status">no open position</div>
+         <div class="e2-pos-pnl" style="color:var(--text-secondary); font-size:11px;">flat</div>`;
 
-    return `<div class="ops-card ${fireClass}">
-      <div class="ops-card-head">
-        <span class="ops-card-symbol">${cleanSym}</span>
-        <span class="ops-card-balance">${balance} <span class="${pnlClass}">${pnlSign}${formatCurrency(todayPnl)}</span></span>
-      </div>
-      <div class="ops-card-regime">
-        <span class="regime-pill ${regimePillClass}">${regimeShort}</span>
-        <span style="font-size:9px; opacity:0.6;">${session}</span>
-        ${decision.action !== 'FLAT'
-          ? `<span class="fire-badge fire ${decision.action === 'SELL' ? 'short' : ''}" style="margin-left:auto;">${decision.action === 'BUY' ? '▲ FIRE LONG' : '▼ FIRE SHORT'}</span>`
-          : `<span class="fire-badge wait" style="margin-left:auto;">${isChop ? 'CHOP' : 'WAIT'}</span>`
-        }
-      </div>
-      <div class="specialist-line">${specialistText}</div>
-      ${buildProbRow('L', 'long', longP, longTh, longBundleStatus)}
-      ${buildProbRow('S', 'short', shortP, shortTh, shortBundleStatus)}
-      ${posHtml}
-    </div>`;
+    return `
+      <div class="e2-card ${fireClass}">
+        <div class="e2-head">
+          <div class="e2-sym-row">
+            <span class="e2-sym">${displaySym}</span>
+            ${px > 0 ? `<span class="e2-px">${px.toFixed(2)}</span>` : ''}
+            ${px > 0 ? `<span class="e2-chg ${chgClass}">${chgText}</span>` : ''}
+          </div>
+          <span class="e2-onoff ${enabled ? 'on' : 'off'}"
+                onclick="toggleSymbolState('${sym}', ${!enabled})">${enabled ? '● ON' : '○ OFF'}</span>
+        </div>
+        <div class="e2-row">
+          <span class="e2-regime-pill ${rClass}">${regimeText}</span>
+          <span class="e2-sess">${session}</span>
+          ${verdictHtml}
+        </div>
+        <div class="e2-spark-row">
+          ${sparkSvg}
+          <div class="e2-spark-stats">today<br><strong class="${todayPnl > 0 ? 'pos' : (todayPnl < 0 ? 'neg' : '')}">${todayPnl >= 0 ? '+' : ''}${formatCurrency(todayPnl)}</strong></div>
+        </div>
+        <div class="e2-gauges">${longGauge}${shortGauge}</div>
+        <div class="e2-foot">
+          <div class="e2-spec">${specLine}</div>
+          <div class="e2-pos">${posHtml}</div>
+        </div>
+      </div>`;
   }
 
-  function buildProbRow(label, klass, prob, threshold, status) {
+  function buildGauge(side, prob, threshold, status) {
+    const cls = side === 'long' ? 'l' : 's';
+    const fillCls = side === 'long' ? 'long' : 'short';
     if (status === 'MISSING' || status === 'DISABLED' || prob === null || prob === undefined) {
-      const reason = status === 'DISABLED' ? 'gated' : (status === 'MISSING' ? 'no model' : '—');
-      return `<div class="prob-row">
-        <span class="prob-label ${klass}">${label}</span>
-        <div class="prob-bar-track"><span class="prob-bar-fill ${klass}" style="width:0%;"></span></div>
-        <span class="prob-value" style="opacity:0.5;">${reason}</span>
+      const label = status === 'DISABLED' ? '⊘ GATED' : 'no model';
+      const cap = side === 'long' ? 'LONG' : 'SHORT';
+      return `<div class="e2-gauge" style="opacity:0.45;">
+        <svg viewBox="0 0 100 55"><path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/></svg>
+        <div class="e2-gauge-num muted">—</div>
+        <div class="e2-gauge-cap">${cap} prob</div>
+        <div class="e2-gauge-th ${status === 'DISABLED' ? 'gated' : ''}">${label}</div>
       </div>`;
     }
-    const pct = Math.max(0, Math.min(1, prob)) * 100;
-    const thMark = threshold !== null && threshold !== undefined
-      ? `<span class="prob-threshold-mark" style="left:${(threshold * 100).toFixed(1)}%;" title="threshold ${threshold.toFixed(2)}"></span>`
-      : '';
-    const valColor = (threshold !== null && prob >= threshold) ? `color: var(--neon-${klass === 'long' ? 'green' : 'red'});` : '';
-    return `<div class="prob-row">
-      <span class="prob-label ${klass}">${label}</span>
-      <div class="prob-bar-track"><span class="prob-bar-fill ${klass}" style="width:${pct.toFixed(1)}%;"></span>${thMark}</div>
-      <span class="prob-value" style="${valColor}">${pct.toFixed(0)}%</span>
+    const pct = Math.max(0, Math.min(1, prob));
+    const arcLen = 125.7; // half-circle perimeter at r=40
+    const dashOffset = arcLen * (1 - pct);
+    const hit = threshold !== undefined && prob >= threshold;
+    const thLabel = threshold !== undefined ? `th ${threshold.toFixed(2)}${hit ? ' ✓ HIT' : ''}` : '—';
+    const thCls = hit ? (side === 'long' ? 'hit' : 'hit-s') : '';
+    const cap = side === 'long' ? 'LONG' : 'SHORT';
+    return `<div class="e2-gauge">
+      <svg viewBox="0 0 100 55">
+        <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+        <path class="g-fg ${fillCls}" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="${arcLen}" stroke-dashoffset="${dashOffset.toFixed(1)}"/>
+      </svg>
+      <div class="e2-gauge-num ${cls}">${(pct * 100).toFixed(0)}%</div>
+      <div class="e2-gauge-cap">${cap} prob</div>
+      <div class="e2-gauge-th ${thCls}">${thLabel}</div>
     </div>`;
   }
 
-  function updateOpsPaneSub(data) {
-    const sub = document.getElementById('ops-pane-sub');
-    if (!sub) return;
-    const live = (data.tradingMode || 'paper').toUpperCase();
-    sub.textContent = `mode: ${live} · 4 symbols`;
+  function buildSparkline(points, todayPnl) {
+    if (!points || points.length < 2) {
+      return `<svg class="e2-spark" viewBox="0 0 200 50" preserveAspectRatio="none">
+        <line x1="0" y1="25" x2="200" y2="25" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="3,3"/>
+      </svg>`;
+    }
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = max - min || 1;
+    const w = 200, h = 50, pad = 4;
+    const step = (w - 2 * pad) / (points.length - 1);
+    const ptsStr = points.map((v, i) => {
+      const x = pad + i * step;
+      const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const color = todayPnl >= 0 ? '#39ff14' : '#ff3838';
+    const fillId = 'sf_' + Math.random().toString(36).slice(2, 8);
+    return `<svg class="e2-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${color}" stop-opacity="0.3"/>
+        <stop offset="1" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="${ptsStr} ${w - pad},${h} ${pad},${h}" fill="url(#${fillId})"/>
+      <polyline points="${ptsStr}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
   }
 
-  // ── Event stream (RIGHT pane) ──────────────────────────────────────────
+  // ── Event stream (right sidebar) ──────────────────────────────────────
   async function pollEvents() {
     if (streamPaused) return;
     try {
-      const url = `/api/events?after=${lastEventSeq}&limit=120`;
-      const res = await fetch(url);
+      const res = await fetch(`/api/events?after=${lastEventSeq}&limit=120`);
       if (!res.ok) return;
       const data = await res.json();
       if (!data.events || data.events.length === 0) return;
       lastEventSeq = data.currentSeq || lastEventSeq;
       for (const ev of data.events) eventBuffer.push(ev);
-      if (eventBuffer.length > MAX_EVENT_RENDER) {
-        eventBuffer = eventBuffer.slice(-MAX_EVENT_RENDER);
-      }
+      if (eventBuffer.length > MAX_EVENT_RENDER) eventBuffer = eventBuffer.slice(-MAX_EVENT_RENDER);
       renderEventStream();
-    } catch (e) {
-      // silent — stream poll failures don't block other dashboard activity
-    }
+    } catch (e) {}
   }
 
   function renderEventStream() {
@@ -220,15 +322,17 @@
     const filtered = eventBuffer.filter(ev => {
       if (streamFilter === 'ALL') return true;
       if (streamFilter === 'ERRORS') return ev.type === 'ERROR';
-      return ev.symbol === streamFilter;
+      // Filter by family (NQ matches both NQ=F and MNQ=F)
+      if (!ev.symbol) return false;
+      const fam = ev.symbol.replace(/^M/, '').replace('=F', '');
+      return fam === streamFilter;
     });
 
     if (filtered.length === 0) {
-      container.innerHTML = `<div class="event-stream-empty">No events match filter <strong>${streamFilter}</strong>${streamPaused ? ' · ⏸ paused' : ''}.</div>`;
+      container.innerHTML = `<div style="text-align:center; color:var(--text-secondary); padding:30px 12px; font-family: var(--font-family); font-size:12px;">No events match filter <strong>${streamFilter}</strong>${streamPaused ? ' · ⏸ paused' : ''}.</div>`;
       return;
     }
 
-    // Render newest at top
     const rows = filtered.slice().reverse().map(ev => {
       const t = new Date(ev.ts);
       const hh = String(t.getHours()).padStart(2, '0');
@@ -260,7 +364,90 @@
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
   }
 
-  // ── Paper stats KPI hook (separate poller — slower cadence) ─────────────
+  // ── Exits tab (TP/SL/BE/Trail override per RTH/ETH) ────────────────────
+  async function pollExitsConfig() {
+    try {
+      const res = await fetch('/api/exits');
+      if (!res.ok) return;
+      const data = await res.json();
+      renderExitsTab(data.config, data.fixedActive);
+    } catch (e) {}
+  }
+
+  function renderExitsTab(cfg, fixedActive) {
+    const warn = document.getElementById('exits-warning');
+    if (warn) warn.style.display = fixedActive ? '' : 'none';
+    const wrap = document.getElementById('exits-cards');
+    if (!wrap) return;
+    wrap.innerHTML = ['RTH', 'ETH'].map(s => buildExitsCard(s, cfg[s])).join('');
+    wireExitsHandlers();
+  }
+
+  function buildExitsCard(session, s) {
+    const sessLabel = session === 'RTH' ? '☀️ RTH (Regular Trading Hours)' : '🌙 ETH (Electronic Trading Hours)';
+    const accentColor = session === 'RTH' ? 'var(--neon-green)' : 'var(--neon-orange)';
+    const enabled = !!s.enabled;
+    return `
+      <div class="glass-card" style="padding: 20px 24px; border: 1px solid ${enabled ? accentColor : 'var(--border-light)'}; box-shadow: ${enabled ? `0 0 20px ${session === 'RTH' ? 'rgba(57,255,20,0.15)' : 'rgba(255,152,0,0.15)'}` : 'none'};">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <h3 style="margin:0; font-size: 15px; font-weight: 800; color: ${accentColor};">${sessLabel}</h3>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;">
+            <input type="checkbox" data-exits-session="${session}" data-exits-field="enabled" ${enabled ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer; accent-color:${accentColor};">
+            <span style="font-size:11px; font-weight: 800; letter-spacing: 0.5px; color: ${enabled ? accentColor : 'var(--text-secondary)'};">USE FIXED ${enabled ? '✓' : ''}</span>
+          </label>
+        </div>
+        <p style="font-size:11px; color: var(--text-secondary); margin: 0 0 14px 0; line-height: 1.5;">
+          ${enabled
+            ? `<strong style="color: ${accentColor};">Fixed exits active.</strong> Values below override ATR-dynamic exits for ${session} entries.`
+            : `Currently using ATR-dynamic exits (1.5×ATR stop, 2.7×ATR target). Check the box to override.`}
+        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; ${enabled ? '' : 'opacity:0.5; pointer-events:none;'}">
+          ${exitsField('Profit Target',       session, 'profitPoints',     s.profitPoints,     'pts')}
+          ${exitsField('Stop Loss',           session, 'stopPoints',       s.stopPoints,       'pts')}
+          ${exitsField('Break-Even At',       session, 'breakevenAtPoints', s.breakevenAtPoints, 'pts profit')}
+          ${exitsField('Trail Start',         session, 'trailStartPoints', s.trailStartPoints, 'pts profit')}
+          ${exitsField('Trail Step',          session, 'trailStepPoints',  s.trailStepPoints,  'pts behind')}
+        </div>
+      </div>
+    `;
+  }
+
+  function exitsField(label, session, field, value, suffix) {
+    return `
+      <div class="input-group" style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size: 10px; color: var(--text-secondary); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">${label}</label>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <input type="number" min="0.1" step="0.1" value="${value}"
+                 data-exits-session="${session}" data-exits-field="${field}"
+                 style="flex:1; padding: 8px 10px; background: rgba(5,7,12,0.6); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-family: 'Consolas', monospace; font-size: 13px; font-weight: 600;">
+          <span style="font-size: 10px; color: var(--text-secondary);">${suffix}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  let _exitsHandlersWired = new WeakSet();
+  function wireExitsHandlers() {
+    document.querySelectorAll('[data-exits-session]').forEach(el => {
+      if (_exitsHandlersWired.has(el)) return;
+      _exitsHandlersWired.add(el);
+      el.addEventListener('change', async () => {
+        const session = el.dataset.exitsSession;
+        const field = el.dataset.exitsField;
+        const val = el.type === 'checkbox' ? el.checked : parseFloat(el.value);
+        try {
+          const res = await fetch('/api/exits', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session, values: { [field]: val } })
+          });
+          if (res.ok) pollExitsConfig();  // re-render with fresh state
+        } catch (e) { console.warn('exits save failed', e); }
+      });
+    });
+  }
+
+  // ── Paper stats KPI hook + models polling ──────────────────────────────
   async function pollPaperStats() {
     try {
       const res = await fetch('/api/paper');
@@ -272,10 +459,7 @@
         if (wrEl) wrEl.textContent = data.stats.total > 0
           ? (data.stats.winRate * 100).toFixed(1) + '% (' + data.stats.total + ')'
           : '— (0)';
-        if (pfEl) {
-          // Estimate PF from netR (rough): wins/losses approximation skipped — show netR instead
-          pfEl.textContent = (data.stats.netR || 0).toFixed(1) + ' R';
-        }
+        if (pfEl) pfEl.textContent = (data.stats.netR || 0).toFixed(1) + ' R';
       }
     } catch (e) {}
   }
@@ -295,11 +479,21 @@
   }
 
   // ── Boot ───────────────────────────────────────────────────────────────
-  // Poll events at 1.5s (live feel), paper stats + models at 10s (lower cost).
   setInterval(pollEvents, 1500);
   setInterval(pollPaperStats, 10000);
   setInterval(pollModelStatus, 15000);
+  setInterval(pollExitsConfig, 30000);
   pollEvents();
   pollPaperStats();
   pollModelStatus();
+  pollExitsConfig();
+
+  // Refresh Exits tab whenever it becomes the active view
+  const _origSwitchTab = window.switchTab;
+  if (typeof _origSwitchTab === 'function') {
+    window.switchTab = function (tabName) {
+      _origSwitchTab(tabName);
+      if (tabName === 'exits') pollExitsConfig();
+    };
+  }
 })();

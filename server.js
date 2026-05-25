@@ -38,61 +38,129 @@ const { getYahooFinanceNews } = require('./lib/yahooNews');
 const { getActiveSessionRegime } = require('./lib/sessionRegime');
 const {
   loadPortfolioState, getPortfolioState, enterTrade, updatePortfolioMetrics,
-  closeTrade, transitionToPAAccount
+  closeTrade, transitionToPAAccount,
+  setContractMode, getContractMode, activeSymbols,
+  ALL_SYMBOLS, MINI_SYMBOLS, MICRO_SYMBOLS, CONTRACT_SPECS,
+  familyMiniSymbol, familyMicroSymbol, activeContractFor
 } = require('./lib/paperEngine');
 const { sendTelegramMessage } = require('./lib/telegram');
 const {
-  startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback
+  startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback, broadcastBrainState
 } = require('./lib/nt8Bridge');
 const { decide, modelStatus } = require('./lib/decisionEngine');
 const { onBarDecision, getStats, getRecentTrades, getStatsByRegime } = require('./lib/paperHarness');
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
+const { getExitsConfig, setExitsConfig, isFixedActive } = require('./lib/exitsConfig');
 
 // ── Startup ─────────────────────────────────────────────────────────────────
 loadPortfolioState();
 startNT8BridgeServer();
 
-const livePrices = { 'NQ=F': 0, 'ES=F': 0, 'CL=F': 0, 'GC=F': 0 };
-const lastDecisions = { 'NQ=F': null, 'ES=F': null, 'CL=F': null, 'GC=F': null };
-const lastRegimes = { 'NQ=F': null, 'ES=F': null, 'CL=F': null, 'GC=F': null };
+// Live state keyed by ALL 8 contracts (4 mini + 4 micro). Even when the bot
+// is in MINI mode, micro entries stay present (just null) so dashboard render
+// code doesn't have to special-case missing keys.
+const livePrices = {};
+const lastDecisions = {};
+const lastRegimes = {};
+for (const s of ALL_SYMBOLS) { livePrices[s] = 0; lastDecisions[s] = null; lastRegimes[s] = null; }
 const serverStartTime = Date.now();
 
 // ── Bar-push hook: NT8 closed a 5m bar → run decision engine ────────────────
-setOnBarCallback((symbol, candles) => {
+// NT8 charts always send mini symbols (NQ=F, ES=F, CL=F, GC=F) — even when
+// the chart is showing the micro contract, the price is identical. We work
+// in "family" terms internally and route paper trades to the active contract
+// (mini vs micro) based on global contractMode.
+setOnBarCallback((rawSymbol, candles) => {
   if (!candles || candles.length < 220) return;
   const last = candles[candles.length - 1];
-  livePrices[symbol] = last.close;
+  const familySym = familyMiniSymbol(rawSymbol);   // NQ=F whether chart is NQ or MNQ
+  const microSym = familyMicroSymbol(familySym);   // MNQ=F
+  // Mirror price to both contract keys so the dashboard always has fresh data
+  livePrices[familySym] = last.close;
+  if (microSym) livePrices[microSym] = last.close;
 
-  // BAR event (compact — full feature dump is captured on the decision event)
-  eventBus.emit('BAR', symbol,
+  // BAR event tagged with the active contract for clarity
+  const targetSym = activeContractFor(familySym);  // currently-active mini OR micro
+  eventBus.emit('BAR', targetSym,
     `BAR close=${last.close} vol=${last.volume || 0}`,
-    { close: last.close, time: last.time });
+    { close: last.close, time: last.time, family: familySym });
 
-  const decision = decide(symbol, candles);
-  lastDecisions[symbol] = decision;
+  // Decision is family-level (uses mini model)
+  const decision = decide(familySym, candles);
+  // Store under BOTH mini and micro keys so dashboard renders consistently
+  // regardless of which contract mode is currently selected
+  lastDecisions[familySym] = decision;
+  if (microSym) lastDecisions[microSym] = decision;
 
-  // Regime change event (when it flips)
-  if (decision.regime && decision.regime !== lastRegimes[symbol]) {
-    eventBus.emit('REGIME_CHANGE', symbol,
-      `regime: ${lastRegimes[symbol] || '—'} → ${decision.regime}`,
-      { from: lastRegimes[symbol], to: decision.regime, session: decision.session });
-    lastRegimes[symbol] = decision.regime;
+  // Regime change tracked at the family level (avoids double-emit)
+  if (decision.regime && decision.regime !== lastRegimes[familySym]) {
+    eventBus.emit('REGIME_CHANGE', targetSym,
+      `regime: ${lastRegimes[familySym] || '—'} → ${decision.regime}`,
+      { from: lastRegimes[familySym], to: decision.regime, session: decision.session });
+    lastRegimes[familySym] = decision.regime;
+    if (microSym) lastRegimes[microSym] = decision.regime;
   }
 
   // DECISION event (always — even FLAT, so the operator sees the bot thinking)
   if (decision.action === 'FLAT') {
-    eventBus.emit('DECISION', symbol,
+    eventBus.emit('DECISION', targetSym,
       `FLAT — ${decision.reason}`,
       { regime: decision.regime, session: decision.session, probabilities: decision.probabilities });
   } else {
-    eventBus.emit('DECISION', symbol,
+    eventBus.emit('DECISION', targetSym,
       `${decision.action} prob=${decision.probability.toFixed(2)} ≥ thresh=${decision.threshold.toFixed(2)} (${decision.regime})`,
       { action: decision.action, prob: decision.probability, threshold: decision.threshold,
         regime: decision.regime, session: decision.session });
   }
 
-  // Paper harness records the bar (handles stop/target hits + new entries)
+  // Push a fresh BRAIN_STATE snapshot to all NT8 clients — drives the on-chart
+  // Brain Panel overlay. Top-3 feature values are surfaced for at-a-glance.
+  try {
+    const probs = (decision && decision.probabilities) || {};
+    const acc = getPortfolioState().accounts[targetSym] || {};
+    const fv = decision && decision.featureSnapshot ? decision.featureSnapshot : {};
+    const topFeatures = {
+      rsi: fv.rsi,
+      macd_hist: fv.macd_hist,
+      adx: fv.adx,
+      bb_z: fv.bb_z,
+      atr_pct: fv.atr_pct
+    };
+    broadcastBrainState({
+      symbol: targetSym,
+      family: familySym,
+      close: last.close,
+      atr: decision ? decision.atr : null,
+      regime: decision ? decision.regime : null,
+      session: decision ? decision.session : null,
+      action: decision ? decision.action : 'FLAT',
+      longProb:  probs.long  !== undefined ? probs.long  : (decision && decision.action === 'BUY'  ? decision.probability : null),
+      shortProb: probs.short !== undefined ? probs.short : (decision && decision.action === 'SELL' ? decision.probability : null),
+      longTh:  probs.longTh,
+      shortTh: probs.shortTh,
+      specialist: (decision && decision.regime && decision.regime !== 'CHOP')
+        ? `${familyMiniSymbol(targetSym).replace('=F','')}_${decision.session}_${decision.regime}`
+        : '—',
+      positionDir: acc.activePosition ? acc.activePosition.direction : null,
+      positionQty: acc.activePosition ? acc.activePosition.qty : 0,
+      positionEntry: acc.activePosition ? acc.activePosition.entryPrice : 0,
+      positionPnl: acc.activePosition ? (acc.activePosition.unrealizedPnL || 0) : 0,
+      sl: acc.activePosition ? acc.activePosition.stopLoss : null,
+      tp: acc.activePosition ? acc.activePosition.takeProfit : null,
+      contractMode: getContractMode(),
+      tradingMode: TRADING_MODE,
+      exitMode: decision ? decision.exitMode : null,
+      features: topFeatures,
+      ts: Date.now()
+    });
+  } catch (e) {
+    console.error('[Server] BRAIN_STATE broadcast failed:', e.message);
+  }
+
+  // Paper harness records the bar against the ACTIVE contract (mini OR micro)
+  // so position size + P&L math uses the correct point value.
+  const symbol = targetSym;
   const paperEvent = onBarDecision(symbol, decision, last);
   if (paperEvent && paperEvent.event === 'open') {
     const p = paperEvent.position;
@@ -205,8 +273,43 @@ const server = http.createServer((req, res) => {
           regime,
           yahooNews,
           tradingMode: TRADING_MODE,
+          contractMode: getContractMode(),
+          contractSpecs: CONTRACT_SPECS,
+          miniSymbols: MINI_SYMBOLS,
+          microSymbols: MICRO_SYMBOLS,
           tastytradeId: process.env.TASTYTRADE_CLIENT_ID
         }));
+      }
+
+      // GET /api/exits — current exits override config
+      if (pathname === '/api/exits' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ config: getExitsConfig(), fixedActive: isFixedActive() }));
+      }
+
+      // POST /api/exits — update a single session's config
+      // body: { session: 'RTH'|'ETH', values: { enabled, profitPoints, stopPoints, breakevenAtPoints, trailStartPoints, trailStepPoints } }
+      if (pathname === '/api/exits' && req.method === 'POST') {
+        const { session, values } = reqBody;
+        const cfg = setExitsConfig(session, values || {});
+        if (cfg) {
+          eventBus.emit('INFO', null, `Exits config updated — ${session} fixed=${cfg[session].enabled}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'success', config: cfg }));
+        }
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'failed', error: 'invalid session' }));
+      }
+
+      // POST /api/contract-mode — switch between MINI and MICRO globally
+      if (pathname === '/api/contract-mode' && req.method === 'POST') {
+        const { mode } = reqBody;
+        const ok = setContractMode(mode);
+        if (ok) {
+          eventBus.emit('INFO', null, `Contract mode → ${mode}`);
+        }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'invalid mode', mode: getContractMode() }));
       }
 
       // POST /api/close — force close a symbol's position

@@ -63,6 +63,23 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double currentAtr = 0.5;
         private bool isTradingEnabled = true;
 
+        // Brain Panel state (populated by BRAIN<TAB>json messages from Node)
+        private string brainRegime       = "—";
+        private string brainSession      = "—";
+        private string brainAction       = "FLAT";
+        private string brainSpecialist   = "—";
+        private double brainLongProb     = 0;
+        private double brainShortProb    = 0;
+        private double brainLongTh       = 0;
+        private double brainShortTh      = 0;
+        private double brainClose        = 0;
+        private double brainAtr          = 0;
+        private string brainContractMode = "MINI";
+        private string brainTradingMode  = "paper";
+        private string brainExitMode     = "ATR";
+        private string brainFeatures     = "";
+        private DateTime brainLastUpdate = DateTime.MinValue;
+
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -653,21 +670,23 @@ namespace NinjaTrader.NinjaScript.Strategies
                 );
             }
 
+            // Antigravity v2 Brain Panel — appended after existing status/position info.
+            // Populated by BRAIN<TAB>json messages from Node after every closed bar.
+            string brainSection = BuildBrainPanelSection();
+
             string labelText = string.Format(
-                "🚀 ANTIGRAVITY V1 SMART BOT BRIDGE\n" +
+                "🚀 ANTIGRAVITY v2 BRIDGE\n" +
                 "==================================================\n" +
                 "• Status: {0}\n" +
                 "• Timeframe: {1}-Minute Chart (Execution Mode)\n" +
                 "• Active Position: {2}\n" +
                 "{3}" +
-                "--------------------------------------------------\n" +
-                "📊 ACTIVE MACHINE LEARNING PARAMETERS:\n" +
                 "{4}",
                 statusText,
                 BarsPeriod.Value,
                 posInfo,
                 targetInfo,
-                activeParamsText
+                brainSection
             );
 
             if (wpfTextBlock != null)
@@ -684,11 +703,140 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // Antigravity v2 Brain Panel — on-chart overlay block
+        // Renders model state (regime + specialist + probabilities + features)
+        // from the BRAIN_STATE messages Node pushes after each bar close.
+        // ─────────────────────────────────────────────────────────────────
+        private string BuildBrainPanelSection()
+        {
+            if (brainLastUpdate == DateTime.MinValue)
+            {
+                return
+                    "--------------------------------------------------\n" +
+                    "🧠 ANTIGRAVITY v2 BRAIN  (awaiting first bar push)\n";
+            }
+
+            string verdict;
+            if (brainAction == "BUY")       verdict = "▲ FIRE LONG";
+            else if (brainAction == "SELL") verdict = "▼ FIRE SHORT";
+            else if (brainRegime == "CHOP") verdict = "CHOP — stand down";
+            else                            verdict = "WAIT — below threshold";
+
+            string longHit  = (brainLongTh  > 0 && brainLongProb  >= brainLongTh)  ? " ✓" : "";
+            string shortHit = (brainShortTh > 0 && brainShortProb >= brainShortTh) ? " ✓" : "";
+
+            string modeLine = string.Format("Contract: {0}   |   Trading: {1}   |   Exits: {2}",
+                brainContractMode, brainTradingMode.ToUpper(), brainExitMode);
+
+            return string.Format(
+                "--------------------------------------------------\n" +
+                "🧠 ANTIGRAVITY v2 BRAIN   (last: {0:HH:mm:ss})\n" +
+                "• Close {1:F2}  ATR {2:F2}\n" +
+                "• Regime: {3}   Session: {4}\n" +
+                "• Verdict: {5}\n" +
+                "• Specialist: {6}\n" +
+                "• LONG  prob {7:F2} / th {8:F2}{9}\n" +
+                "• SHORT prob {10:F2} / th {11:F2}{12}\n" +
+                "• Features: {13}\n" +
+                "• {14}\n",
+                brainLastUpdate.ToLocalTime(),
+                brainClose, brainAtr,
+                brainRegime, brainSession,
+                verdict,
+                brainSpecialist,
+                brainLongProb, brainLongTh, longHit,
+                brainShortProb, brainShortTh, shortHit,
+                string.IsNullOrEmpty(brainFeatures) ? "—" : brainFeatures,
+                modeLine
+            );
+        }
+
+        // Manual JSON value extractor — NT8 ships without Newtonsoft.Json in older
+        // distros, and adding refs in a strategy file is fragile. The payload is
+        // well-controlled (we wrote both ends), so simple substring extraction is
+        // robust enough. Returns null if the key isn't found.
+        private string JsonStr(string json, string key)
+        {
+            string needle = "\"" + key + "\":";
+            int i = json.IndexOf(needle);
+            if (i < 0) return null;
+            int p = i + needle.Length;
+            while (p < json.Length && (json[p] == ' ' || json[p] == '\t')) p++;
+            if (p >= json.Length) return null;
+            char first = json[p];
+            if (first == '"')
+            {
+                int end = json.IndexOf('"', p + 1);
+                if (end < 0) return null;
+                return json.Substring(p + 1, end - p - 1);
+            }
+            if (first == 'n' && json.Substring(p).StartsWith("null")) return null;
+            // Numeric or boolean — read until comma or close-brace
+            int q = p;
+            while (q < json.Length && json[q] != ',' && json[q] != '}' && json[q] != '\n') q++;
+            return json.Substring(p, q - p).Trim();
+        }
+
+        private double JsonNum(string json, string key, double fallback)
+        {
+            string s = JsonStr(json, key);
+            if (s == null) return fallback;
+            double v;
+            return double.TryParse(s, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out v) ? v : fallback;
+        }
+
+        private void HandleBrainState(string json)
+        {
+            try
+            {
+                brainRegime       = JsonStr(json, "regime")        ?? "—";
+                brainSession      = JsonStr(json, "session")       ?? "—";
+                brainAction       = JsonStr(json, "action")        ?? "FLAT";
+                brainSpecialist   = JsonStr(json, "specialist")    ?? "—";
+                brainContractMode = JsonStr(json, "contractMode")  ?? "MINI";
+                brainTradingMode  = JsonStr(json, "tradingMode")   ?? "paper";
+                brainExitMode     = JsonStr(json, "exitMode")      ?? "ATR";
+                brainClose        = JsonNum(json, "close", 0);
+                brainAtr          = JsonNum(json, "atr",   0);
+                brainLongProb     = JsonNum(json, "longProb",  0);
+                brainShortProb    = JsonNum(json, "shortProb", 0);
+                brainLongTh       = JsonNum(json, "longTh",  0);
+                brainShortTh      = JsonNum(json, "shortTh", 0);
+                // Compact top-feature string for display
+                double rsi  = JsonNum(json, "rsi",  double.NaN);
+                double macd = JsonNum(json, "macd_hist", double.NaN);
+                double adx  = JsonNum(json, "adx",  double.NaN);
+                double bbz  = JsonNum(json, "bb_z", double.NaN);
+                System.Collections.Generic.List<string> bits = new System.Collections.Generic.List<string>();
+                if (!double.IsNaN(rsi))  bits.Add(string.Format("rsi={0:F1}", rsi));
+                if (!double.IsNaN(macd)) bits.Add(string.Format("macd_h={0:+0.00;-0.00;0.00}", macd));
+                if (!double.IsNaN(adx))  bits.Add(string.Format("adx={0:F1}", adx));
+                if (!double.IsNaN(bbz))  bits.Add(string.Format("bb_z={0:+0.00;-0.00;0.00}", bbz));
+                brainFeatures = string.Join("  ", bits);
+                brainLastUpdate = DateTime.UtcNow;
+                UpdateChartOverlay();
+            }
+            catch (Exception ex)
+            {
+                Print("AntigravityBridge: HandleBrainState parse error: " + ex.Message);
+            }
+        }
+
         // Signal Parser and Order Submitter
         private void ExecuteSignal(string signal)
         {
             try
             {
+                // BRAIN packet — TAB-delimited because payload is JSON with commas
+                // Format: BRAIN\t{"regime":"...","longProb":0.34,...}
+                if (signal.StartsWith("BRAIN\t"))
+                {
+                    HandleBrainState(signal.Substring(6));
+                    return;
+                }
+
                 // Format: ACTION,SYMBOL,QTY,PRICE,SL,TP,STRATEGY
                 // E.g., BUY,NQ=F,2,18500.50,18400.00,18700.00,Fair Value Gap
                 // E.g., CLOSE,NQ=F
