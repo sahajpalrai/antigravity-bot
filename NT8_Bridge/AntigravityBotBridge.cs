@@ -469,11 +469,21 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                     if (action == "BUY")
                     {
+                        if (Position.MarketPosition != MarketPosition.Flat)
+                        {
+                            Print("AntigravityBridge: BUY signal ignored. Already in active position: " + Position.MarketPosition);
+                            return;
+                        }
                         Print(string.Format("AntigravityBridge: Submitting BUY market order. Qty: {0}, SL: {1} ticks, TP: {2} ticks", qty, stopLossTicks, takeProfitTicks));
                         EnterLong(qty, "AntigravityLong");
                     }
                     else if (action == "SELL")
                     {
+                        if (Position.MarketPosition != MarketPosition.Flat)
+                        {
+                            Print("AntigravityBridge: SELL signal ignored. Already in active position: " + Position.MarketPosition);
+                            return;
+                        }
                         Print(string.Format("AntigravityBridge: Submitting SELL market order. Qty: {0}, SL: {1} ticks, TP: {2} ticks", qty, stopLossTicks, takeProfitTicks));
                         EnterShort(qty, "AntigravityShort");
                     }
