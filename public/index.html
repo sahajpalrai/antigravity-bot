@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>V1 Antigravity Smart Bot - Premium Dashboard</title>
+  <title>QUANTUM TRADE AI - V1 Antigravity Cockpit</title>
   <!-- Modern Outfit Typography from Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,174 +15,333 @@
   <div class="glow-sphere glow-primary"></div>
   <div class="glow-sphere glow-secondary"></div>
 
-  <div class="container">
-    <!-- Header -->
-    <header class="header glass-card">
-      <div class="brand">
-        <span class="logo-orb"></span>
-        <div>
+  <!-- Main Cybernetic Dashboard Layout -->
+  <div class="app-layout">
+    <!-- Left Cybernetic Navigation Sidebar -->
+    <aside class="sidebar-nav">
+      <div class="sidebar-logo" title="V1 Antigravity Cognitive Core"></div>
+      <button class="sidebar-tab-btn active" id="tab-dashboard" data-tooltip="Cockpit Monitor" onclick="switchTab('dashboard')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+      </button>
+      <button class="sidebar-tab-btn" id="tab-backtester" data-tooltip="Historical Backtester" onclick="switchTab('backtester')">
+        <svg viewBox="0 0 24 24"><path d="M3 3v18h18M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="sidebar-tab-btn" id="tab-optimizer" data-tooltip="Cognitive Optimizer" onclick="switchTab('optimizer')">
+        <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="sidebar-tab-btn" id="tab-settings" data-tooltip="API Settings" onclick="switchTab('settings')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </aside>
+
+    <!-- Right-Side Widescreen Main Content Pane -->
+    <main class="main-content">
+      <!-- Top Widescreen Holographic Command Header -->
+      <header class="widescreen-header">
+        <div class="header-brand">
           <h1>V1 ANTIGRAVITY</h1>
-          <p class="subtitle">AI-SMART FUTURES TRADING ENGINE</p>
+          <span class="subtitle" id="schedule-text">Holographic Cognitive Cockpit v2.0</span>
         </div>
-      </div>
-      
-      <!-- Live Schedulers and Regime Controls -->
-      <div class="regime-status-wrapper">
-        <div class="regime-indicator" id="regime-badge">
-          <span class="pulse-dot active" id="regime-pulse"></span>
-          <span id="regime-text">Loading Regime...</span>
-        </div>
-        <div class="schedule-indicator" id="schedule-badge">
-          <span id="schedule-text">Checking Market Hours...</span>
-        </div>
-      </div>
-    </header>
+        
+        <div class="header-logo-orb"></div>
 
-    <!-- Tabbed Navigation Bar -->
-    <nav class="dashboard-nav glass-card">
-      <button class="nav-tab active" id="tab-dashboard" onclick="switchTab('dashboard')">📊 Dashboard</button>
-      <button class="nav-tab" id="tab-settings" onclick="switchTab('settings')">⚙️ Settings</button>
-    </nav>
-
-    <!-- Tab 1: Dashboard View -->
-    <div id="view-dashboard" class="tab-view active">
-      <!-- Master Portfolio KPI Grid -->
-      <section class="kpi-grid">
-        <!-- Master Equity Card -->
-        <div class="glass-card kpi-card glow-on-hover">
-          <h3>Master Equity</h3>
-          <div class="value" id="kpi-equity">$0.00</div>
-          <div class="metric-footer">
-            <span>Global Balance: <strong id="kpi-balance">$0.00</strong></span>
+        <div class="header-profile-badge">
+          <!-- Active Regime Indicator Badge -->
+          <div class="broker-badge" id="regime-badge">
+            <span class="pulse-active" id="regime-pulse"></span>
+            <span id="regime-text">Loading Session...</span>
+          </div>
+          <!-- System Alert Bell -->
+          <div class="bell-alert active" title="High Impact Market Hour Warnings" id="schedule-badge">
+            <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <!-- User Profile Avatar Badge -->
+          <div class="avatar-badge" title="Active Console Operator">
+            <span>OPERATOR</span>
           </div>
         </div>
+      </header>
 
-        <!-- Real-Time Open P&L Card -->
-        <div class="glass-card kpi-card glow-on-hover">
-          <h3>Open Profit / Loss</h3>
-          <div class="value neutral" id="kpi-open-pnl">$0.00</div>
-          <div class="metric-footer">
-            <span>Active Trades: <strong id="kpi-active-trades">0</strong></span>
-          </div>
-        </div>
-
-        <!-- Daily Target Card -->
-        <div class="glass-card kpi-card glow-on-hover">
-          <h3>Master APX Target</h3>
-          <div class="value" id="kpi-target">$53,000.00</div>
-          <div class="metric-footer">
-            <span class="progress-container">
-              <span class="progress-bar" id="kpi-progress" style="width: 0%"></span>
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Account Details per Symbol -->
-      <section class="symbol-accounts-section">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
-          <h2 class="section-title" id="accounts-section-title" style="margin-bottom: 0;">Futures Accounts</h2>
-          <!-- Premium Sliding Switch -->
-          <div class="universal-switch-wrapper">
-            <span class="switch-label active" id="label-switch-standard">Regular Broker</span>
-            <label class="switch">
-              <input type="checkbox" id="global-account-type-toggle" onchange="toggleGlobalAccountType(this.checked)">
-              <span class="slider round"></span>
-            </label>
-            <span class="switch-label" id="label-switch-prop">Prop Funded Drawdown</span>
-          </div>
-        </div>
-        <div class="accounts-grid" id="accounts-container">
-          <!-- Dynically populated account cards (NQ, ES, CL, GC) -->
-        </div>
-      </section>
-
-      <!-- Main Dynamic Interface Layout (Two Columns) -->
-      <div class="dashboard-layout">
-        <!-- Left Column: Positions and Live News -->
-        <main class="main-column">
-          <!-- Live Open Positions -->
-          <div class="glass-card position-panel">
-            <h2 class="panel-title">Active Positions</h2>
-            <div class="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Symbol</th>
-                    <th>Direction</th>
-                    <th>Contracts</th>
-                    <th>Entry Price</th>
-                    <th>Current Price</th>
-                    <th>Stops / Target</th>
-                    <th>Unrealized P&L</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="positions-table-body">
-                  <tr>
-                    <td colspan="8" class="text-center text-muted">No active open positions. Scanning markets...</td>
-                  </tr>
-                </tbody>
-              </table>
+      <!-- View Tab 1: Active trading cockpit -->
+      <div id="view-dashboard" class="tab-view active">
+        <!-- Master KPI grid -->
+        <section class="kpi-grid">
+          <!-- Master Equity Card -->
+          <div class="glass-card kpi-card glow-on-hover gradient-glow-card">
+            <h3>Master Equity</h3>
+            <div class="value" id="kpi-equity">$0.00</div>
+            <div class="metric-footer">
+              <span>Global Balance: <strong id="kpi-balance">$0.00</strong></span>
             </div>
           </div>
 
-          <!-- Yahoo Finance Live Market News -->
-          <div class="glass-card news-panel">
-            <h2 class="panel-title">Yahoo Finance Live Market News</h2>
-            <div class="news-list" id="yahoo-news-container">
-              <div class="text-muted text-center py-4">Streaming live financial news...</div>
-            </div>
-          </div>
-        </main>
-
-        <!-- Right Column: News and Trade Logs -->
-        <aside class="sidebar-column">
-          <!-- Economic Calendar Widget -->
-          <div class="glass-card news-panel">
-            <h2 class="panel-title">Forex Factory Economic Calendar</h2>
-            <div class="news-list" id="news-events-container">
-              <div class="text-muted text-center py-4">Fetching economic news calendar...</div>
+          <!-- Real-Time Open P&L Card -->
+          <div class="glass-card kpi-card glow-on-hover gradient-glow-card">
+            <h3>Open Profit / Loss</h3>
+            <div class="value neutral" id="kpi-open-pnl">$0.00</div>
+            <div class="metric-footer">
+              <span>Active Trades: <strong id="kpi-active-trades">0</strong></span>
             </div>
           </div>
 
-          <!-- Recent Trade Logs -->
-          <div class="glass-card logs-panel">
-            <h2 class="panel-title">Recent Trade History</h2>
-            <div class="logs-list" id="trade-history-container">
-              <div class="text-muted text-center py-4">No closed trades recorded yet.</div>
+          <!-- Daily Target Card -->
+          <div class="glass-card kpi-card glow-on-hover gradient-glow-card">
+            <h3>Master APX Target</h3>
+            <div class="value" id="kpi-target">$53,000.00</div>
+            <div class="metric-footer">
+              <span class="progress-container">
+                <span class="progress-bar" id="kpi-progress" style="width: 0%"></span>
+              </span>
             </div>
           </div>
-        </aside>
+        </section>
+
+        <!-- Sub-accounts cards row -->
+        <section class="symbol-accounts-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+            <h2 class="section-title" id="accounts-section-title" style="margin-bottom: 0;">Futures Accounts</h2>
+            <!-- Premium Sliding Switch -->
+            <div class="universal-switch-wrapper">
+              <span class="switch-label active" id="label-switch-standard">Regular Broker</span>
+              <label class="switch">
+                <input type="checkbox" id="global-account-type-toggle" onchange="toggleGlobalAccountType(this.checked)">
+                <span class="slider round"></span>
+              </label>
+              <span class="switch-label" id="label-switch-prop">Prop Funded Drawdown</span>
+            </div>
+          </div>
+          <div class="accounts-grid" id="accounts-container">
+            <!-- Dynamically populated account cards (NQ, ES, CL, GC) -->
+          </div>
+        </section>
+
+        <!-- Dynamic trade tracker and economic calendar (2 columns) -->
+        <div class="dashboard-layout">
+          <main class="main-column">
+            <!-- Active Positions -->
+            <div class="glass-card position-panel">
+              <h2 class="panel-title">Active Positions</h2>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Direction</th>
+                      <th>Contracts</th>
+                      <th>Entry Price</th>
+                      <th>Current Price</th>
+                      <th>Stops / Target</th>
+                      <th>Unrealized P&L</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="positions-table-body">
+                    <tr>
+                      <td colspan="8" class="text-center text-muted">No active open positions. Scanning markets...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Yahoo Finance Live Market News -->
+            <div class="glass-card news-panel" style="background: transparent !important; box-shadow: none !important; border: none !important; padding: 0;">
+              <h2 class="panel-title" style="margin-bottom: 20px;">Yahoo Finance Live Market News</h2>
+              <div class="holographic-news-grid" id="yahoo-news-container">
+                <div class="text-muted text-center py-4">Streaming live financial news...</div>
+              </div>
+            </div>
+          </main>
+
+          <aside class="sidebar-column">
+            <!-- Economic Calendar Widget -->
+            <div class="glass-card news-panel">
+              <h2 class="panel-title">Forex Factory Economic Calendar</h2>
+              <div class="news-list" id="news-events-container">
+                <div class="text-muted text-center py-4">Fetching economic news calendar...</div>
+              </div>
+            </div>
+
+            <!-- Recent Trade Logs -->
+            <div class="glass-card logs-panel">
+              <h2 class="panel-title">Recent Trade History</h2>
+              <div class="logs-list" id="trade-history-container">
+                <div class="text-muted text-center py-4">No closed trades recorded yet.</div>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
-    </div>
 
-    <!-- Tab 2: Settings View (Widescreen Widespaced Design) -->
-    <div id="view-settings" class="tab-view" style="display: none;">
-      <div class="glass-card config-panel" style="max-width: 1000px; margin: 0 auto; padding: 32px;">
-        <h2 class="panel-title" style="font-size: 20px; font-weight: 800; border-bottom: 1px solid var(--border-light); padding-bottom: 12px; margin-bottom: 24px; color: var(--neon-orange);">⚙️ AI Cognitive Engine Configuration</h2>
-        <div class="config-grid">
-          <div class="input-group">
-            <label for="tt-client-id">Tastytrade Username</label>
-            <input type="text" id="tt-client-id" placeholder="Tastytrade API Username" readonly>
+      <!-- View Tab 2: Historical backtest suite (Widescreen layout) -->
+      <div id="view-backtester" class="tab-view" style="display: none;">
+        <div class="backtest-workspace-layout">
+          <!-- Left Configuration Card -->
+          <div class="glass-card config-panel gradient-glow-card" style="padding: 28px;">
+            <h2 class="panel-title" style="font-size: 16px; font-weight: 800; color: var(--magenta-glow); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 20px;">🔍 Backtest Engine Calibration</h2>
+            <div style="display:flex; flex-direction:column; gap:20px;">
+              <!-- Selection filters -->
+              <div class="input-group">
+                <label>Backtest Algorithm</label>
+                <select id="backtest-algorithm-select" class="glass-select" style="width: 100%; padding: 8px !important;">
+                  <option>LSTM Neural Network Model</option>
+                  <option>Multi-Timeframe Confluence Edge</option>
+                  <option>EMA Trend Reversion Hybrid</option>
+                  <option>Train & Compare All 3 Algorithms</option>
+                </select>
+              </div>
+
+              <!-- Risk slider -->
+              <div class="input-group">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <label>Strategy Risk Envelope</label>
+                  <span id="label-risk-val" style="font-size: 11px; color: var(--magenta-glow); font-weight:800;">Medium</span>
+                </div>
+                <input type="range" class="neon-range-slider" min="1" max="3" value="2" id="backtest-risk-slider" oninput="updateSliderLabel(this.value)">
+              </div>
+
+              <!-- Date Pickers Row -->
+              <div class="date-capsule-row">
+                <div class="date-capsule">
+                  <label>Start Date</label>
+                  <div class="date-input-wrapper">
+                    <input type="date" value="2021-01-01" id="backtest-start-date">
+                  </div>
+                </div>
+                <div class="date-capsule">
+                  <label>End Date</label>
+                  <div class="date-input-wrapper">
+                    <input type="date" value="2023-12-31" id="backtest-end-date">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Backtest execution trigger -->
+              <button class="btn btn-backtest" onclick="runBacktester()" style="width:100%; padding:14px; margin-top: 10px;">⚡ Run 2-3 Yr Backtest</button>
+            </div>
           </div>
-          <div class="input-group">
-            <label for="webhook-url">Google Sheets Webhook URL</label>
-            <input type="password" id="webhook-url" placeholder="https://script.google.com/macros/s/..." onchange="updateWebhookUrl(this.value)">
-          </div>
-          <div class="button-row">
-            <button class="btn btn-primary" onclick="runBacktester()">⚡ Run 2-3 Yr Backtest</button>
-            <button class="btn btn-secondary" onclick="runOptimizer()">🧠 Optimize ML Parameters</button>
+
+          <!-- Right Column: Neon Charting and console results -->
+          <div style="display:flex; flex-direction:column; gap:24px;">
+            <!-- Live line chart box -->
+            <div class="glass-card gradient-glow-card" style="padding: 24px;">
+              <h3 class="panel-title" style="font-size:14px; font-weight:800; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px; margin-bottom:14px;">📈 Holographic Performance Chart</h3>
+              <div class="hologram-chart-box">
+                <!-- Zero-dependency HTML5 Canvas line chart -->
+                <canvas id="neon-backtest-chart" class="hologram-chart-canvas"></canvas>
+              </div>
+              
+              <!-- Glass-KPI badges row -->
+              <div class="mini-kpi-row">
+                <div class="mini-kpi-card profit-card">
+                  <span>Simulated Profit ROI</span>
+                  <strong id="backtest-total-profit">+0.0%</strong>
+                </div>
+                <div class="mini-kpi-card drawdown-card">
+                  <span>Max Historical Drawdown</span>
+                  <strong id="backtest-max-drawdown">0.0%</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Terminal scroll console output -->
+            <div class="glass-card" style="padding: 24px;">
+              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">📝 Historical Strategy Execution Logs</h3>
+              <div class="backtest-results-box" id="backtest-results">
+                <!-- Text report results injection -->
+                📥 Ready to compile NinjaTrader 8 wicks. Click [Run 2-3 Yr Backtest] to execute walkforward simulations...
+              </div>
+            </div>
           </div>
         </div>
-        <div class="backtest-results-box" id="backtest-results" style="display: none; max-height: 250px;">
-          <!-- Historical results injection -->
-        </div>
-        <!-- Real-Time ML Parameter "Before & After" Comparison Grid -->
-        <div id="optimize-comparison" style="display: none; margin-top: 24px;"></div>
       </div>
-    </div>
 
+      <!-- View Tab 3: Walkforward ML Parameter Optimizer -->
+      <div id="view-optimizer" class="tab-view" style="display: none;">
+        <div class="backtest-workspace-layout">
+          <!-- Left configuration panel -->
+          <div class="glass-card config-panel gradient-glow-card" style="padding: 28px;">
+            <h2 class="panel-title" style="font-size:16px; font-weight:800; color:var(--cyan-glow); border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:20px;">🧠 Cognitive Optimization Edge</h2>
+            <div style="display:flex; flex-direction:column; gap:20px;">
+              <div class="input-group">
+                <label>Optimization Range Window</label>
+                <select class="glass-select" style="width: 100%; padding: 8px !important;">
+                  <option>30 Days of 5-min candles (Dynamic Grid)</option>
+                  <option>60 Days of 5-min candles (Dense Search)</option>
+                  <option>90 Days of 5-min candles (Deep Walkforward)</option>
+                </select>
+              </div>
+
+              <!-- Optimization sliders -->
+              <div class="input-group">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <label>Walkforward Grid Search Steps</label>
+                  <span id="label-steps-val" style="font-size: 11px; color: var(--cyan-glow); font-weight:800;">Fine</span>
+                </div>
+                <input type="range" class="neon-range-slider" min="1" max="3" value="2" id="optimizer-steps-slider" oninput="updateStepsLabel(this.value)">
+              </div>
+
+              <button class="btn btn-optimize" onclick="runOptimizer()" style="width:100%; padding:14px; margin-top: 10px;">🧠 Optimize ML Parameters</button>
+            </div>
+            
+            <!-- Dynamic parameters transition panel -->
+            <div id="optimize-comparison" style="margin-top: 24px; display: none;"></div>
+          </div>
+
+          <!-- Right column: Charting curves and console terminal -->
+          <div style="display:flex; flex-direction:column; gap:24px;">
+            <!-- Live line chart box -->
+            <div class="glass-card gradient-glow-card" style="padding: 24px;">
+              <h3 class="panel-title" style="font-size:14px; font-weight:800; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px; margin-bottom:14px;">🧠 Training Parameter Convergence Chart</h3>
+              <div class="hologram-chart-box">
+                <canvas id="neon-optimize-chart" class="hologram-chart-canvas"></canvas>
+              </div>
+              
+              <!-- Glass-KPI badges row -->
+              <div class="mini-kpi-row">
+                <div class="mini-kpi-card profit-card">
+                  <span>Parameter Convergence Score</span>
+                  <strong id="optimize-convergence-score">+0.0%</strong>
+                </div>
+                <div class="mini-kpi-card drawdown-card">
+                  <span>Loss/Standard Error</span>
+                  <strong id="optimize-loss-score">0.0%</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Terminal scroll console output -->
+            <div class="glass-card" style="padding: 24px;">
+              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">📝Walkforward Neural Grid Logs</h3>
+              <div class="backtest-results-box" id="optimize-results">
+                🧠 ML re-training engine initialized. Click [Optimize ML Parameters] to scan wicks and calculate parameters...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- View Tab 4: API & Google Sheets webhooks (administrative settings) -->
+      <div id="view-settings" class="tab-view" style="display: none;">
+        <div class="glass-card config-panel gradient-glow-card" style="max-width: 900px; margin: 0 auto; padding: 32px;">
+          <h2 class="panel-title" style="font-size: 20px; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; margin-bottom: 24px; color: var(--magenta-glow);">⚙️ AI Cognitive Engine Credentials</h2>
+          <div class="config-grid">
+            <div class="input-group">
+              <label for="tt-client-id">Tastytrade Username</label>
+              <input type="text" id="tt-client-id" placeholder="Tastytrade API Username" readonly>
+            </div>
+            <div class="input-group">
+              <label for="webhook-url">Google Sheets Webhook URL</label>
+              <input type="password" id="webhook-url" placeholder="https://script.google.com/macros/s/..." onchange="updateWebhookUrl(this.value)">
+            </div>
+          </div>
+          
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
+            <p>🔧 <strong>Global Broker Integration:</strong> Webhook credentials and Tastytrade integrations are written directly to your local encrypted process memory and synchronized asynchronously to your `.env` workspace variables for permanent system persistence across bot runtime starts.</p>
+          </div>
+        </div>
+      </div>
+    </main>
   </div>
 
   <script src="js/app.js"></script>

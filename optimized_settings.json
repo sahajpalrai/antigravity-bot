@@ -6,11 +6,11 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 2.2,
+      "bbStdDev": 1.6,
       "rsiOversold": 33,
       "rsiOverbought": 67,
-      "stochOversold": 20,
-      "stochOverbought": 80
+      "stochOversold": 25,
+      "stochOverbought": 75
     }
   },
   "ES=F": {
@@ -20,11 +20,11 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 1.8,
-      "rsiOversold": 28,
-      "rsiOverbought": 72,
-      "stochOversold": 20,
-      "stochOverbought": 80
+      "bbStdDev": 1.6,
+      "rsiOversold": 30,
+      "rsiOverbought": 70,
+      "stochOversold": 22,
+      "stochOverbought": 78
     }
   },
   "CL=F": {
@@ -34,11 +34,11 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 2.2,
-      "rsiOversold": 28,
-      "rsiOverbought": 72,
-      "stochOversold": 20,
-      "stochOverbought": 80
+      "bbStdDev": 1.6,
+      "rsiOversold": 35,
+      "rsiOverbought": 65,
+      "stochOversold": 25,
+      "stochOverbought": 75
     }
   },
   "GC=F": {
@@ -49,10 +49,10 @@
     "ETH": {
       "bbPeriod": 20,
       "bbStdDev": 2,
-      "rsiOversold": 33,
-      "rsiOverbought": 67,
-      "stochOversold": 20,
-      "stochOverbought": 80
+      "rsiOversold": 35,
+      "rsiOverbought": 65,
+      "stochOversold": 25,
+      "stochOverbought": 75
     }
   }
 }

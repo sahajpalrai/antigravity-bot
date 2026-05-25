@@ -11,6 +11,7 @@ using NinjaTrader.Gui.Tools;
 using NinjaTrader.NinjaScript;
 using NinjaTrader.NinjaScript.Strategies;
 using NinjaTrader.NinjaScript.DrawingTools;
+using NinjaTrader.NinjaScript.Indicators;
 #endregion
 
 namespace NinjaTrader.NinjaScript.Strategies
@@ -44,6 +45,11 @@ namespace NinjaTrader.NinjaScript.Strategies
         private Grid chartGrid = null;
         private string activeParamsText = "• RTH EMAs: Default (9/21)\n• ETH Regimes: Default (BB 2.0, RSI 30/70)";
 
+        // Dynamic indicator parameters for real-time plot updates
+        private int parsedEmaFast = 8;
+        private int parsedEmaSlow = 20;
+        private double parsedBbDev = 2.0;
+
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -58,7 +64,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                 IsFillLimitOnTouch                           = true;
                 
                 // Expose settings in properties
-                AddPlot(new Stroke(System.Windows.Media.Brushes.Transparent), PlotStyle.Hash, "DummyPlot");
+                AddPlot(new Stroke(System.Windows.Media.Brushes.Cyan, 2), PlotStyle.Line, "EMAFast");
+                AddPlot(new Stroke(System.Windows.Media.Brushes.Magenta, 2), PlotStyle.Line, "EMASlow");
+                AddPlot(new Stroke(System.Windows.Media.Brushes.Orange, 1), PlotStyle.Line, "BBUpper");
+                AddPlot(new Stroke(System.Windows.Media.Brushes.Orange, 1), PlotStyle.Line, "BBLower");
             }
             else if (State == State.Configure)
             {
@@ -80,7 +89,16 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         protected override void OnBarUpdate()
         {
-            // Do not call fixed drawing, wpf overlay handles rendering reactively
+            if (CurrentBar < 40) return;
+
+            // Dynamically calculate and plot indicators using parsed variables from TCP bridge
+            // 1. RTH Session Trend Crossovers (EMA Fast and Slow)
+            Values[0][0] = EMA(parsedEmaFast)[0];
+            Values[1][0] = EMA(parsedEmaSlow)[0];
+
+            // 2. ETH Session Mean Reversion (Bollinger Bands Upper and Lower)
+            Values[2][0] = Bollinger(parsedBbDev, 20).Upper[0];
+            Values[3][0] = Bollinger(parsedBbDev, 20).Lower[0];
         }
 
         private void StartConnection()
@@ -121,6 +139,20 @@ namespace NinjaTrader.NinjaScript.Strategies
                         stream = client.GetStream();
                         isConnected = true;
                         Print("AntigravityBridge: Connected successfully to Antigravity Bot!");
+
+                        // Transmit the active account for this symbol assigned on the chart to the Node.js server
+                        string symbol = "NQ=F";
+                        string name = Instrument.FullName.ToUpper();
+                        if (name.Contains("NQ")) symbol = "NQ=F";
+                        else if (name.Contains("ES")) symbol = "ES=F";
+                        else if (name.Contains("CL")) symbol = "CL=F";
+                        else if (name.Contains("GC")) symbol = "GC=F";
+
+                        string accountName = (Account != null) ? Account.Name : "Sim101";
+                        string accountMsg = string.Format("ACCOUNT,{0},{1}\n", symbol, accountName);
+                        byte[] writeBuffer = Encoding.UTF8.GetBytes(accountMsg);
+                        stream.Write(writeBuffer, 0, writeBuffer.Length);
+                        Print(string.Format("AntigravityBridge: Transmitted active chart account -> ACCOUNT,{0},{1}", symbol, accountName));
                         
                         // Force a UI label refresh on connect
                         UpdateChartOverlay();
@@ -342,6 +374,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                         string bbStdDev = parts[4];
                         string rsiOversold = parts[5];
                         string rsiOverbought = parts[6];
+
+                        // Parse parameters for real-time dynamic plot rendering!
+                        int.TryParse(emaFast, out parsedEmaFast);
+                        int.TryParse(emaSlow, out parsedEmaSlow);
+                        double.TryParse(bbStdDev, out parsedBbDev);
 
                         activeParamsText = string.Format(
                             "• RTH EMAs: Fast {0} / Slow {1}\n" +
