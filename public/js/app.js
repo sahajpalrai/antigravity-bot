@@ -237,11 +237,22 @@ function renderAccounts(accounts) {
     const totalSign = totalPnL > 0 ? '+' : '';
 
     const card = document.createElement('div');
-    card.className = 'glass-card account-card glow-on-hover';
+    card.className = `glass-card account-card glow-on-hover ${acc.enabled === false ? 'card-disabled' : ''}`;
     card.innerHTML = `
       <div class="account-card-header" style="flex-direction: column; align-items: flex-start; gap: 6px;">
         <div style="display:flex; justify-content:space-between; width: 100%; align-items:center;">
-          <h4 style="margin: 0; font-size: 15px; font-weight:800;">${cleanSymbol} Account</h4>
+          <div style="display:flex; align-items:center; gap: 8px;">
+            <h4 style="margin: 0; font-size: 15px; font-weight:800;">${cleanSymbol} Account</h4>
+            <span class="symbol-toggle-pill ${acc.enabled !== false ? 'active' : 'inactive'}" 
+                  onclick="toggleSymbolState('${sym}', ${acc.enabled !== false ? 'false' : 'true'})"
+                  style="cursor: pointer; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; transition: all 0.3s; 
+                         ${acc.enabled !== false 
+                           ? 'background: rgba(57, 255, 20, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); box-shadow: 0 0 8px rgba(57, 255, 20, 0.3);' 
+                           : 'background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid rgba(255, 255, 255, 0.15); opacity: 0.6;'
+                         }">
+              ${acc.enabled !== false ? '● ON' : '○ OFF'}
+            </span>
+          </div>
           <span class="${statusClass}">${statusText}</span>
         </div>
         <div style="font-size: 11px; color: var(--text-secondary); display:flex; align-items:center; gap: 6px; margin-top: 4px;">
@@ -316,6 +327,10 @@ function renderPositions(accounts) {
     const pnlClass = pos.unrealizedPnL > 0 ? 'profit' : (pos.unrealizedPnL < 0 ? 'loss' : 'neutral');
     const pnlSign = pos.unrealizedPnL >= 0 ? '+' : '';
     
+    // Resolve live price from API state
+    const livePrices = apiState && apiState.livePrices ? apiState.livePrices : {};
+    const currentPrice = livePrices[sym] || pos.entryPrice;
+    
     tr.innerHTML = `
       <td>
         <strong>${cleanSym}</strong>
@@ -327,7 +342,7 @@ function renderPositions(accounts) {
       </td>
       <td>${pos.qty}</td>
       <td>${pos.entryPrice.toFixed(2)}</td>
-      <td id="price-${cleanSym}">-</td>
+      <td>${currentPrice.toFixed(2)}</td>
       <td>
         <span style="font-size: 11px; display:block;">SL: ${pos.stopLoss.toFixed(2)}</span>
         <span style="font-size: 11px; display:block; color: var(--text-secondary);">TP: ${pos.takeProfit.toFixed(2)}</span>
@@ -775,6 +790,24 @@ async function forceClosePosition(symbol) {
     } catch (e) {
       alert('Close order failed.');
     }
+  }
+}
+
+async function toggleSymbolState(symbol, enabled) {
+  try {
+    const res = await fetch(`/api/toggle-symbol`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, enabled })
+    });
+    if (res.ok) {
+      console.log(`[Dashboard] Symbol ${symbol} trading toggled to ${enabled}`);
+      updateDashboard();
+    } else {
+      alert('Failed to toggle trading state.');
+    }
+  } catch (e) {
+    console.error('[Dashboard] Error toggling symbol trading state:', e.message);
   }
 }
 

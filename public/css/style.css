@@ -1424,5 +1424,48 @@ body {
   background: linear-gradient(135deg, rgba(0, 240, 255, 0.45) 0%, rgba(255, 0, 122, 0.45) 100%);
 }
 
+/* Premium Symbol Toggle Pills */
+.symbol-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.symbol-toggle-pill.active:hover {
+  background: rgba(57, 255, 20, 0.25) !important;
+  box-shadow: 0 0 12px rgba(57, 255, 20, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+.symbol-toggle-pill.inactive:hover {
+  background: rgba(255, 56, 56, 0.15) !important;
+  color: var(--neon-red) !important;
+  border-color: var(--neon-red) !important;
+  opacity: 0.9 !important;
+  transform: translateY(-1px);
+}
+
+/* Card Disabled State Styling */
+.account-card.card-disabled {
+  opacity: 0.65;
+  background: rgba(18, 22, 33, 0.3) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.12) !important;
+  box-shadow: none !important;
+  filter: grayscale(30%);
+}
+
+.account-card.card-disabled::after {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.05) 100%) !important;
+}
+
+
 
 

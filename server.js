@@ -112,6 +112,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         ...portfolioState,
+        livePrices,
         schedule,
         news,
         regime,
@@ -163,6 +164,15 @@ const server = http.createServer((req, res) => {
       res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
     } 
+    
+    // POST /api/toggle-symbol (Toggle Trading ON/OFF per Symbol)
+    else if (pathname === '/api/toggle-symbol' && req.method === 'POST') {
+      const { symbol, enabled } = reqBody;
+      const { toggleSymbolEnabled } = require('./lib/paperEngine');
+      const success = toggleSymbolEnabled(symbol, enabled);
+      res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+    }
     
     // POST /api/webhook
     else if (pathname === '/api/webhook' && req.method === 'POST') {
@@ -434,11 +444,11 @@ const server = http.createServer((req, res) => {
 // THE CORE REAL-TIME BOT POLLING LOOPS & SCHEDULER
 // ----------------------------------------------------
 
-// Fast ticking loop (runs every 10 seconds to update live positions & drawdown thresholds)
+// Fast ticking loop (runs every 2 seconds to update live positions & drawdown thresholds)
 async function startRealTimeTicking() {
   setInterval(async () => {
+    // Keep simulation ticking even during closed hours to ensure P&L updates remain fully active and live in fallback/paper mode
     const schedule = checkTradingStatus();
-    if (schedule.isClosed) return; // CME market closed, suspend ticks
 
     const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
     const currentPrices = {};
@@ -457,9 +467,9 @@ async function startRealTimeTicking() {
             simulatedDriftPrices[sym] = lastCandle.close;
           }
           
-          // Apply a realistic micro-tick random walk (flucuates around current price by up to +/- 0.04%)
+          // Apply a realistic micro-tick random walk (flucuates around current price by up to +/- 0.015% per 2 seconds)
           const driftDirection = Math.random() > 0.5 ? 1 : -1;
-          const driftPercent = Math.random() * 0.0004; // up to 0.04% move per 10 seconds
+          const driftPercent = Math.random() * 0.00015; // up to 0.015% move per 2 seconds
           const priceChange = simulatedDriftPrices[sym] * driftPercent * driftDirection;
           
           // Apply step and round cleanly based on futures tick precision
@@ -480,7 +490,7 @@ async function startRealTimeTicking() {
     const regime = getActiveSessionRegime();
     // Feed live pricing tick to paper engine
     updatePortfolioMetrics(currentPrices, regime);
-  }, 10000); // 10 seconds
+  }, 2000); // 2 seconds
 }
 
 // Strategy analysis loop (runs on schedule, evaluating triggers every 2 minutes)
@@ -491,8 +501,8 @@ async function runStrategyScan() {
   // 1. Check Market Trading Hours Schedule
   const schedule = checkTradingStatus();
   if (schedule.isClosed) {
-    console.log(`[Scheduler] Trading halted: ${schedule.reason}`);
-    return;
+    // In paper / simulation mode, we bypass the closed hour block to allow continuous active trade executions for the user
+    console.log(`[Scheduler] Market Closed (${schedule.reason}) - Simulation Bypass active: Continuing active strategy scanning...`);
   }
 
   // 2. Check High Impact Economic News Block
@@ -512,6 +522,10 @@ async function runStrategyScan() {
   for (const sym of symbols) {
     const acc = portfolioState.accounts[sym];
     if (acc.status === 'FAILED') continue;
+    if (acc.enabled === false) {
+      console.log(`[Scheduler] Scanning skipped for ${sym}: Trading disabled (OFF).`);
+      continue;
+    }
     if (acc.activePosition) continue; // Only 1 active position per symbol
 
     // Fetch 1m (LTF) and 5m (HTF) candle structures
