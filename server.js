@@ -35,7 +35,7 @@ const { sendTelegramMessage } = require('./lib/telegram');
 const { startNT8BridgeServer, sendSignalToNT8, broadcastParamsToNT8 } = require('./lib/nt8Bridge');
 const { fetchRecentCandles, fetchHistoricalData, fetchCandlesWithFallback } = require('./lib/dataProvider');
 const { runWalkforwardOptimization } = require('./lib/mlOptimizer');
-const { evaluateStrategies } = require('./lib/strategies');
+const { evaluateStrategies, calculateATR } = require('./lib/strategies');
 const { startAutoTrainerScheduler } = require('./lib/autoTrainer');
 
 // 1. Initialize Portfolio State
@@ -544,12 +544,17 @@ async function runStrategyScan() {
         : ['BB Reversion', 'Stoch & RSI'];
       const chosenStrategy = availableStrategies[Math.floor(Math.random() * availableStrategies.length)];
       
+      // Calculate dynamic ATR based on actual 1-minute historical candles
+      const lastIndex1m = candles1m.length - 1;
+      const atr1m = calculateATR(candles1m, 14);
+      const atrValue = atr1m[lastIndex1m] || 1.5;
+
       signal = {
         shouldBuy: isBuy,
         shouldSell: !isBuy,
         reason: `Cognitive Signal: Volatility expansion detected on 1m chart using ${chosenStrategy}`,
         strategyName: chosenStrategy,
-        atr: 12.5
+        atr: atrValue
       };
     }
 
