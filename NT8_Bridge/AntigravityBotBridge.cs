@@ -50,6 +50,19 @@ namespace NinjaTrader.NinjaScript.Strategies
         private int parsedEmaSlow = 20;
         private double parsedBbDev = 2.0;
 
+        // Sync fields to optimize metric broadcasts
+        private double lastSentBalance = -999999;
+        private double lastSentRealized = -999999;
+        private double lastSentUnrealized = -999999;
+
+        // Position details and countdown targets
+        private double signalStopLoss = 0;
+        private double signalTakeProfit = 0;
+        private double signalBreakevenPrice = 0;
+        private double signalTrailingPrice = 0;
+        private double currentAtr = 0.5;
+        private bool isTradingEnabled = true;
+
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -91,6 +104,19 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             if (CurrentBar < 40) return;
 
+            if (Position.MarketPosition == MarketPosition.Flat)
+            {
+                signalStopLoss = 0;
+                signalTakeProfit = 0;
+                signalBreakevenPrice = 0;
+                signalTrailingPrice = 0;
+            }
+            else
+            {
+                currentAtr = ATR(14)[0];
+            }
+            UpdateChartOverlay();
+
             // Dynamically calculate and plot indicators using parsed variables from TCP bridge
             // 1. RTH Session Trend Crossovers (EMA Fast and Slow)
             Values[0][0] = EMA(parsedEmaFast)[0];
@@ -99,6 +125,38 @@ namespace NinjaTrader.NinjaScript.Strategies
             // 2. ETH Session Mean Reversion (Bollinger Bands Upper and Lower)
             Values[2][0] = Bollinger(parsedBbDev, 20).Upper[0];
             Values[3][0] = Bollinger(parsedBbDev, 20).Lower[0];
+
+            // Real-time synchronization of account metrics (Balance, Realized, and Unrealized P&Ls)
+            if (isConnected && stream != null && Account != null)
+            {
+                try
+                {
+                    double currentBalance = Account.Get(AccountItem.NetLiquidation, Currency.UsDollar);
+                    double currentRealized = Account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar);
+                    double currentUnrealized = Account.Get(AccountItem.UnrealizedProfitLoss, Currency.UsDollar);
+
+                    if (Math.Abs(currentBalance - lastSentBalance) > 0.01 ||
+                        Math.Abs(currentRealized - lastSentRealized) > 0.01 ||
+                        Math.Abs(currentUnrealized - lastSentUnrealized) > 0.01)
+                    {
+                        string symbol = "NQ=F";
+                        string name = Instrument.FullName.ToUpper();
+                        if (name.Contains("NQ")) symbol = "NQ=F";
+                        else if (name.Contains("ES")) symbol = "ES=F";
+                        else if (name.Contains("CL")) symbol = "CL=F";
+                        else if (name.Contains("GC")) symbol = "GC=F";
+
+                        string metricsMsg = string.Format("METRICS,{0},{1},{2},{3}\n", symbol, currentBalance, currentRealized, currentUnrealized);
+                        byte[] writeBuffer = Encoding.UTF8.GetBytes(metricsMsg);
+                        stream.Write(writeBuffer, 0, writeBuffer.Length);
+
+                        lastSentBalance = currentBalance;
+                        lastSentRealized = currentRealized;
+                        lastSentUnrealized = currentUnrealized;
+                    }
+                }
+                catch {}
+            }
         }
 
         private void StartConnection()
@@ -153,6 +211,23 @@ namespace NinjaTrader.NinjaScript.Strategies
                         byte[] writeBuffer = Encoding.UTF8.GetBytes(accountMsg);
                         stream.Write(writeBuffer, 0, writeBuffer.Length);
                         Print(string.Format("AntigravityBridge: Transmitted active chart account -> ACCOUNT,{0},{1}", symbol, accountName));
+
+                        // Transmit initial account balance, realized and unrealized P&L metrics immediately upon connection handshake
+                        if (Account != null)
+                        {
+                            double currentBalance = Account.Get(AccountItem.NetLiquidation, Currency.UsDollar);
+                            double currentRealized = Account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar);
+                            double currentUnrealized = Account.Get(AccountItem.UnrealizedProfitLoss, Currency.UsDollar);
+
+                            string metricsMsg = string.Format("METRICS,{0},{1},{2},{3}\n", symbol, currentBalance, currentRealized, currentUnrealized);
+                            byte[] metricsBuf = Encoding.UTF8.GetBytes(metricsMsg);
+                            stream.Write(metricsBuf, 0, metricsBuf.Length);
+
+                            lastSentBalance = currentBalance;
+                            lastSentRealized = currentRealized;
+                            lastSentUnrealized = currentUnrealized;
+                            Print(string.Format("AntigravityBridge: Initial metrics sync -> METRICS,{0},{1},{2},{3}", symbol, currentBalance, currentRealized, currentUnrealized));
+                        }
                         
                         // Force a UI label refresh on connect
                         UpdateChartOverlay();
@@ -229,8 +304,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                     wpfPanel.BorderBrush = new SolidColorBrush(Color.FromRgb(33, 150, 243)); // Dynamic color
                     wpfPanel.BorderThickness = new Thickness(1.5);
                     wpfPanel.CornerRadius = new CornerRadius(12);
-                    wpfPanel.Width = 380;
-                    wpfPanel.Height = 240;
+                    wpfPanel.Width = 425;
+                    wpfPanel.Height = 355;
                     wpfPanel.Padding = new Thickness(16);
                     wpfPanel.Cursor = Cursors.SizeAll;
 
@@ -313,22 +388,183 @@ namespace NinjaTrader.NinjaScript.Strategies
         // Draw a beautiful status overlay on the NinjaTrader 8 Chart
         private void UpdateChartOverlay()
         {
-            string statusText = isConnected ? "CONNECTED TO BOT" : "DISCONNECTED (RETRYING...)";
+            string statusText = isConnected 
+                ? (isTradingEnabled ? "CONNECTED TO BOT" : "HALTED / SUSPENDED (OFF)")
+                : "DISCONNECTED (RETRYING...)";
+            string posInfo = isTradingEnabled ? "No Active Position (Monitoring Regimes)" : "Trading Suspended (ON/OFF switch is OFF)";
+            string targetInfo = "";
+            
+            Color borderGlowColor = isConnected 
+                ? (isTradingEnabled ? Color.FromRgb(0, 240, 255) : Color.FromRgb(255, 140, 0)) 
+                : Color.FromRgb(255, 56, 56); // Cyan if connected and flat, Orange if Halted, Red if disconnected
+            
+            if (Position != null && Position.MarketPosition != MarketPosition.Flat)
+            {
+                double currentPrice = Close[0];
+                double entryPrice = Position.AveragePrice;
+                double pnl = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, currentPrice);
+                
+                string pnlSign = pnl >= 0 ? "+" : "-";
+                string pnlColorText = string.Format("{0}${1:F2}", pnlSign, Math.Abs(pnl));
+                
+                posInfo = string.Format("{0} {1} Contract(s) @ {2:F2}\n• Strategy Active: {3}\n• Unrealized P&L: {4}", 
+                    Position.MarketPosition.ToString().ToUpper(), 
+                    Position.Quantity, 
+                    entryPrice, 
+                    lastStrategy, 
+                    pnlColorText);
+                
+                // Set border color based on P&L (Neon Green for profit, Deep Hot Pink for loss)
+                borderGlowColor = pnl >= 0 ? Color.FromRgb(57, 255, 20) : Color.FromRgb(255, 0, 122);
+                
+                // Triggers calculation
+                double atr = currentAtr;
+                
+                // Fallback calculations if trigger prices not received
+                if (signalBreakevenPrice <= 0.01)
+                {
+                    bool isRTH = Time[0].Hour >= 9 && (Time[0].Hour < 16 || (Time[0].Hour == 16 && Time[0].Minute == 0));
+                    double beMult = isRTH ? 1.2 : 0.6;
+                    double trailMult = isRTH ? 1.5 : 0.8;
+                    
+                    signalBreakevenPrice = entryPrice + (beMult * atr * (Position.MarketPosition == MarketPosition.Long ? 1 : -1));
+                    signalTrailingPrice = entryPrice + (trailMult * atr * (Position.MarketPosition == MarketPosition.Long ? 1 : -1));
+                }
+                
+                if (signalStopLoss <= 0.01)
+                {
+                    bool isRTH = Time[0].Hour >= 9 && (Time[0].Hour < 16 || (Time[0].Hour == 16 && Time[0].Minute == 0));
+                    double stopMult = isRTH ? 2.0 : 1.0;
+                    double targetMult = isRTH ? 3.0 : 1.4;
+                    
+                    signalStopLoss = entryPrice - (stopMult * atr * (Position.MarketPosition == MarketPosition.Long ? 1 : -1));
+                    signalTakeProfit = entryPrice + (targetMult * atr * (Position.MarketPosition == MarketPosition.Long ? 1 : -1));
+                }
+
+                // Format count downs
+                string tpText = "N/A";
+                string slText = "N/A";
+                string beText = "N/A";
+                string trailText = "N/A";
+
+                if (Position.MarketPosition == MarketPosition.Long)
+                {
+                    // Take Profit
+                    if (signalTakeProfit > 0)
+                    {
+                        double dist = signalTakeProfit - currentPrice;
+                        double ticks = dist / TickSize;
+                        tpText = dist > 0 
+                            ? string.Format("{0:F2} (Countdown: {1:F2} pts / {2} ticks)", signalTakeProfit, dist, Math.Round(ticks))
+                            : string.Format("{0:F2} (Target Reached)", signalTakeProfit);
+                    }
+                    
+                    // Stop Loss
+                    if (signalStopLoss > 0)
+                    {
+                        double dist = currentPrice - signalStopLoss;
+                        double ticks = dist / TickSize;
+                        slText = dist > 0 
+                            ? string.Format("{0:F2} (Countdown: -{1:F2} pts / -{2} ticks)", signalStopLoss, dist, Math.Round(ticks))
+                            : string.Format("{0:F2} (Stop Breached)", signalStopLoss);
+                    }
+                    
+                    // Breakeven
+                    double beDist = signalBreakevenPrice - currentPrice;
+                    if (beDist > 0)
+                    {
+                        double beTicks = beDist / TickSize;
+                        beText = string.Format("{0:F2} (Countdown: {1:F2} pts / {2} ticks)", signalBreakevenPrice, beDist, Math.Round(beTicks));
+                    }
+                    else
+                    {
+                        beText = string.Format("{0:F2} (ACTIVE 🛡️)", signalBreakevenPrice);
+                    }
+                    
+                    // Trailing Stop
+                    double trailDist = signalTrailingPrice - currentPrice;
+                    if (trailDist > 0)
+                    {
+                        double trailTicks = trailDist / TickSize;
+                        trailText = string.Format("{0:F2} (Countdown: {1:F2} pts / {2} ticks)", signalTrailingPrice, trailDist, Math.Round(trailTicks));
+                    }
+                    else
+                    {
+                        trailText = string.Format("{0:F2} (ACTIVE 📈)", signalTrailingPrice);
+                    }
+                }
+                else // Short position
+                {
+                    // Take Profit
+                    if (signalTakeProfit > 0)
+                    {
+                        double dist = currentPrice - signalTakeProfit;
+                        double ticks = dist / TickSize;
+                        tpText = dist > 0 
+                            ? string.Format("{0:F2} (Countdown: {1:F2} pts / {2} ticks)", signalTakeProfit, dist, Math.Round(ticks))
+                            : string.Format("{0:F2} (Target Reached)", signalTakeProfit);
+                    }
+                    
+                    // Stop Loss
+                    if (signalStopLoss > 0)
+                    {
+                        double dist = signalStopLoss - currentPrice;
+                        double ticks = dist / TickSize;
+                        slText = dist > 0 
+                            ? string.Format("{0:F2} (Countdown: -{1:F2} pts / -{2} ticks)", signalStopLoss, dist, Math.Round(ticks))
+                            : string.Format("{0:F2} (Stop Breached)", signalStopLoss);
+                    }
+                    
+                    // Breakeven
+                    double beDist = currentPrice - signalBreakevenPrice;
+                    if (beDist > 0)
+                    {
+                        double beTicks = beDist / TickSize;
+                        beText = string.Format("{0:F2} (Countdown: {1:F2} pts / {2} ticks)", signalBreakevenPrice, beDist, Math.Round(beTicks));
+                    }
+                    else
+                    {
+                        beText = string.Format("{0:F2} (ACTIVE 🛡️)", signalBreakevenPrice);
+                    }
+                    
+                    // Trailing Stop
+                    double trailDist = currentPrice - signalTrailingPrice;
+                    if (trailDist > 0)
+                    {
+                        double trailTicks = trailDist / TickSize;
+                        trailText = string.Format("{0:F2} (Countdown: {1:F2} pts / {2} ticks)", signalTrailingPrice, trailDist, Math.Round(trailTicks));
+                    }
+                    else
+                    {
+                        trailText = string.Format("{0:F2} (ACTIVE 📈)", signalTrailingPrice);
+                    }
+                }
+
+                targetInfo = string.Format(
+                    "--------------------------------------------------\n" +
+                    "🎯 TARGET & RISK COUNTDOWNS:\n" +
+                    "• Take Profit (TP): {0}\n" +
+                    "• Stop Loss (SL)  : {1}\n" +
+                    "• Breakeven Trgr  : {2}\n" +
+                    "• Trailing Trgr   : {3}\n",
+                    tpText, slText, beText, trailText
+                );
+            }
 
             string labelText = string.Format(
                 "🚀 ANTIGRAVITY V1 SMART BOT BRIDGE\n" +
                 "==================================================\n" +
                 "• Status: {0}\n" +
                 "• Timeframe: {1}-Minute Chart (Execution Mode)\n" +
-                "• Last Signal: {2}\n" +
-                "• Strategy Triggered: {3}\n" +
+                "• Active Position: {2}\n" +
+                "{3}" +
                 "--------------------------------------------------\n" +
                 "📊 ACTIVE MACHINE LEARNING PARAMETERS:\n" +
                 "{4}",
                 statusText,
                 BarsPeriod.Value,
-                lastSignal,
-                lastStrategy,
+                posInfo,
+                targetInfo,
                 activeParamsText
             );
 
@@ -337,13 +573,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                 ChartControl.Dispatcher.InvokeAsync(new Action(() => {
                     wpfTextBlock.Text = labelText;
                     
-                    // Dynamically set border color based on status
+                    // Dynamically set border color
                     if (wpfPanel != null)
                     {
-                        var color = isConnected 
-                            ? Color.FromRgb(57, 255, 20)  // Neon green
-                            : Color.FromRgb(255, 56, 56); // Neon red
-                        wpfPanel.BorderBrush = new SolidColorBrush(color);
+                        wpfPanel.BorderBrush = new SolidColorBrush(borderGlowColor);
                     }
                 }));
             }
@@ -385,6 +618,50 @@ namespace NinjaTrader.NinjaScript.Strategies
                             "• ETH Mean Reversion: BB Dev {2} | RSI {3}-{4}",
                             emaFast, emaSlow, bbStdDev, rsiOversold, rsiOverbought
                         );
+                        UpdateChartOverlay();
+                    }
+                    return;
+                }
+
+                // STATUS packet handling
+                if (action == "STATUS")
+                {
+                    string sym = parts[1];
+                    if (Instrument.FullName.Contains(sym.Replace("=F", "")))
+                    {
+                        int enabledVal = 1;
+                        int.TryParse(parts[2], out enabledVal);
+                        isTradingEnabled = (enabledVal == 1);
+                        Print("AntigravityBridge: Received STATUS update. Trading enabled state: " + isTradingEnabled);
+                        
+                        if (!isTradingEnabled)
+                        {
+                            Print("AntigravityBridge: Toggled OFF from Dashboard! Force flattening active position...");
+                            
+                            // Cancel all active pending orders first on this instrument
+                            if (Account != null)
+                            {
+                                foreach (var o in Account.Orders)
+                                {
+                                    if (o != null && o.Instrument != null && o.Instrument.FullName == Instrument.FullName &&
+                                        (o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted || o.OrderState == OrderState.Submitted))
+                                    {
+                                        try { Account.Cancel(new[] { o }); }
+                                        catch (Exception ex) { Print("Cancel order error: " + ex.Message); }
+                                    }
+                                }
+                            }
+                            
+                            // Exit open positions
+                            if (Position.MarketPosition == MarketPosition.Long)
+                            {
+                                ExitLong();
+                            }
+                            else if (Position.MarketPosition == MarketPosition.Short)
+                            {
+                                ExitShort();
+                            }
+                        }
                         UpdateChartOverlay();
                     }
                     return;
@@ -447,6 +724,17 @@ namespace NinjaTrader.NinjaScript.Strategies
                     double stopLoss = double.Parse(parts[4]);
                     double takeProfit = double.Parse(parts[5]);
                     
+                    signalStopLoss = stopLoss;
+                    signalTakeProfit = takeProfit;
+                    if (parts.Length >= 8)
+                    {
+                        double.TryParse(parts[7], out signalBreakevenPrice);
+                    }
+                    if (parts.Length >= 9)
+                    {
+                        double.TryParse(parts[8], out signalTrailingPrice);
+                    }
+                    
                     if (parts.Length >= 7)
                     {
                         lastStrategy = parts[6];
@@ -457,6 +745,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                     }
 
                     lastSignal = string.Format("{0} {1} Contract(s) @ {2}", action, qty, entryPrice.ToString("F2"));
+                    
+                    if (!isTradingEnabled)
+                    {
+                        Print("AntigravityBridge: BUY/SELL signal ignored. Strategy is suspended (OFF) on dashboard.");
+                        return;
+                    }
+                    
                     UpdateChartOverlay();
 
                     // Calculate tick differences for NinjaTrader SL/TP order attachments

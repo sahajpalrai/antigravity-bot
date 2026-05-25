@@ -29,6 +29,9 @@
       <button class="sidebar-tab-btn" id="tab-optimizer" data-tooltip="Cognitive Optimizer" onclick="switchTab('optimizer')">
         <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
+      <button class="sidebar-tab-btn" id="tab-auditor" data-tooltip="Deep Loss Diagnostics" onclick="switchTab('auditor')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-width="2"/></svg>
+      </button>
       <button class="sidebar-tab-btn" id="tab-settings" data-tooltip="API Settings" onclick="switchTab('settings')">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -338,6 +341,34 @@
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
             <p>🔧 <strong>Global Broker Integration:</strong> Webhook credentials and Tastytrade integrations are written directly to your local encrypted process memory and synchronized asynchronously to your `.env` workspace variables for permanent system persistence across bot runtime starts.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- View Tab 5: Deep Loss Auditor & Diagnostics -->
+      <div id="view-auditor" class="tab-view" style="display: none;">
+        <div class="glass-card config-panel gradient-glow-card" style="max-width: 900px; margin: 0 auto; padding: 32px; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 8px 32px rgba(0,0,0,0.4);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; margin-bottom: 24px;">
+            <h2 class="panel-title" style="font-size: 20px; font-weight: 800; color: var(--magenta-glow); margin: 0;">🔍 AI Deep Loss Diagnostics Auditor</h2>
+            <button class="action-btn" id="run-manual-audit-btn" style="background: linear-gradient(135deg, var(--accent-magenta), var(--accent-purple)); padding: 10px 20px; font-size: 13px; font-weight: 700; border-radius: 8px; border: none; color: white; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 0, 122, 0.25);" onclick="runManualAuditSweep()">⚡ Run Diagnostics Sweep</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+            <div>
+              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">🎯 Dynamic Parameters & Self-Healing Registry</h3>
+              <div class="backtest-results-box" id="auditor-summary" style="height: 120px; margin-bottom: 10px; background: rgba(5,7,12,0.6); padding: 15px; border-radius: 8px; font-size:13px; border:1px solid rgba(255,255,255,0.04); overflow-y: auto; line-height: 1.6;">
+                🧠 Auditor is armed and active in the background. Ready to scan wicks and adjust parameters for the next month. Click [Run Diagnostics Sweep] to analyze today's wicks manually.
+              </div>
+            </div>
+
+            <div>
+              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">📋 Holographic Diagnostics & Whipsaw Audit Logs</h3>
+              <div class="backtest-results-box" id="auditor-logs" style="height: 300px; background: rgba(5,7,12,0.8); border: 1px solid rgba(255,255,255,0.05); font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; line-height: 1.5; color: #a5b4fc; padding: 15px; border-radius: 8px; overflow-y: auto; text-align: left; white-space: pre-wrap;">
+[System Status] Cognitive diagnostics listening on TCP port 4000...
+[System Status] Standard win-rate optimization threshold locked at 80%.
+[System Status] Awaiting trades...
+              </div>
+            </div>
           </div>
         </div>
       </div>

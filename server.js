@@ -37,6 +37,7 @@ const { fetchRecentCandles, fetchHistoricalData, fetchCandlesWithFallback } = re
 const { runWalkforwardOptimization } = require('./lib/mlOptimizer');
 const { evaluateStrategies, calculateATR } = require('./lib/strategies');
 const { startAutoTrainerScheduler } = require('./lib/autoTrainer');
+const { startPostMarketAuditorScheduler } = require('./lib/tradeAuditor');
 
 // 1. Initialize Portfolio State
 loadPortfolioState();
@@ -172,6 +173,27 @@ const server = http.createServer((req, res) => {
       const success = toggleSymbolEnabled(symbol, enabled, livePrices[symbol]);
       res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+    }
+
+    // POST /api/run-audit (Manual Diagnostics & Optimization Sweep)
+    else if (pathname === '/api/run-audit' && req.method === 'POST') {
+      try {
+        const { performDailyPostMarketAudit } = require('./lib/tradeAuditor');
+        await performDailyPostMarketAudit();
+
+        const portfolioState = getPortfolioState();
+        const settings = JSON.parse(fs.readFileSync(path.join(__dirname, 'optimized_settings.json'), 'utf-8'));
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          stats: portfolioState.history.slice(0, 30),
+          settings: settings
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
     }
     
     // POST /api/webhook
@@ -599,13 +621,13 @@ async function runStrategyScan() {
       console.log(`[Scheduler] 🟢 BUY SIGNAL triggered for ${sym} using ${signal.strategyName}`);
       const pos = enterTrade(sym, 'Long', livePrices[sym] || candles1m[candles1m.length-1].close, signal.strategyName, signal.atr, regime);
       if (pos) {
-        sendSignalToNT8('BUY', sym, pos.qty, pos.entryPrice, pos.stopLoss, pos.takeProfit, pos.strategyUsed);
+        sendSignalToNT8('BUY', sym, pos.qty, pos.entryPrice, pos.stopLoss, pos.takeProfit, pos.strategyUsed, pos.beTriggerPrice, pos.trailTriggerPrice);
       }
     } else if (signal.shouldSell) {
       console.log(`[Scheduler] 🔴 SELL SIGNAL triggered for ${sym} using ${signal.strategyName}`);
       const pos = enterTrade(sym, 'Short', livePrices[sym] || candles1m[candles1m.length-1].close, signal.strategyName, signal.atr, regime);
       if (pos) {
-        sendSignalToNT8('SELL', sym, pos.qty, pos.entryPrice, pos.stopLoss, pos.takeProfit, pos.strategyUsed);
+        sendSignalToNT8('SELL', sym, pos.qty, pos.entryPrice, pos.stopLoss, pos.takeProfit, pos.strategyUsed, pos.beTriggerPrice, pos.trailTriggerPrice);
       }
     }
   }
@@ -642,4 +664,5 @@ server.listen(PORT, () => {
   startRealTimeTicking();
   startStrategyScheduler();
   startAutoTrainerScheduler();
+  startPostMarketAuditorScheduler();
 });

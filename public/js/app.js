@@ -1138,3 +1138,71 @@ window.addEventListener('resize', () => {
     }
   }
 });
+
+// Manual Diagnostics Sweep Trigger (Deep Loss Auditor tab helper)
+async function runManualAuditSweep() {
+  const btn = document.getElementById('run-manual-audit-btn');
+  const summaryBox = document.getElementById('auditor-summary');
+  const logsBox = document.getElementById('auditor-logs');
+  
+  if (!btn || !summaryBox || !logsBox) return;
+  
+  btn.disabled = true;
+  btn.innerText = '⚡ Diagnostic Sweep Active...';
+  summaryBox.innerHTML = '<span style="color: var(--neon-cyan); font-weight:600; display:inline-block; animation: pulse 1s infinite;">🧠 Scanning CME historical wicks and correlating trade entry/exit dates...</span>';
+  logsBox.innerHTML = '[System Info] Starting manual loss diagnostics sweep...\n[System Info] Loading recent trade history...\n';
+  
+  try {
+    const response = await fetch('/api/run-audit', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      btn.innerText = '⚡ Run Diagnostics Sweep';
+      btn.disabled = false;
+      
+      summaryBox.innerHTML = `
+        <span style="color: var(--neon-green); font-weight: 700;">🟢 DIAGNOSTICS SWEEP COMPLETED SUCCESSFULLY!</span><br>
+        • Target Profitability Level: <strong style="color:var(--neon-green);">80%+</strong> win rate filter active.<br>
+        • Active NQ Settings ➡️ RTH EMAs: <strong>Fast ${data.settings['NQ=F'].RTH.emaFast} / Slow ${data.settings['NQ=F'].RTH.emaSlow}</strong> | ETH BB Dev: <strong>${data.settings['NQ=F'].ETH.bbStdDev}</strong>.<br>
+        • Sync Status: Optimized settings automatically hot-reloaded to active NinjaTrader 8 charts over TCP bridge (Port 4000).
+      `;
+      
+      let logs = `[Diagnostics Sweep] Complete!\n`;
+      logs += `[System Status] Standard win-rate target locked at 80%.\n`;
+      logs += `[System Status] Dynamic self-healing optimization complete. All adjustments persisted to optimized_settings.json.\n\n`;
+      logs += `📊 RECENT TRADES PERFORMANCE STATS SUMMARY:\n`;
+      
+      const strategyStats = {};
+      data.stats.forEach(t => {
+        const name = t.strategyUsed || 'Unknown';
+        if (!strategyStats[name]) {
+          strategyStats[name] = { total: 0, wins: 0, losses: 0, net: 0 };
+        }
+        strategyStats[name].total++;
+        if (t.profit > 0) strategyStats[name].wins++;
+        else strategyStats[name].losses++;
+        strategyStats[name].net += t.profit;
+      });
+      
+      for (const [strat, stats] of Object.entries(strategyStats)) {
+        const winRate = (stats.wins / stats.total) * 100;
+        const color = winRate >= 80 ? '🟢' : '⚠️';
+        logs += `${color} Strategy: ${strat} | Win Rate: ${winRate.toFixed(1)}% (${stats.wins}/${stats.total} trades) | Net P&L: $${stats.net.toFixed(2)}\n`;
+        if (winRate < 80) {
+          logs += `  ➡️ Underperforming threshold met. Parameter tightening applied to prevent whipsaws/breakouts.\n`;
+        } else if (stats.total < 4) {
+          logs += `  ➡️ Perfect quality but low frequency. Loosening applied to increase opportunity count.\n`;
+        }
+      }
+      
+      logsBox.innerHTML = logs;
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (err) {
+    btn.innerText = '⚡ Run Diagnostics Sweep';
+    btn.disabled = false;
+    summaryBox.innerHTML = `<span style="color: var(--neon-red);">🔴 SWEEP FAILED: ${err.message}</span>`;
+    logsBox.innerHTML += `\n❌ [Error] Diagnostics sweep failed: ${err.message}\n`;
+  }
+}
