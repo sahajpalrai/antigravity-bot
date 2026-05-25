@@ -1,668 +1,495 @@
+// Antigravity v2 — Server entry
+// Driven by NT8 bar pushes → regime classifier → GBDT model → decision →
+// (optional live order to NT8) + paper trade log. Yahoo path removed.
+// Fake backtest/optimize/cognitive-booster gone.
+
+'use strict';
+
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
-// ====================================================================
-// ZERO-DEPENDENCY ENV LOADER (Replaces 'dotenv')
-// ====================================================================
+// ── Zero-dependency .env loader ─────────────────────────────────────────────
+// Note: shell environment vars take precedence over .env values (standard
+// dotenv behavior). The old loader overwrote process.env unconditionally,
+// which made PORT=xxx on the command line silently ineffective.
 const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf-8');
-  const lines = envContent.split(/\r?\n/);
-  for (const line of lines) {
-    // Skip comments and empty lines
+  for (const line of envContent.split(/\r?\n/)) {
     if (line.trim().startsWith('#') || !line.includes('=')) continue;
     const parts = line.split('=');
     const key = parts[0].trim();
     let val = parts.slice(1).join('=').trim();
-    // Strip optional quotes
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
-    process.env[key] = val;
+    if (process.env[key] === undefined) process.env[key] = val;
   }
 }
 
 const PORT = process.env.PORT || 3000;
+const TRADING_MODE = (process.env.TRADING_MODE || 'paper').toLowerCase(); // 'paper' | 'live'
 
-// Import local modular systems
+// ── Modules ─────────────────────────────────────────────────────────────────
 const { checkTradingStatus } = require('./lib/scheduleController');
 const { getNewsTradingSuspension, fetchEconomicCalendar } = require('./lib/newsCalendar');
 const { getYahooFinanceNews } = require('./lib/yahooNews');
 const { getActiveSessionRegime } = require('./lib/sessionRegime');
-const { loadPortfolioState, getPortfolioState, enterTrade, updatePortfolioMetrics, closeTrade, transitionToPAAccount } = require('./lib/paperEngine');
+const {
+  loadPortfolioState, getPortfolioState, enterTrade, updatePortfolioMetrics,
+  closeTrade, transitionToPAAccount
+} = require('./lib/paperEngine');
 const { sendTelegramMessage } = require('./lib/telegram');
-const { startNT8BridgeServer, sendSignalToNT8, broadcastParamsToNT8 } = require('./lib/nt8Bridge');
-const { fetchRecentCandles, fetchHistoricalData, fetchCandlesWithFallback } = require('./lib/dataProvider');
-const { runWalkforwardOptimization } = require('./lib/mlOptimizer');
-const { evaluateStrategies, calculateATR } = require('./lib/strategies');
-const { startAutoTrainerScheduler } = require('./lib/autoTrainer');
-const { startPostMarketAuditorScheduler } = require('./lib/tradeAuditor');
+const {
+  startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback
+} = require('./lib/nt8Bridge');
+const { decide, modelStatus } = require('./lib/decisionEngine');
+const { onBarDecision, getStats, getRecentTrades, getStatsByRegime } = require('./lib/paperHarness');
+const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
+const eventBus = require('./lib/eventBus');
 
-// 1. Initialize Portfolio State
+// ── Startup ─────────────────────────────────────────────────────────────────
 loadPortfolioState();
-
-// 2. Start NinjaTrader 8 TCP socket bridge server (port 4000)
 startNT8BridgeServer();
 
 const livePrices = { 'NQ=F': 0, 'ES=F': 0, 'CL=F': 0, 'GC=F': 0 };
-const simulatedDriftPrices = { 'NQ=F': 0, 'ES=F': 0, 'CL=F': 0, 'GC=F': 0 };
+const lastDecisions = { 'NQ=F': null, 'ES=F': null, 'CL=F': null, 'GC=F': null };
+const lastRegimes = { 'NQ=F': null, 'ES=F': null, 'CL=F': null, 'GC=F': null };
 const serverStartTime = Date.now();
-let lastSchedulerRun = 0;
-const SCHEDULER_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
-// MIME types dictionary for static file server
-const MIME_TYPES = {
-  '.html': 'text/html',
-  '.css': 'text/css',
-  '.js': 'application/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
-};
+// ── Bar-push hook: NT8 closed a 5m bar → run decision engine ────────────────
+setOnBarCallback((symbol, candles) => {
+  if (!candles || candles.length < 220) return;
+  const last = candles[candles.length - 1];
+  livePrices[symbol] = last.close;
 
-// Helper: Serves files from the /public folder
-function serveStaticFile(pathname, res) {
-  let filePath = path.join(__dirname, 'public', pathname === '/' ? 'index.html' : pathname);
-  const ext = path.extname(filePath).toLowerCase();
-  
-  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('404 Not Found');
-    return;
+  // BAR event (compact — full feature dump is captured on the decision event)
+  eventBus.emit('BAR', symbol,
+    `BAR close=${last.close} vol=${last.volume || 0}`,
+    { close: last.close, time: last.time });
+
+  const decision = decide(symbol, candles);
+  lastDecisions[symbol] = decision;
+
+  // Regime change event (when it flips)
+  if (decision.regime && decision.regime !== lastRegimes[symbol]) {
+    eventBus.emit('REGIME_CHANGE', symbol,
+      `regime: ${lastRegimes[symbol] || '—'} → ${decision.regime}`,
+      { from: lastRegimes[symbol], to: decision.regime, session: decision.session });
+    lastRegimes[symbol] = decision.regime;
   }
 
-  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-  res.writeHead(200, { 'Content-Type': contentType });
-  
-  const stream = fs.createReadStream(filePath);
-  stream.pipe(res);
+  // DECISION event (always — even FLAT, so the operator sees the bot thinking)
+  if (decision.action === 'FLAT') {
+    eventBus.emit('DECISION', symbol,
+      `FLAT — ${decision.reason}`,
+      { regime: decision.regime, session: decision.session, probabilities: decision.probabilities });
+  } else {
+    eventBus.emit('DECISION', symbol,
+      `${decision.action} prob=${decision.probability.toFixed(2)} ≥ thresh=${decision.threshold.toFixed(2)} (${decision.regime})`,
+      { action: decision.action, prob: decision.probability, threshold: decision.threshold,
+        regime: decision.regime, session: decision.session });
+  }
+
+  // Paper harness records the bar (handles stop/target hits + new entries)
+  const paperEvent = onBarDecision(symbol, decision, last);
+  if (paperEvent && paperEvent.event === 'open') {
+    const p = paperEvent.position;
+    eventBus.emit('ENTRY', symbol,
+      `📍 PAPER ${p.direction} @${p.entryPrice.toFixed(2)} SL=${p.stopLoss.toFixed(2)} TP=${p.takeProfit.toFixed(2)} (${p.regime})`,
+      { direction: p.direction, entry: p.entryPrice, sl: p.stopLoss, tp: p.takeProfit, regime: p.regime });
+  }
+  if (paperEvent && paperEvent.event === 'close') {
+    const t = paperEvent.trade;
+    const pnlStr = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
+    eventBus.emit('EXIT', symbol,
+      `🏁 PAPER ${t.direction} closed @${t.exitPrice.toFixed(2)} ${pnlStr} (${t.exitReason})`,
+      { pnl: t.pnl, pnlR: t.pnlR, exitReason: t.exitReason });
+
+    // Feed closed paper trade into the loss auditor for attribution
+    recordTrade({
+      symbol: t.symbol,
+      session: t.session,
+      regime: t.regime,
+      direction: t.direction === 'Long' ? 'long' : 'short',
+      entryTime: t.entryTime,
+      exitTime: t.exitTime,
+      entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice,
+      featureSnapshot: t.featureSnapshot || {},
+      modelProbability: t.probability,
+      threshold: t.threshold,
+      pnl: t.pnl,
+      pnlR: t.pnlR,
+      exitReason: t.exitReason
+    });
+  }
+
+  // Live execution path (only when TRADING_MODE=live and the symbol is enabled)
+  if (TRADING_MODE === 'live' && (decision.action === 'BUY' || decision.action === 'SELL')) {
+    const acc = getPortfolioState().accounts[symbol];
+    if (!acc || acc.enabled === false || acc.activePosition || acc.status === 'FAILED') {
+      eventBus.emit('BLOCKED', symbol,
+        `signal blocked — ${!acc ? 'no account' : acc.enabled === false ? 'symbol OFF' : acc.activePosition ? 'already in position' : 'account FAILED'}`);
+    } else {
+      const direction = decision.action === 'BUY' ? 'Long' : 'Short';
+      const sessionRegime = {
+        ...getActiveSessionRegime(),
+        atrStopMultiplier: 1.5,
+        atrTargetMultiplier: 2.7,
+        atrBreakevenMultiplier: 0.8,
+        atrTrailingMultiplier: 1.0
+      };
+      const strategy = `${decision.regime} ${direction} (p=${decision.probability.toFixed(2)})`;
+      const pos = enterTrade(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
+      if (pos) {
+        eventBus.emit('ENTRY', symbol,
+          `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
+          { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
+        sendSignalToNT8(decision.action, symbol, pos.qty, pos.entryPrice,
+          pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+      } else {
+        eventBus.emit('BLOCKED', symbol, 'enterTrade refused (sizer returned 0)');
+      }
+    }
+  }
+});
+
+eventBus.emit('INFO', null, `Antigravity v2 cockpit boot — mode=${TRADING_MODE}`);
+
+// ── Static file serving ─────────────────────────────────────────────────────
+const MIME_TYPES = {
+  '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
+  '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
+};
+
+function serveStaticFile(pathname, res) {
+  const filePath = path.join(__dirname, 'public', pathname === '/' ? 'index.html' : pathname);
+  const ext = path.extname(filePath).toLowerCase();
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('404 Not Found');
+  }
+  res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+  fs.createReadStream(filePath).pipe(res);
 }
 
-// ====================================================================
-// NATIVE HTTP SERVER (Replaces 'express')
-// ====================================================================
+// ── HTTP server + API ───────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
 
-  // Buffer inbound POST request body data
   let body = '';
-  req.on('data', chunk => { body += chunk; });
+  req.on('data', c => { body += c; });
   req.on('end', async () => {
     let reqBody = {};
-    if (body) {
-      try { reqBody = JSON.parse(body); } catch (e) {}
-    }
+    if (body) { try { reqBody = JSON.parse(body); } catch (e) {} }
 
-    // ----------------------------------------------------
-    // API ROUTING GROUP
-    // ----------------------------------------------------
-    
-    // GET /api/state
-    if (pathname === '/api/state' && req.method === 'GET') {
-      const schedule = checkTradingStatus();
-      const news = await getNewsTradingSuspension();
-      const regime = getActiveSessionRegime();
-      const portfolioState = getPortfolioState();
-      const yahooNews = await getYahooFinanceNews();
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        ...portfolioState,
-        livePrices,
-        schedule,
-        news,
-        regime,
-        yahooNews,
-        tastytradeId: process.env.TASTYTRADE_CLIENT_ID
-      }));
-    } 
-    
-    // POST /api/close
-    else if (pathname === '/api/close' && req.method === 'POST') {
-      const { symbol } = reqBody;
-      const portfolioState = getPortfolioState();
-      const acc = portfolioState.accounts[symbol];
-
-      if (acc && acc.activePosition) {
-        const exitPrice = livePrices[symbol] || acc.activePosition.entryPrice;
-        closeTrade(symbol, exitPrice, 'Forced Close via Dashboard');
-        sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'success' }));
-      } else {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'No active position to close' }));
-      }
-    } 
-    
-    // POST /api/transition
-    else if (pathname === '/api/transition' && req.method === 'POST') {
-      const { symbol } = reqBody;
-      const success = transitionToPAAccount(symbol);
-      res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
-    } 
-    
-    // POST /api/mode (Universal Broker Selection)
-    else if (pathname === '/api/mode' && req.method === 'POST') {
-      const { symbol, mode } = reqBody;
-      const { changeAccountMode } = require('./lib/paperEngine');
-      const success = changeAccountMode(symbol, mode);
-      res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
-    } 
-    
-    // POST /api/account-number (Inline Account ID Editing)
-    else if (pathname === '/api/account-number' && req.method === 'POST') {
-      const { symbol, accountNumber } = reqBody;
-      const { updateAccountNumber } = require('./lib/paperEngine');
-      const success = updateAccountNumber(symbol, accountNumber);
-      res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
-    } 
-    
-    // POST /api/toggle-symbol (Toggle Trading ON/OFF per Symbol)
-    else if (pathname === '/api/toggle-symbol' && req.method === 'POST') {
-      const { symbol, enabled } = reqBody;
-      const { toggleSymbolEnabled } = require('./lib/paperEngine');
-      const success = toggleSymbolEnabled(symbol, enabled, livePrices[symbol]);
-      res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
-    }
-
-    // POST /api/run-audit (Manual Diagnostics & Optimization Sweep)
-    else if (pathname === '/api/run-audit' && req.method === 'POST') {
-      try {
-        const { performDailyPostMarketAudit } = require('./lib/tradeAuditor');
-        await performDailyPostMarketAudit();
-
+    try {
+      // GET /api/state — main dashboard data
+      if (pathname === '/api/state' && req.method === 'GET') {
+        const schedule = checkTradingStatus();
+        const news = await getNewsTradingSuspension();
+        const regime = getActiveSessionRegime();
         const portfolioState = getPortfolioState();
-        const settings = JSON.parse(fs.readFileSync(path.join(__dirname, 'optimized_settings.json'), 'utf-8'));
-
+        const yahooNews = await getYahooFinanceNews();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: true,
-          stats: portfolioState.history.slice(0, 30),
-          settings: settings
+        return res.end(JSON.stringify({
+          ...portfolioState,
+          livePrices,
+          lastDecisions,
+          schedule,
+          news,
+          regime,
+          yahooNews,
+          tradingMode: TRADING_MODE,
+          tastytradeId: process.env.TASTYTRADE_CLIENT_ID
         }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: err.message }));
       }
-    }
-    
-    // POST /api/webhook
-    else if (pathname === '/api/webhook' && req.method === 'POST') {
-      const { url: webhookUrl } = reqBody;
-      process.env.GOOGLE_SHEETS_WEBHOOK_URL = webhookUrl;
-      
-      // Persist to .env dynamically
-      if (fs.existsSync(envPath)) {
-        let envContent = fs.readFileSync(envPath, 'utf-8');
-        if (envContent.includes('GOOGLE_SHEETS_WEBHOOK_URL=')) {
-          envContent = envContent.replace(/GOOGLE_SHEETS_WEBHOOK_URL=.*/, `GOOGLE_SHEETS_WEBHOOK_URL=${webhookUrl}`);
-        } else {
-          envContent += `\nGOOGLE_SHEETS_WEBHOOK_URL=${webhookUrl}`;
+
+      // POST /api/close — force close a symbol's position
+      if (pathname === '/api/close' && req.method === 'POST') {
+        const { symbol } = reqBody;
+        const ps = getPortfolioState();
+        const acc = ps.accounts[symbol];
+        if (acc && acc.activePosition) {
+          const exitPrice = livePrices[symbol] || acc.activePosition.entryPrice;
+          closeTrade(symbol, exitPrice, 'Forced Close via Dashboard');
+          sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'success' }));
         }
-        fs.writeFileSync(envPath, envContent, 'utf-8');
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'No active position to close' }));
       }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'success' }));
-    } 
-    
-    // POST /api/backtest
-    else if (pathname === '/api/backtest' && req.method === 'POST') {
-      const algorithm = reqBody.algorithm || 'LSTM Neural Network Model';
-      const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
-      let grandTotalTrades = 0;
-      let totalCandles = 0;
-      let sourceTag = 'Local NinjaTrader 8 Export';
 
-      // Verify that historical files load cleanly
-      for (const sym of symbols) {
-        const data = await fetchHistoricalData(sym, 2);
-        if (data && data.length > 0) {
-          totalCandles += data.length;
-          sourceTag = data.source || 'Local NinjaTrader 8 Export';
+      // POST /api/transition — promote eval → PA
+      if (pathname === '/api/transition' && req.method === 'POST') {
+        const success = transitionToPAAccount(reqBody.symbol);
+        res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+      }
+
+      // POST /api/mode — change account mode
+      if (pathname === '/api/mode' && req.method === 'POST') {
+        const { changeAccountMode } = require('./lib/paperEngine');
+        const success = changeAccountMode(reqBody.symbol, reqBody.mode);
+        res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+      }
+
+      // POST /api/account-number — update account label
+      if (pathname === '/api/account-number' && req.method === 'POST') {
+        const { updateAccountNumber } = require('./lib/paperEngine');
+        const success = updateAccountNumber(reqBody.symbol, reqBody.accountNumber);
+        res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+      }
+
+      // POST /api/toggle-symbol — symbol ON/OFF
+      if (pathname === '/api/toggle-symbol' && req.method === 'POST') {
+        const { toggleSymbolEnabled } = require('./lib/paperEngine');
+        const success = toggleSymbolEnabled(reqBody.symbol, reqBody.enabled, livePrices[reqBody.symbol]);
+        res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+      }
+
+      // POST /api/webhook — persist Google Sheets URL
+      if (pathname === '/api/webhook' && req.method === 'POST') {
+        const { url: webhookUrl } = reqBody;
+        process.env.GOOGLE_SHEETS_WEBHOOK_URL = webhookUrl;
+        if (fs.existsSync(envPath)) {
+          let envContent = fs.readFileSync(envPath, 'utf-8');
+          envContent = envContent.includes('GOOGLE_SHEETS_WEBHOOK_URL=')
+            ? envContent.replace(/GOOGLE_SHEETS_WEBHOOK_URL=.*/, `GOOGLE_SHEETS_WEBHOOK_URL=${webhookUrl}`)
+            : envContent + `\nGOOGLE_SHEETS_WEBHOOK_URL=${webhookUrl}`;
+          fs.writeFileSync(envPath, envContent, 'utf-8');
         }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'success' }));
       }
 
-      let report = '';
-      let targetProfit = 112.4;
-      let targetDrawdown = 8.6;
-      let finalWinRate = 68.4;
-      let finalPF = 2.45;
-
-      if (algorithm === 'Train & Compare All 3 Algorithms') {
-        report = `=== 2-3 YEAR STRATEGY COMPARATIVE BACKTEST & TRAINING RESULTS ===\n`;
-        report += `Mode: Comparative Ensemble (All 3 Algorithms Trained & Calibrated)\n`;
-        report += `Calibration Period: 2021-01-01 to 2023-12-31\n`;
-        report += `Underlying Data Source: ${sourceTag} (${totalCandles.toLocaleString()} candles analyzed)\n\n`;
-
-        report += `[Training Run #1] LSTM Neural Network Model\n`;
-        report += `  - Deep-learning recurrent LSTM layers fitted successfully.\n`;
-        report += `  - Best Epoch Validation Loss: 0.0421 | Training completed in 312ms!\n`;
-        report += `  - Total Trades: 1,842 trades simulated\n`;
-        report += `  - Win Rate: 68.4% | Profit Factor: 2.45\n`;
-        report += `  - Total Simulated Return: +112.4% ROI | Max Drawdown: 8.6%\n\n`;
-
-        report += `[Training Run #2] Multi-Timeframe Confluence Edge\n`;
-        report += `  - Rule-based MTF alignment completed.\n`;
-        report += `  - Confluence triggers: 1H Trend + 5M ORB & FVG wicks.\n`;
-        report += `  - Total Trades: 1,224 trades simulated\n`;
-        report += `  - Win Rate: 62.8% | Profit Factor: 2.15\n`;
-        report += `  - Total Simulated Return: +89.2% ROI | Max Drawdown: 11.2%\n\n`;
-
-        report += `[Training Run #3] EMA Trend Reversion Hybrid\n`;
-        report += `  - Crossover Trend (RTH) + Mean Reversion (ETH) calibrated.\n`;
-        report += `  - Dynamic daytime/nighttime session switching validated.\n`;
-        report += `  - Total Trades: 1,518 trades simulated\n`;
-        report += `  - Win Rate: 65.1% | Profit Factor: 2.22\n`;
-        report += `  - Total Simulated Return: +94.6% ROI | Max Drawdown: 9.8%\n\n`;
-
-        report += `================================================================\n`;
-        report += `🏆 ENSEMBLE WINNER: LSTM Neural Network Model\n`;
-        report += `================================================================\n`;
-        report += `Comparative Summary:\n`;
-        report += `  * LSTM Model leads with +112.4% Profit and lowest Drawdown (8.6%).\n`;
-        report += `  * EMA Hybrid shows strong performance with steady overnight range equity.\n`;
-        report += `  * Multi-Timeframe Edge provides robust breakout safety during RTH sessions.\n\n`;
-        report += `Ensemble weights compiled. Superior LSTM weights deployed to live strategy buffers!\n`;
-
-        grandTotalTrades = 1842 + 1224 + 1518;
-      } 
-      else {
-        // Individual Algorithm Backtest Simulator
-        report = `=== 2-3 YEAR STRATEGY BACKTEST RESULTS ===\n`;
-        report += `Algorithm: ${algorithm}\n`;
-        report += `Calibration Period: 2021-01-01 to 2023-12-31\n\n`;
-
-        if (algorithm === 'LSTM Neural Network Model') {
-          targetProfit = 112.4; targetDrawdown = 8.6; finalWinRate = 68.4; finalPF = 2.45;
-          report += `[ML Model] Fitting LSTM recurrent layers on historical candles...\n`;
-          report += `[ML Model] Best Epoch validation score: 0.0421. Training completed successfully!\n`;
-          report += `[ML Model] Deployed optimized ML weights for active scanning.\n\n`;
-        } else if (algorithm === 'Multi-Timeframe Confluence Edge') {
-          targetProfit = 89.2; targetDrawdown = 11.2; finalWinRate = 62.8; finalPF = 2.15;
-          report += `[Engine] Calibrating Multi-Timeframe pivot points and confluence levels...\n`;
-          report += `[Engine] Standard RTH breakout rules applied successfully.\n\n`;
-        } else if (algorithm === 'EMA Trend Reversion Hybrid') {
-          targetProfit = 94.6; targetDrawdown = 9.8; finalWinRate = 65.1; finalPF = 2.22;
-          report += `[Hybrid] Deploying EMA trend-following for liquid RTH sessions...\n`;
-          report += `[Hybrid] Deploying BB & RSI mean reversion for overnight ETH sessions...\n`;
-          report += `[Hybrid] Calibration complete.\n\n`;
+      // POST /api/backtest — returns the LATEST walkforward report (real numbers)
+      // Replaces the old hardcoded LSTM/MTF/EMA simulator.
+      if (pathname === '/api/backtest' && req.method === 'POST') {
+        const reportPath = path.join(__dirname, 'models', 'latest_report.json');
+        if (!fs.existsSync(reportPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            results: '⚠️  No training report found. Run: node scripts/train.js --quick',
+            summary: { totalProfitPercent: 0, drawdownPercent: 0, winRate: 0, profitFactor: 0, totalTrades: 0 },
+            chartData: []
+          }));
         }
-
-        for (const sym of symbols) {
-          report += `Symbol: ${sym}\n`;
-          const data = await fetchHistoricalData(sym, 2);
-          if (data.length === 0) {
-            report += `❌ Failed to load historical data (Source: None).\n\n`;
-            continue;
-          }
-          
-          report += `  - Data Source: ${data.source || 'Local NinjaTrader 8 Export'}\n`;
-          report += `  - Total Data Points: ${data.length.toLocaleString()} candles\n`;
-
-          let tradesCount = 0;
-          if (algorithm === 'LSTM Neural Network Model') tradesCount = Math.floor(data.length * 0.0022);
-          else if (algorithm === 'Multi-Timeframe Confluence Edge') tradesCount = Math.floor(data.length * 0.0015);
-          else if (algorithm === 'EMA Trend Reversion Hybrid') tradesCount = Math.floor(data.length * 0.0018);
-
-          grandTotalTrades += tradesCount;
-          report += `  - Total Trades Simulated: ${tradesCount}\n`;
-          report += `  - Win Rate: ${finalWinRate.toFixed(1)}%\n`;
-          report += `  - Profit Factor: ${finalPF.toFixed(2)}\n\n`;
-        }
-
-        report += `Total Trades Simulated: ${grandTotalTrades}\n`;
-        report += `Net Performance: +${targetProfit.toFixed(1)}% ROI | Max Drawdown: ${targetDrawdown.toFixed(1)}%\n`;
+        const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+        const formatted = _formatBacktestReport(report, reqBody);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(formatted));
       }
 
-      // Generate highly realistic continuous equity curve walkforward data for plotting!
-      const baseProfits = [];
-      let tempProfit = 0;
-      let tempPeak = 0;
-      let maxBaseDD = 0;
-      
-      for (let i = 0; i < 60; i++) {
-        // Create an organic walkforward wave with positive drift
-        const step = (Math.sin(i / 6) * 11 + Math.cos(i / 2.5) * 5 + (i * 0.95) - (i * i * 0.004) + (Math.random() * 6 - 2.5));
-        tempProfit += step;
-        if (tempProfit > tempPeak) tempPeak = tempProfit;
-        const dd = Math.max(0, tempPeak - tempProfit);
-        if (dd > maxBaseDD) maxBaseDD = dd;
-        baseProfits.push({ p: tempProfit, dd });
-      }
-      
-      // Calculate scaling factors to hit targetProfit and targetDrawdown precisely
-      const lastBaseP = baseProfits[baseProfits.length - 1].p;
-      const profitScale = targetProfit / lastBaseP;
-      const ddScale = targetDrawdown / maxBaseDD;
-      
-      const chartData = [];
-      for (let i = 0; i < baseProfits.length; i++) {
-        chartData.push({
-          pointIndex: i,
-          date: `Period ${i + 1}`,
-          profit: parseFloat((baseProfits[i].p * profitScale).toFixed(1)),
-          drawdown: parseFloat((baseProfits[i].dd * ddScale).toFixed(1))
-        });
+      // POST /api/optimize — kicks off a real walkforward retrain (background)
+      if (pathname === '/api/optimize' && req.method === 'POST') {
+        const { spawn } = require('child_process');
+        const args = ['scripts/train.js', '--quick'];
+        const child = spawn('node', args, { cwd: __dirname, detached: true, stdio: 'ignore' });
+        child.unref();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          results: '🧠 Walkforward retrain started in background. Check the Models endpoint or re-open this tab in ~5-15 minutes.',
+          summary: { totalProfitPercent: 0, drawdownPercent: 0, winRate: 0, profitFactor: 0, totalTrades: 0 },
+          chartData: []
+        }));
       }
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        results: report,
-        summary: {
-          totalProfitPercent: targetProfit,
-          drawdownPercent: targetDrawdown,
-          winRate: finalWinRate,
-          profitFactor: finalPF,
-          totalTrades: grandTotalTrades
-        },
-        chartData
-      }));
-    } 
-    
-    // POST /api/optimize
-    else if (pathname === '/api/optimize' && req.method === 'POST') {
-      const { loadOptimizedParameters } = require('./lib/mlOptimizer');
-      let report = '=== WALKFORWARD ML OPTIMIZATION COMPLETED ===\n\n';
-      const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
-      const regimes = ['RTH', 'ETH'];
-
-      // 1. Capture the "Before" parameters state
-      const before = {};
-      for (const sym of symbols) {
-        before[sym] = {
-          RTH: { ...loadOptimizedParameters(sym, 'RTH') },
-          ETH: { ...loadOptimizedParameters(sym, 'ETH') }
-        };
+      // POST /api/run-audit — runs loss-attribution report (NOT auto-tuning)
+      if (pathname === '/api/run-audit' && req.method === 'POST') {
+        const buckets = getBucketStats();
+        const topFeatures = topLossFeatures(null, 10);
+        const flags = getRetrainFlags();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          buckets,
+          topLossFeatures: topFeatures,
+          retrainFlags: flags,
+          stats: getRecentTrades(30),
+          settings: _legacySettingsShim()
+        }));
       }
 
-      // 2. Run the dynamic optimization grid search
-      for (const sym of symbols) {
-        const candles = await fetchCandlesWithFallback(sym, '5m', '1mo'); // get 30 days of 5m candles
-        report += `Symbol: ${sym} (Source: ${candles.source || 'Local NinjaTrader 8 Export'} - ${candles.length.toLocaleString()} candles):\n`;
-        for (const reg of regimes) {
-          const params = runWalkforwardOptimization(sym, candles, reg);
-          report += `  - ${reg} Mode parameters optimized: ${JSON.stringify(params)}\n`;
-        }
-        report += '\n';
+      // GET /api/models — list trained model bundles + their walkforward metrics
+      if (pathname === '/api/models' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ models: modelStatus() }));
       }
 
-      // 3. Capture the newly optimized "After" parameters state
-      const after = {};
-      for (const sym of symbols) {
-        after[sym] = {
-          RTH: { ...loadOptimizedParameters(sym, 'RTH') },
-          ETH: { ...loadOptimizedParameters(sym, 'ETH') }
-        };
+      // GET /api/paper — paper trade history + stats
+      if (pathname === '/api/paper' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          stats: getStats(),
+          byRegime: getStatsByRegime(),
+          recent: getRecentTrades(50)
+        }));
       }
 
-      // Broadcast newly optimized parameters to connected NinjaTrader 8 clients over TCP
-      broadcastParamsToNT8();
-
-      // Generate training parameter learning curve data for plotting!
-      const chartData = [];
-      let accScore = 0;
-      let accLoss = 0;
-      let peak = 0;
-      
-      const epochsCount = 40;
-      for (let i = 0; i < epochsCount; i++) {
-        // Logarithmic learning curve simulation (parameter convergence)
-        const accuracyStep = (Math.log(i + 1) * 15 + Math.sin(i / 2) * 3 + (Math.random() * 4 - 2));
-        accScore += accuracyStep;
-        if (accScore > peak) {
-          peak = accScore;
-        }
-        const currentLoss = Math.max(0, peak - accScore);
-        if (currentLoss > accLoss) {
-          accLoss = currentLoss;
-        }
-        
-        chartData.push({
-          pointIndex: i,
-          date: `Epoch ${i + 1}`,
-          profit: parseFloat((accScore * 0.45).toFixed(1)), // scale to convergence score
-          drawdown: parseFloat((accLoss * 0.35).toFixed(1))
-        });
+      // GET /api/decisions — latest decision per symbol (for live regime/prob display)
+      if (pathname === '/api/decisions' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ decisions: lastDecisions }));
       }
 
-      const finalScore = parseFloat((accScore * 0.45).toFixed(1));
-      const finalLoss = parseFloat((accLoss * 0.35).toFixed(1));
+      // GET /api/events?after=N&symbol=NQ%3DF&errorsOnly=1&types=ENTRY,EXIT
+      // Polled by the Trading Floor Terminal's live event stream pane.
+      // Returns events with seq > after, optionally filtered.
+      if (pathname === '/api/events' && req.method === 'GET') {
+        const after = parseInt(url.searchParams.get('after') || '0', 10);
+        const symbolFilter = url.searchParams.get('symbol') || null;
+        const errorsOnly = url.searchParams.get('errorsOnly') === '1';
+        const typesParam = url.searchParams.get('types');
+        const types = typesParam ? typesParam.split(',') : null;
+        const events = eventBus.getEvents(after, { symbol: symbolFilter, errorsOnly, types });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          events,
+          currentSeq: eventBus.currentSeq(),
+          serverTime: Date.now()
+        }));
+      }
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ 
-        results: report,
-        beforeAfter: { before, after },
-        summary: {
-          totalProfitPercent: finalScore,
-          drawdownPercent: finalLoss,
-          winRate: 68.5,
-          profitFactor: 2.45,
-          totalTrades: 300
-        },
-        chartData
-      }));
-    } 
-    
-    // ----------------------------------------------------
-    // STATIC FILE ROUTING GROUP (Serves index.html, css, js)
-    // ----------------------------------------------------
-    else {
+      // Default: static files
       serveStaticFile(pathname, res);
+    } catch (err) {
+      console.error('[Server] Error:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
     }
   });
 });
 
-// ----------------------------------------------------
-// THE CORE REAL-TIME BOT POLLING LOOPS & SCHEDULER
-// ----------------------------------------------------
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-// Fast ticking loop (runs every 2 seconds to update live positions & drawdown thresholds)
-async function startRealTimeTicking() {
-  setInterval(async () => {
-    // Keep simulation ticking even during closed hours to ensure P&L updates remain fully active and live in fallback/paper mode
-    const schedule = checkTradingStatus();
+// Build the chart payload + log text the dashboard expects.
+function _formatBacktestReport(report, reqBody) {
+  const algo = reqBody && reqBody.algorithm ? reqBody.algorithm : 'Antigravity v2 GBDT';
+  let text = `=== ANTIGRAVITY v2 — REAL WALKFORWARD REPORT ===\n`;
+  text += `Generated:      ${report.trainedAt}\n`;
+  text += `Training time:  ${report.durationSec}s\n`;
+  text += `Engine:         Regime-aware GBDT (per regime × session × direction)\n`;
+  text += `Algorithm:      ${algo}\n\n`;
 
-    const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
-    const currentPrices = {};
+  // Aggregate across all bundles for the headline KPI
+  let totalTrades = 0, weightedWR = 0, weightedPF = 0, maxDD = 0, weightSum = 0;
+  const chartData = [];
+  let cumulativeR = 0, peakR = 0;
+  let pointIdx = 0;
 
-    for (const sym of symbols) {
-      const recent = await fetchRecentCandles(sym, '1m', '1d');
-      if (recent.length > 0) {
-        const lastCandle = recent[recent.length - 1];
-        
-        // Check if we are running in local fallback mode (Yahoo Finance inactive)
-        const isLocalSource = recent.source && recent.source.includes('Local');
-        
-        if (isLocalSource) {
-          // Initialize simulated base price if not already set
-          if (!simulatedDriftPrices[sym] || simulatedDriftPrices[sym] === 0) {
-            simulatedDriftPrices[sym] = lastCandle.close;
-          }
-          
-          // Apply a realistic micro-tick random walk (flucuates around current price by up to +/- 0.015% per 2 seconds)
-          const driftDirection = Math.random() > 0.5 ? 1 : -1;
-          const driftPercent = Math.random() * 0.00015; // up to 0.015% move per 2 seconds
-          const priceChange = simulatedDriftPrices[sym] * driftPercent * driftDirection;
-          
-          // Apply step and round cleanly based on futures tick precision
-          const rawNewPrice = simulatedDriftPrices[sym] + priceChange;
-          const tickSize = sym === 'CL=F' ? 0.01 : (sym === 'GC=F' ? 0.10 : 0.25);
-          simulatedDriftPrices[sym] = parseFloat((Math.round(rawNewPrice / tickSize) * tickSize).toFixed(2));
-          
-          currentPrices[sym] = simulatedDriftPrices[sym];
-          livePrices[sym] = simulatedDriftPrices[sym];
-        } else {
-          // Real Yahoo Finance live prices
-          currentPrices[sym] = lastCandle.close;
-          livePrices[sym] = lastCandle.close;
-        }
+  for (const rpt of (report.symbols || [])) {
+    const sym = rpt.symbol.replace('=F', '');
+    text += `── ${sym} ──\n`;
+    for (const [key, b] of Object.entries(rpt.bundles)) {
+      if (!b.trained) {
+        text += `  ${key.padEnd(34)} SKIPPED (${b.reason})\n`;
+        continue;
       }
+      const a = b.aggregate;
+      totalTrades += a.totalTestTrades;
+      weightedWR += a.winRate * a.totalTestTrades;
+      weightedPF += a.profitFactor * a.totalTestTrades;
+      weightSum += a.totalTestTrades;
+      if (a.maxDD > maxDD) maxDD = a.maxDD;
+      const status = b.deployed ? 'deployed' : 'rolled back';
+      text += `  ${key.padEnd(34)} trades=${String(a.totalTestTrades).padEnd(5)} ` +
+              `WR=${(a.winRate*100).toFixed(1)}% PF=${a.profitFactor.toFixed(2)} ` +
+              `Sharpe=${a.sharpe.toFixed(2)} thresh=${b.threshold.toFixed(2)} [${status}]\n`;
+      // Add a chart point per bundle showing cumulative R progression
+      cumulativeR += a.totalTestTrades * (a.winRate * 1.8 - (1 - a.winRate) * 1.0);
+      if (cumulativeR > peakR) peakR = cumulativeR;
+      const dd = peakR - cumulativeR;
+      chartData.push({
+        pointIndex: pointIdx++,
+        date: `${sym} ${key.slice(0, 12)}`,
+        profit: parseFloat(cumulativeR.toFixed(1)),
+        drawdown: parseFloat(dd.toFixed(1))
+      });
     }
+    text += `\n`;
+  }
 
-    const regime = getActiveSessionRegime();
-    // Feed live pricing tick to paper engine
-    updatePortfolioMetrics(currentPrices, regime);
-  }, 2000); // 2 seconds
+  const aggregateWR = weightSum > 0 ? weightedWR / weightSum : 0;
+  const aggregatePF = weightSum > 0 ? weightedPF / weightSum : 0;
+  text += `── AGGREGATE ──\n`;
+  text += `  Total test trades:   ${totalTrades}\n`;
+  text += `  Weighted win rate:   ${(aggregateWR*100).toFixed(1)}%\n`;
+  text += `  Weighted profit factor: ${aggregatePF.toFixed(2)}\n`;
+  text += `  Worst single-bundle max DD: ${maxDD.toFixed(1)} R\n`;
+
+  return {
+    results: text,
+    summary: {
+      totalProfitPercent: parseFloat((cumulativeR * 0.5).toFixed(1)),  // R → rough % at 0.5%/R
+      drawdownPercent: parseFloat((maxDD * 0.5).toFixed(1)),
+      winRate: parseFloat((aggregateWR * 100).toFixed(1)),
+      profitFactor: parseFloat(aggregatePF.toFixed(2)),
+      totalTrades
+    },
+    chartData
+  };
 }
 
-// Strategy analysis loop (runs on schedule, evaluating triggers every 2 minutes)
-async function runStrategyScan() {
-  const now = Date.now();
-  lastSchedulerRun = now;
-
-  // 1. Check Market Trading Hours Schedule
-  const schedule = checkTradingStatus();
-  if (schedule.isClosed) {
-    // In paper / simulation mode, we bypass the closed hour block to allow continuous active trade executions for the user
-    console.log(`[Scheduler] Market Closed (${schedule.reason}) - Simulation Bypass active: Continuing active strategy scanning...`);
+// Legacy shim: the old dashboard expects optimized_settings.json structure.
+// Map current model thresholds into something it can render.
+function _legacySettingsShim() {
+  const models = modelStatus();
+  const out = {};
+  for (const m of models) {
+    if (!out[m.symbol]) out[m.symbol] = { RTH: {}, ETH: {} };
+    const sess = out[m.symbol][m.session] || {};
+    sess[`${m.regime}_${m.direction}_threshold`] = m.threshold;
+    out[m.symbol][m.session] = sess;
+    // Provide a couple of fake legacy keys so the existing dashboard JS doesn't crash
+    if (!sess.emaFast) sess.emaFast = 9;
+    if (!sess.emaSlow) sess.emaSlow = 21;
+    if (!sess.bbStdDev) sess.bbStdDev = 2.0;
+    if (!sess.rsiOversold) sess.rsiOversold = 30;
+    if (!sess.rsiOverbought) sess.rsiOverbought = 70;
   }
-
-  // 2. Check High Impact Economic News Block
-  const news = await getNewsTradingSuspension();
-  if (news.suspensionActive) {
-    console.log(`[Scheduler] Trading suspended for high impact news: ${news.reason}`);
-    return;
+  // Ensure all 4 symbols have entries so the dashboard renders
+  for (const s of ['NQ=F', 'ES=F', 'CL=F', 'GC=F']) {
+    if (!out[s]) out[s] = {
+      RTH: { emaFast: 9, emaSlow: 21 },
+      ETH: { bbStdDev: 2.0, rsiOversold: 30, rsiOverbought: 70 }
+    };
   }
+  return out;
+}
 
-  console.log(`[Scheduler] Running strategy analysis loop at ${new Date().toLocaleTimeString()}...`);
-
+// ── Live-price ticker (low-frequency, mirrors NT8 reality) ──────────────────
+// Old code spammed Yahoo every 2s. New behavior: prices update only when NT8
+// pushes a BAR. updatePortfolioMetrics still gets called to compute equity
+// curves and trigger SL/TP exits on positions opened via /api/state path.
+setInterval(() => {
   const regime = getActiveSessionRegime();
-  const portfolioState = getPortfolioState();
+  updatePortfolioMetrics(livePrices, {
+    ...regime,
+    atrBreakevenMultiplier: 0.8,
+    atrTrailingMultiplier: 1.0
+  });
+}, 5000);
 
-  const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
-
-  for (const sym of symbols) {
-    const acc = portfolioState.accounts[sym];
-    if (acc.status === 'FAILED') continue;
-    if (acc.enabled === false) {
-      console.log(`[Scheduler] Scanning skipped for ${sym}: Trading disabled (OFF).`);
-      continue;
-    }
-    if (acc.activePosition) continue; // Only 1 active position per symbol
-
-    // Fetch 1m (LTF) and 5m (HTF) candle structures
-    const candles1m = await fetchRecentCandles(sym, '1m', '1d');
-    const candles5m = await fetchRecentCandles(sym, '5m', '5d');
-
-    if (candles1m.length < 30 || candles5m.length < 30) {
-      console.log(`[Scheduler] Insufficient candle data for ${sym}, skipping.`);
-      continue;
-    }
-
-    // Load walkforward optimized parameters
-    const { loadOptimizedParameters } = require('./lib/mlOptimizer');
-    const optParams = loadOptimizedParameters(sym, regime.code);
-
-    // Evaluate 7 strategies using 5m HTF trend + 1m LTF wicks
-    let signal = evaluateStrategies(candles1m, candles5m, optParams, regime);
-
-    // Cognitive Simulation Booster: If no active position exists, and no natural signal fired,
-    // simulate an active regime trigger to demonstrate bot operation and risk tracking.
-    // To ensure maximum profit and high visual win rates, simulated trades are strictly aligned with
-    // the institutional 5m 200 EMA High-Timeframe Trend and audited using 1m RSI thresholds (avoiding buying tops/selling bottoms).
-    const isStartupRun = (Date.now() - serverStartTime < 30000);
-    const threshold = isStartupRun ? 0.0 : 0.70;
-
-    if (!signal.shouldBuy && !signal.shouldSell && Math.random() > threshold) {
-      // 1. Calculate actual 5-minute HTF Trend direction (200 EMA filter)
-      const { calculateEMA, calculateRSI } = require('./lib/mlOptimizer');
-      const lastIndex5m = candles5m.length - 1;
-      const ema200_5m = calculateEMA(candles5m, 200);
-      const trend5m = candles5m[lastIndex5m].close > ema200_5m[lastIndex5m] ? 1 : -1;
-      
-      const isBuy = trend5m === 1;
-
-      // 2. Audit and prevent chasing bad prices utilizing 1m RSI
-      const rsi1m = calculateRSI(candles1m, 14);
-      const currentRsi = rsi1m[candles1m.length - 1] || 50;
-
-      let entryAllowed = true;
-      if (isBuy && currentRsi > 68) {
-        console.log(`[Booster] LONG entry blocked for ${sym}: RSI is overbought (${currentRsi.toFixed(1)})`);
-        entryAllowed = false;
-      }
-      if (!isBuy && currentRsi < 32) {
-        console.log(`[Booster] SHORT entry blocked for ${sym}: RSI is oversold (${currentRsi.toFixed(1)})`);
-        entryAllowed = false;
-      }
-
-      if (entryAllowed) {
-        const availableStrategies = regime.code === 'RTH' 
-          ? ['ORB Breakout', 'VWAP Pullback', 'FVG Breakout', 'EMA Crossover', 'Supertrend']
-          : ['BB Reversion', 'Stoch & RSI'];
-        const chosenStrategy = availableStrategies[Math.floor(Math.random() * availableStrategies.length)];
-        
-        // Calculate dynamic ATR based on actual 1-minute historical candles
-        const lastIndex1m = candles1m.length - 1;
-        const atr1m = calculateATR(candles1m, 14);
-        const atrValue = atr1m[lastIndex1m] || 1.5;
-
-        signal = {
-          shouldBuy: isBuy,
-          shouldSell: !isBuy,
-          reason: `Cognitive Signal: High-probability trend-aligned volatility expansion detected using ${chosenStrategy}`,
-          strategyName: chosenStrategy,
-          atr: atrValue
-        };
-      }
-    }
-
-    if (signal.shouldBuy) {
-      console.log(`[Scheduler] 🟢 BUY SIGNAL triggered for ${sym} using ${signal.strategyName}`);
-      const pos = enterTrade(sym, 'Long', livePrices[sym] || candles1m[candles1m.length-1].close, signal.strategyName, signal.atr, regime);
-      if (pos) {
-        sendSignalToNT8('BUY', sym, pos.qty, pos.entryPrice, pos.stopLoss, pos.takeProfit, pos.strategyUsed, pos.beTriggerPrice, pos.trailTriggerPrice);
-      }
-    } else if (signal.shouldSell) {
-      console.log(`[Scheduler] 🔴 SELL SIGNAL triggered for ${sym} using ${signal.strategyName}`);
-      const pos = enterTrade(sym, 'Short', livePrices[sym] || candles1m[candles1m.length-1].close, signal.strategyName, signal.atr, regime);
-      if (pos) {
-        sendSignalToNT8('SELL', sym, pos.qty, pos.entryPrice, pos.stopLoss, pos.takeProfit, pos.strategyUsed, pos.beTriggerPrice, pos.trailTriggerPrice);
-      }
-    }
-  }
-}
-
-async function startStrategyScheduler() {
-  // Run first scan immediately on startup (with a tiny 2-second delay to ensure initial connections are established)
-  setTimeout(async () => {
-    console.log('[Scheduler] Executing initial startup strategy scan...');
-    await runStrategyScan().catch(err => console.error('[Scheduler] Initial startup scan failed:', err));
-  }, 2000);
-
-  setInterval(async () => {
-    await runStrategyScan();
-  }, SCHEDULER_INTERVAL_MS);
-}
-
-// ----------------------------------------------------
-// APPLICATION STARTUP
-// ----------------------------------------------------
+// ── Startup ─────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {
-  console.log(`\n================================================================`);
-  console.log(`🚀 V1 Antigravity Smart Bot Web Server Running on Port ${PORT}`);
-  console.log(`👉 Open http://localhost:${PORT} in your web browser`);
-  console.log(`================================================================\n`);
-  
-  // Send start Telegram message
-  sendTelegramMessage("🚀 Bot Web Server successfully initialized! Monitoring RTH/ETH regimes with zero-dependency architecture.");
+  console.log(`\n╔════════════════════════════════════════════════════════════════╗`);
+  console.log(`║   ANTIGRAVITY v2 — Cockpit Server                            ║`);
+  console.log(`╠════════════════════════════════════════════════════════════════╣`);
+  console.log(`║   Web:        http://localhost:${PORT}                            ║`);
+  console.log(`║   NT8 Bridge: 0.0.0.0:4000  (NT8 sends BAR + METRICS)        ║`);
+  console.log(`║   Mode:       ${TRADING_MODE.toUpperCase().padEnd(7)} (set TRADING_MODE=live to enable orders)║`);
+  console.log(`║   Engine:     Regime-aware GBDT × 24 models (4 sym × 2 sess × 3 reg × 2 dir)║`);
+  console.log(`╚════════════════════════════════════════════════════════════════╝\n`);
 
-  // Pre-load economic items
-  fetchEconomicCalendar().catch(() => console.log('[Startup] Could not fetch economic calendar feed. Retrying later.'));
-
-  // Launch execution loops
-  startRealTimeTicking();
-  startStrategyScheduler();
-  startAutoTrainerScheduler();
-  startPostMarketAuditorScheduler();
+  sendTelegramMessage(`🚀 Antigravity v2 cockpit online — mode=${TRADING_MODE}. Listening for NT8 bars on TCP 4000.`);
+  fetchEconomicCalendar().catch(() => console.log('[Startup] Economic calendar fetch deferred.'));
 });

@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/terminal.css">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -65,39 +66,77 @@
         </div>
       </header>
 
-      <!-- View Tab 1: Active trading cockpit -->
+      <!-- View Tab 1: Trading Floor Terminal (v2) -->
       <div id="view-dashboard" class="tab-view active">
-        <!-- Master KPI grid -->
-        <section class="kpi-grid">
-          <!-- Master Equity Card -->
-          <div class="glass-card kpi-card glow-on-hover gradient-glow-card">
-            <h3>Master Equity</h3>
-            <div class="value" id="kpi-equity">$0.00</div>
-            <div class="metric-footer">
-              <span>Global Balance: <strong id="kpi-balance">$0.00</strong></span>
-            </div>
-          </div>
 
-          <!-- Real-Time Open P&L Card -->
-          <div class="glass-card kpi-card glow-on-hover gradient-glow-card">
-            <h3>Open Profit / Loss</h3>
-            <div class="value neutral" id="kpi-open-pnl">$0.00</div>
-            <div class="metric-footer">
-              <span>Active Trades: <strong id="kpi-active-trades">0</strong></span>
-            </div>
+        <!-- Top compact KPI strip -->
+        <section class="terminal-kpi-strip">
+          <div class="tk-cell">
+            <span class="tk-label">Master Equity</span>
+            <span class="tk-value" id="kpi-equity">$0.00</span>
           </div>
-
-          <!-- Daily Target Card -->
-          <div class="glass-card kpi-card glow-on-hover gradient-glow-card">
-            <h3>Master APX Target</h3>
-            <div class="value" id="kpi-target">$53,000.00</div>
-            <div class="metric-footer">
-              <span class="progress-container">
-                <span class="progress-bar" id="kpi-progress" style="width: 0%"></span>
-              </span>
-            </div>
+          <div class="tk-cell">
+            <span class="tk-label">Open P&amp;L</span>
+            <span class="tk-value neutral" id="kpi-open-pnl">$0.00</span>
+          </div>
+          <div class="tk-cell">
+            <span class="tk-label">Active Trades</span>
+            <span class="tk-value" id="kpi-active-trades">0</span>
+          </div>
+          <div class="tk-cell">
+            <span class="tk-label">Paper WR (v2)</span>
+            <span class="tk-value" id="kpi-paper-wr">—</span>
+          </div>
+          <div class="tk-cell">
+            <span class="tk-label">Paper PF (v2)</span>
+            <span class="tk-value" id="kpi-paper-pf">—</span>
+          </div>
+          <div class="tk-cell">
+            <span class="tk-label">Models Deployed</span>
+            <span class="tk-value" id="kpi-models-on">— / —</span>
+          </div>
+          <div class="tk-cell tk-cell-target">
+            <span class="tk-label">APX Target</span>
+            <span class="tk-value" id="kpi-target">$53,000</span>
+            <div class="tk-progress"><span class="tk-progress-bar" id="kpi-progress" style="width:0%"></span></div>
           </div>
         </section>
+
+        <!-- Trading Floor Terminal — split screen: operations LEFT, live event stream RIGHT -->
+        <section class="terminal-split">
+
+          <!-- LEFT: per-symbol operation cards -->
+          <div class="terminal-ops-pane">
+            <div class="terminal-pane-header">
+              <span class="terminal-pane-title">⚙️ OPERATIONS</span>
+              <span class="terminal-pane-sub" id="ops-pane-sub">4 symbols · monitoring</span>
+            </div>
+            <div id="ops-cards" class="ops-cards-stack">
+              <!-- Populated by renderOpsCards(). One card per symbol. -->
+              <div class="ops-card-placeholder">Waiting for first NT8 bar push on TCP :4000…</div>
+            </div>
+          </div>
+
+          <!-- RIGHT: live event stream -->
+          <div class="terminal-stream-pane">
+            <div class="terminal-pane-header">
+              <span class="terminal-pane-title">📡 LIVE EVENT STREAM</span>
+              <div class="stream-controls">
+                <button class="stream-filter-btn active" data-filter="ALL" onclick="setStreamFilter('ALL')">ALL</button>
+                <button class="stream-filter-btn" data-filter="NQ=F" onclick="setStreamFilter('NQ=F')">NQ</button>
+                <button class="stream-filter-btn" data-filter="ES=F" onclick="setStreamFilter('ES=F')">ES</button>
+                <button class="stream-filter-btn" data-filter="CL=F" onclick="setStreamFilter('CL=F')">CL</button>
+                <button class="stream-filter-btn" data-filter="GC=F" onclick="setStreamFilter('GC=F')">GC</button>
+                <button class="stream-filter-btn" data-filter="ERRORS" onclick="setStreamFilter('ERRORS')">⚠ errors</button>
+                <button class="stream-pause-btn" id="stream-pause-btn" onclick="toggleStreamPause()" title="Pause/resume live stream">⏸</button>
+              </div>
+            </div>
+            <div id="event-stream" class="event-stream"></div>
+          </div>
+        </section>
+
+        <!-- Below the terminal: active positions, news, calendar, trades (slimmer rows) -->
+        <section class="terminal-secondary">
 
         <!-- Sub-accounts cards row -->
         <section class="symbol-accounts-section">
@@ -174,6 +213,7 @@
             </div>
           </aside>
         </div>
+        </section><!-- /.terminal-secondary -->
       </div>
 
       <!-- View Tab 2: Historical backtest suite (Widescreen layout) -->
@@ -185,12 +225,11 @@
             <div style="display:flex; flex-direction:column; gap:20px;">
               <!-- Selection filters -->
               <div class="input-group">
-                <label>Backtest Algorithm</label>
+                <label>Engine</label>
                 <select id="backtest-algorithm-select" class="glass-select" style="width: 100%; padding: 8px !important;">
-                  <option>LSTM Neural Network Model</option>
-                  <option>Multi-Timeframe Confluence Edge</option>
-                  <option>EMA Trend Reversion Hybrid</option>
-                  <option>Train & Compare All 3 Algorithms</option>
+                  <option>Antigravity v2 GBDT (Regime-Aware)</option>
+                  <option>Per-Regime Specialists (deployed bundle)</option>
+                  <option>Show Latest Walkforward Report</option>
                 </select>
               </div>
 
@@ -220,7 +259,11 @@
               </div>
 
               <!-- Backtest execution trigger -->
-              <button class="btn btn-backtest" onclick="runBacktester()" style="width:100%; padding:14px; margin-top: 10px;">⚡ Run 2-3 Yr Backtest</button>
+              <button class="btn btn-backtest" onclick="runBacktester()" style="width:100%; padding:14px; margin-top: 10px;">⚡ Show Walkforward Report</button>
+              <p style="margin-top: 10px; font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+                Reads the latest <code style="color: var(--cyan-glow);">models/latest_report.json</code>.
+                Real walkforward folds — no hardcoded numbers, no sine curves.
+              </p>
             </div>
           </div>
 
@@ -264,27 +307,31 @@
         <div class="backtest-workspace-layout">
           <!-- Left configuration panel -->
           <div class="glass-card config-panel gradient-glow-card" style="padding: 28px;">
-            <h2 class="panel-title" style="font-size:16px; font-weight:800; color:var(--cyan-glow); border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:20px;">🧠 Cognitive Optimization Edge</h2>
+            <h2 class="panel-title" style="font-size:16px; font-weight:800; color:var(--cyan-glow); border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:20px;">🧠 GBDT Walkforward Retrain</h2>
             <div style="display:flex; flex-direction:column; gap:20px;">
               <div class="input-group">
-                <label>Optimization Range Window</label>
+                <label>Training Data Window</label>
                 <select class="glass-select" style="width: 100%; padding: 8px !important;">
-                  <option>30 Days of 5-min candles (Dynamic Grid)</option>
-                  <option>60 Days of 5-min candles (Dense Search)</option>
-                  <option>90 Days of 5-min candles (Deep Walkforward)</option>
+                  <option>Full ~2 yr local NT8 5-min CSVs (default)</option>
+                  <option>Last 90 days only (faster)</option>
+                  <option>Last 30 days only (recency-weighted)</option>
                 </select>
               </div>
 
               <!-- Optimization sliders -->
               <div class="input-group">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <label>Walkforward Grid Search Steps</label>
-                  <span id="label-steps-val" style="font-size: 11px; color: var(--cyan-glow); font-weight:800;">Fine</span>
+                  <label>Training Depth (trees × depth)</label>
+                  <span id="label-steps-val" style="font-size: 11px; color: var(--cyan-glow); font-weight:800;">Quick (50t × d3)</span>
                 </div>
-                <input type="range" class="neon-range-slider" min="1" max="3" value="2" id="optimizer-steps-slider" oninput="updateStepsLabel(this.value)">
+                <input type="range" class="neon-range-slider" min="1" max="3" value="1" id="optimizer-steps-slider" oninput="updateStepsLabel(this.value)">
               </div>
 
-              <button class="btn btn-optimize" onclick="runOptimizer()" style="width:100%; padding:14px; margin-top: 10px;">🧠 Optimize ML Parameters</button>
+              <button class="btn btn-optimize" onclick="runOptimizer()" style="width:100%; padding:14px; margin-top: 10px;">🧠 Run Walkforward Retrain</button>
+              <p style="margin-top: 10px; font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+                Real walkforward grid search: trains GBDTs per regime × session × direction,
+                picks best threshold by Sharpe, deploys (with auto-rollback if worse).
+              </p>
             </div>
             
             <!-- Dynamic parameters transition panel -->
@@ -355,18 +402,18 @@
 
           <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
             <div>
-              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">🎯 Dynamic Parameters & Self-Healing Registry</h3>
+              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">🎯 Model Registry &amp; Retrain Flags</h3>
               <div class="backtest-results-box" id="auditor-summary" style="height: 120px; margin-bottom: 10px; background: rgba(5,7,12,0.6); padding: 15px; border-radius: 8px; font-size:13px; border:1px solid rgba(255,255,255,0.04); overflow-y: auto; line-height: 1.6;">
-                🧠 Auditor is armed and active in the background. Ready to scan wicks and adjust parameters for the next month. Click [Run Diagnostics Sweep] to analyze today's wicks manually.
+                🧠 Loss auditor active. Records every closed trade's feature snapshot, model probability, and outcome. Flags a bucket for retrain only after 50+ trade sample.
               </div>
             </div>
 
             <div>
-              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">📋 Holographic Diagnostics & Whipsaw Audit Logs</h3>
+              <h3 class="panel-title" style="font-size:12px; font-weight:600; margin-bottom:10px; color:var(--text-secondary);">📋 Bucket Stats &amp; Top Loss-Attribution Features</h3>
               <div class="backtest-results-box" id="auditor-logs" style="height: 300px; background: rgba(5,7,12,0.8); border: 1px solid rgba(255,255,255,0.05); font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; line-height: 1.5; color: #a5b4fc; padding: 15px; border-radius: 8px; overflow-y: auto; text-align: left; white-space: pre-wrap;">
-[System Status] Cognitive diagnostics listening on TCP port 4000...
-[System Status] Standard win-rate optimization threshold locked at 80%.
-[System Status] Awaiting trades...
+[System Status] Cockpit listening for NT8 bar pushes on TCP 4000.
+[System Status] Win-rate floor for retain-vs-rollback: 55% (Sharpe-optimized).
+[System Status] Awaiting closed paper trades (min 30 per bucket before useful stats)…
               </div>
             </div>
           </div>
@@ -376,5 +423,6 @@
   </div>
 
   <script src="js/app.js"></script>
+  <script src="js/terminal.js"></script>
 </body>
 </html>

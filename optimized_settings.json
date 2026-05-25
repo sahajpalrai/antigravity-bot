@@ -6,9 +6,9 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 1.75,
-      "rsiOversold": 30,
-      "rsiOverbought": 70,
+      "bbStdDev": 2.35,
+      "rsiOversold": 25,
+      "rsiOverbought": 75,
       "stochOversold": 25,
       "stochOverbought": 75
     }
@@ -20,9 +20,9 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 1.75,
-      "rsiOversold": 27,
-      "rsiOverbought": 73,
+      "bbStdDev": 2.35,
+      "rsiOversold": 25,
+      "rsiOverbought": 75,
       "stochOversold": 22,
       "stochOverbought": 78
     }
@@ -34,9 +34,9 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 1.75,
-      "rsiOversold": 32,
-      "rsiOverbought": 68,
+      "bbStdDev": 2.35,
+      "rsiOversold": 25,
+      "rsiOverbought": 75,
       "stochOversold": 25,
       "stochOverbought": 75
     }
@@ -48,9 +48,9 @@
     },
     "ETH": {
       "bbPeriod": 20,
-      "bbStdDev": 2.15,
-      "rsiOversold": 32,
-      "rsiOverbought": 68,
+      "bbStdDev": 2.35,
+      "rsiOversold": 25,
+      "rsiOverbought": 75,
       "stochOversold": 25,
       "stochOverbought": 75
     }

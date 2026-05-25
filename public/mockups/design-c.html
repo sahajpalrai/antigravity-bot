@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design C — Bloomberg Tape Console</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Outfit:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050608;
+    --panel: #0c0f14;
+    --panel2: #131820;
+    --border: rgba(255,255,255,0.06);
+    --text: #e8eaed;
+    --muted: #6b7280;
+    --amber: #ffb700;
+    --green: #00d97e;
+    --red: #ff4757;
+    --cyan: #00d4ff;
+    --orange: #ff8c00;
+    --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 12px;
+    padding: 0;
+    min-height: 100vh;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px;
+    background: linear-gradient(180deg, #0e1218, #0a0d12);
+    border-bottom: 1px solid var(--border);
+    height: 44px;
+  }
+  .brand {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 1.5px;
+    color: var(--amber);
+  }
+  .brand small { color: var(--muted); margin-left: 8px; font-weight: 400; }
+  .top-right { display: flex; gap: 14px; align-items: center; font-size: 11px; }
+  .contract-toggle {
+    display: flex;
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .contract-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 5px 14px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  .contract-toggle button.active {
+    background: var(--amber);
+    color: #000;
+  }
+  .sess { color: var(--green); font-weight: 800; }
+  .clock { color: var(--muted); }
+
+  /* Global ribbon — bid/ask tape across the top */
+  .ribbon {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    padding: 8px 14px;
+    background: var(--panel2);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    gap: 8px;
+  }
+  .rib-cell { display: flex; flex-direction: column; gap: 2px; }
+  .rib-lab { color: var(--muted); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+  .rib-val { font-weight: 800; }
+  .rib-val.pos { color: var(--green); }
+  .rib-val.neg { color: var(--red); }
+
+  /* Symbol rows */
+  .symbols { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: grid;
+    grid-template-columns: 70px 110px 220px 1fr 1fr 120px 100px 70px;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .row:hover { background: var(--panel2); }
+  .row.fire-long  { border-left: 3px solid var(--green); background: linear-gradient(90deg, rgba(0,217,126,0.06), transparent 30%); }
+  .row.fire-short { border-left: 3px solid var(--red);   background: linear-gradient(90deg, rgba(255,71,87,0.06), transparent 30%); }
+  .row.chop       { opacity: 0.55; }
+  .row.off        { opacity: 0.4; }
+
+  .col-sym {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sym-name {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: -0.5px;
+  }
+  .px-block {
+    display: flex;
+    flex-direction: column;
+  }
+  .px {
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--amber);
+    font-feature-settings: "tnum";
+  }
+  .px-chg.pos { color: var(--green); font-size: 10px; }
+  .px-chg.neg { color: var(--red); font-size: 10px; }
+
+  .col-regime {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .r-tag {
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    text-align: center;
+    width: fit-content;
+  }
+  .r-tag.up   { background: rgba(0,217,126,0.12); color: var(--green);  border: 1px solid rgba(0,217,126,0.3); }
+  .r-tag.down { background: rgba(255,71,87,0.12); color: var(--red);    border: 1px solid rgba(255,71,87,0.3); }
+  .r-tag.vol  { background: rgba(0,212,255,0.12); color: var(--cyan);   border: 1px solid rgba(0,212,255,0.3); }
+  .r-tag.chop { background: rgba(107,114,128,0.15); color: var(--muted); border: 1px solid rgba(107,114,128,0.3); }
+  .sess-tag { font-size: 9px; color: var(--muted); }
+
+  .col-spec {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .col-spec strong { color: var(--text); }
+  .col-spec-meta { color: var(--purple); font-size: 9px; }
+
+  /* Long/Short bar pair */
+  .col-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .bar-row {
+    display: grid;
+    grid-template-columns: 14px 1fr 40px;
+    gap: 6px;
+    align-items: center;
+    font-size: 10px;
+  }
+  .bar-l { color: var(--green); font-weight: 800; }
+  .bar-s { color: var(--red); font-weight: 800; }
+  .bar-track {
+    position: relative;
+    height: 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .bar-fill { display: block; height: 100%; }
+  .bar-fill.long  { background: linear-gradient(90deg, rgba(0,217,126,0.3), var(--green)); }
+  .bar-fill.short { background: linear-gradient(90deg, rgba(255,71,87,0.3), var(--red)); }
+  .bar-th {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--amber);
+    box-shadow: 0 0 4px var(--amber);
+  }
+  .bar-val {
+    text-align: right;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+  }
+  .bar-val.hit { color: var(--green); }
+  .bar-val.hit-s { color: var(--red); }
+
+  /* Position */
+  .col-pos {
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .pos-dir.long  { color: var(--green); font-weight: 800; }
+  .pos-dir.short { color: var(--red); font-weight: 800; }
+  .pos-px { color: var(--text); }
+
+  /* P&L */
+  .col-pnl {
+    text-align: right;
+    font-feature-settings: "tnum";
+  }
+  .pnl-num { font-weight: 800; font-size: 14px; }
+  .pnl-num.pos { color: var(--green); }
+  .pnl-num.neg { color: var(--red); }
+  .pnl-sub { font-size: 9px; color: var(--muted); }
+
+  /* ON/OFF */
+  .col-onoff { display: flex; justify-content: flex-end; }
+  .onoff-pill {
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+  }
+  .onoff-pill.on  { background: rgba(0,217,126,0.15); color: var(--green); border: 1px solid var(--green); }
+  .onoff-pill.off { background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid rgba(255,255,255,0.15); }
+
+  /* Verdict pill (extends from regime cell, sits at top of row visually) */
+  .verdict-tag {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    width: fit-content;
+  }
+  .verdict-tag.long  { background: var(--green); color: #000; box-shadow: 0 0 12px rgba(0,217,126,0.5); animation: blink 1.4s infinite; }
+  .verdict-tag.short { background: var(--red); color: #000; box-shadow: 0 0 12px rgba(255,71,87,0.5); animation: blink 1.4s infinite; }
+  .verdict-tag.wait  { background: rgba(107,114,128,0.2); color: var(--muted); border: 1px solid rgba(107,114,128,0.3); }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.7; } }
+
+  /* Event tape at bottom */
+  .tape {
+    border-top: 1px solid var(--border);
+    background: var(--panel2);
+    padding: 10px 14px;
+    height: 220px;
+    overflow-y: auto;
+    margin-top: 14px;
+  }
+  .tape-h {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+    border-bottom: 1px dashed rgba(255,255,255,0.05);
+  }
+  .tape-h-t {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--amber);
+  }
+  .tape-line {
+    display: grid;
+    grid-template-columns: 80px 60px 50px 1fr;
+    gap: 10px;
+    padding: 2px 4px;
+    font-size: 10.5px;
+    line-height: 1.7;
+    border-radius: 2px;
+  }
+  .tape-line:hover { background: rgba(255,255,255,0.025); }
+  .tt { color: var(--muted); }
+  .ts { color: var(--cyan); font-weight: 800; }
+  .ty { color: var(--muted); font-weight: 700; }
+  .tm { color: var(--text); }
+  .tape-line.t-ENT .tm { color: var(--green); }
+  .tape-line.t-EXT .tm { color: var(--orange); }
+  .tape-line.t-REG .tm { color: var(--purple); }
+  .tape-line.t-BLK .tm { color: var(--muted); }
+  .tape-line.t-BAR { opacity: 0.5; }
+
+  .back {
+    position: fixed;
+    top: 10px;
+    right: 14px;
+    background: rgba(255,183,0,0.12);
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    border-radius: 3px;
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 800;
+    text-decoration: none;
+    z-index: 100;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← MOCKUPS</a>
+
+<div class="topbar">
+  <div class="brand">▮▮▮ ANTIGRAVITY v2 <small>Design C — Bloomberg Tape Console</small></div>
+  <div class="top-right">
+    <div class="contract-toggle" id="contractToggle">
+      <button class="active" data-c="mini">MINI</button>
+      <button data-c="micro">MICRO</button>
+    </div>
+    <span class="sess">● RTH</span>
+    <span class="clock">14:23:18 PT · 17:23:18 ET</span>
+  </div>
+</div>
+
+<!-- Ribbon: global state strip -->
+<div class="ribbon">
+  <div class="rib-cell"><div class="rib-lab">Equity</div><div class="rib-val">$289,212</div></div>
+  <div class="rib-cell"><div class="rib-lab">Open PnL</div><div class="rib-val pos">+$2,200</div></div>
+  <div class="rib-cell"><div class="rib-lab">Today</div><div class="rib-val pos">+$1,160</div></div>
+  <div class="rib-cell"><div class="rib-lab">Trades</div><div class="rib-val">3W · 1L</div></div>
+  <div class="rib-cell"><div class="rib-lab">Paper WR</div><div class="rib-val pos">66.7%</div></div>
+  <div class="rib-cell"><div class="rib-lab">Paper PF</div><div class="rib-val pos">2.84</div></div>
+  <div class="rib-cell"><div class="rib-lab">Models</div><div class="rib-val">14 / 48</div></div>
+  <div class="rib-cell"><div class="rib-lab">DD Buffer</div><div class="rib-val pos">87%</div></div>
+</div>
+
+<div class="symbols">
+
+  <!-- NQ — FIRE SHORT -->
+  <div class="row fire-short">
+    <div class="col-sym">
+      <div>
+        <div class="sym-name" data-sym-mini="NQ" data-sym-micro="MNQ">NQ</div>
+        <div style="font-size:9px; color:var(--muted);">E-mini Nasdaq</div>
+      </div>
+    </div>
+    <div class="px-block">
+      <div class="px">21,430.25</div>
+      <div class="px-chg neg">−18.50 (−0.09%)</div>
+    </div>
+    <div class="col-regime">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span class="r-tag vol">VOL EXP</span>
+        <span class="sess-tag">RTH</span>
+      </div>
+      <span class="verdict-tag short">▼ FIRE SHORT</span>
+    </div>
+    <div class="col-spec">
+      active: <strong>NQ_RTH_VOL_EXPANSION_short</strong><br>
+      <span class="col-spec-meta">WR 61.3% · PF 3.59 · 119 trades</span>
+    </div>
+    <div class="col-bar">
+      <div class="bar-row"><span class="bar-l">L</span><div class="bar-track"><span class="bar-fill long" style="width:34%;"></span><span class="bar-th" style="left:68%;"></span></div><span class="bar-val">34%</span></div>
+      <div class="bar-row"><span class="bar-s">S</span><div class="bar-track"><span class="bar-fill short" style="width:71%;"></span><span class="bar-th" style="left:62%;"></span></div><span class="bar-val hit-s">71%</span></div>
+    </div>
+    <div class="col-pos">
+      <span class="pos-dir short">SHORT × 1</span><br>
+      <span class="pos-px">@ 21,430.25</span>
+    </div>
+    <div class="col-pnl">
+      <div class="pnl-num pos">+$240</div>
+      <div class="pnl-sub">+1.2 R</div>
+    </div>
+    <div class="col-onoff"><span class="onoff-pill on">● ON</span></div>
+  </div>
+
+  <!-- ES — FIRE LONG -->
+  <div class="row fire-long">
+    <div class="col-sym">
+      <div>
+        <div class="sym-name" data-sym-mini="ES" data-sym-micro="MES">ES</div>
+        <div style="font-size:9px; color:var(--muted);">E-mini S&amp;P</div>
+      </div>
+    </div>
+    <div class="px-block">
+      <div class="px">5,841.50</div>
+      <div class="px-chg pos">+11.75 (+0.20%)</div>
+    </div>
+    <div class="col-regime">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span class="r-tag up">TREND UP</span>
+        <span class="sess-tag">ETH</span>
+      </div>
+      <span class="verdict-tag long">▲ FIRE LONG</span>
+    </div>
+    <div class="col-spec">
+      active: <strong>ES_ETH_TREND_UP_long</strong><br>
+      <span class="col-spec-meta">WR 57.6% · PF 3.26 · 139 trades</span>
+    </div>
+    <div class="col-bar">
+      <div class="bar-row"><span class="bar-l">L</span><div class="bar-track"><span class="bar-fill long" style="width:74%;"></span><span class="bar-th" style="left:68%;"></span></div><span class="bar-val hit">74%</span></div>
+      <div class="bar-row"><span class="bar-s">S</span><div class="bar-track"><span class="bar-fill short" style="width:18%;"></span><span class="bar-th" style="left:72%;"></span></div><span class="bar-val">18%</span></div>
+    </div>
+    <div class="col-pos">
+      <span class="pos-dir long">LONG × 1</span><br>
+      <span class="pos-px">@ 5,840.25</span>
+    </div>
+    <div class="col-pnl">
+      <div class="pnl-num pos">+$72</div>
+      <div class="pnl-sub">+0.4 R</div>
+    </div>
+    <div class="col-onoff"><span class="onoff-pill on">● ON</span></div>
+  </div>
+
+  <!-- CL — CHOP -->
+  <div class="row chop">
+    <div class="col-sym">
+      <div>
+        <div class="sym-name" data-sym-mini="CL" data-sym-micro="MCL">CL</div>
+        <div style="font-size:9px; color:var(--muted);">Crude Oil</div>
+      </div>
+    </div>
+    <div class="px-block">
+      <div class="px">72.41</div>
+      <div class="px-chg neg">−0.58 (−0.79%)</div>
+    </div>
+    <div class="col-regime">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span class="r-tag chop">CHOP</span>
+        <span class="sess-tag">RTH</span>
+      </div>
+      <span class="verdict-tag wait">CHOP — STAND DOWN</span>
+    </div>
+    <div class="col-spec" style="opacity:0.6;">
+      no specialist active<br>
+      <span class="col-spec-meta">CHOP regime · waiting for ADX ≥ 22</span>
+    </div>
+    <div class="col-bar" style="opacity:0.5;">
+      <div class="bar-row"><span class="bar-l">L</span><div class="bar-track"></div><span class="bar-val">—</span></div>
+      <div class="bar-row"><span class="bar-s">S</span><div class="bar-track"></div><span class="bar-val">—</span></div>
+    </div>
+    <div class="col-pos" style="color:var(--muted);">no position</div>
+    <div class="col-pnl">
+      <div class="pnl-num" style="color:var(--muted);">—</div>
+      <div class="pnl-sub">flat today</div>
+    </div>
+    <div class="col-onoff"><span class="onoff-pill on">● ON</span></div>
+  </div>
+
+  <!-- GC — OFF -->
+  <div class="row off">
+    <div class="col-sym">
+      <div>
+        <div class="sym-name" data-sym-mini="GC" data-sym-micro="MGC">GC</div>
+        <div style="font-size:9px; color:var(--muted);">Gold</div>
+      </div>
+    </div>
+    <div class="px-block">
+      <div class="px">2,620.10</div>
+      <div class="px-chg pos">+2.40 (+0.09%)</div>
+    </div>
+    <div class="col-regime">
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span class="r-tag down">TREND DN</span>
+        <span class="sess-tag">ETH</span>
+      </div>
+      <span class="verdict-tag wait">SYMBOL OFF</span>
+    </div>
+    <div class="col-spec">
+      long: <strong style="color:var(--red);">⊘ GATED</strong> (WR 41%)<br>
+      <span class="col-spec-meta">short specialist available</span>
+    </div>
+    <div class="col-bar" style="opacity:0.5;">
+      <div class="bar-row"><span class="bar-l">L</span><div class="bar-track"><span class="bar-fill long" style="width:42%; opacity:0.5;"></span></div><span class="bar-val">gated</span></div>
+      <div class="bar-row"><span class="bar-s">S</span><div class="bar-track"><span class="bar-fill short" style="width:55%;"></span><span class="bar-th" style="left:65%;"></span></div><span class="bar-val">55%</span></div>
+    </div>
+    <div class="col-pos" style="color:var(--muted);">paused</div>
+    <div class="col-pnl">
+      <div class="pnl-num" style="color:var(--muted);">$0</div>
+      <div class="pnl-sub">trading off</div>
+    </div>
+    <div class="col-onoff"><span class="onoff-pill off">○ OFF</span></div>
+  </div>
+
+</div>
+
+<!-- Event tape -->
+<div class="tape">
+  <div class="tape-h">
+    <span class="tape-h-t">▮▮▮ EVENT TAPE (live)</span>
+    <span style="font-size:9px; color:var(--muted);">filters: ALL · NQ · ES · CL · GC · ERRORS</span>
+  </div>
+  <div class="tape-line t-ENT"><span class="tt">14:25:00</span><span class="ts">NQ</span><span class="ty">ENT</span><span class="tm">PAPER SHORT 1 @ 21430.25 SL=21458 TP=21380 (VOL_EXPANSION_short)</span></div>
+  <div class="tape-line t-DEC"><span class="tt">14:25:00</span><span class="ts">NQ</span><span class="ty">DEC</span><span class="tm">SELL prob=0.71 ≥ thresh=0.62</span></div>
+  <div class="tape-line t-BAR"><span class="tt">14:25:00</span><span class="ts">NQ</span><span class="ty">BAR</span><span class="tm">close=21430.25 atr=18.4 vol=1822</span></div>
+  <div class="tape-line t-ENT"><span class="tt">14:24:55</span><span class="ts">ES</span><span class="ty">ENT</span><span class="tm">PAPER LONG 1 @ 5840.25 SL=5832 TP=5856 (TREND_UP_long)</span></div>
+  <div class="tape-line t-DEC"><span class="tt">14:24:55</span><span class="ts">ES</span><span class="ty">DEC</span><span class="tm">BUY prob=0.74 ≥ thresh=0.68</span></div>
+  <div class="tape-line t-BAR"><span class="tt">14:24:50</span><span class="ts">CL</span><span class="ty">BAR</span><span class="tm">close=72.41 atr=0.18 — regime=CHOP</span></div>
+  <div class="tape-line t-BLK"><span class="tt">14:24:45</span><span class="ts">GC</span><span class="ty">BLK</span><span class="tm">decision suppressed — symbol toggled OFF on dashboard</span></div>
+  <div class="tape-line t-REG"><span class="tt">14:24:00</span><span class="ts">ES</span><span class="ty">REG</span><span class="tm">regime: CHOP → TREND_UP (ADX 22.8, stack up)</span></div>
+  <div class="tape-line t-EXT"><span class="tt">14:22:30</span><span class="ts">NQ</span><span class="ty">EXT</span><span class="tm">PAPER LONG closed @ 21420.50 +$120.00 (TP hit, +1.8R)</span></div>
+  <div class="tape-line t-DEC"><span class="tt">14:20:00</span><span class="ts">NQ</span><span class="ty">DEC</span><span class="tm">FLAT — below threshold (long=0.42&lt;0.68, short=0.31&lt;0.62)</span></div>
+</div>
+
+<script>
+  document.querySelectorAll('#contractToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#contractToggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.c;
+      document.querySelectorAll('.sym-name').forEach(s => {
+        s.textContent = mode === 'micro' ? s.dataset.symMicro : s.dataset.symMini;
+      });
+    });
+  });
+</script>
+</body>
+</html>

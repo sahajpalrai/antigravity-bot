@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design A — Trading Floor Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --text: #f5f6f8;
+    --muted: #9aa0a6;
+    --cyan: #00F0FF;
+    --green: #39ff14;
+    --red: #ff3838;
+    --orange: #ff9800;
+    --purple: #7a3bf5;
+    --border: rgba(255,255,255,0.07);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(at 50% 0%, rgba(0,240,255,0.06), transparent 50%), #0a0c10;
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    padding: 24px;
+    min-height: 100vh;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .brand {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+  }
+  .brand span { color: var(--cyan); }
+  .top-meta {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .regime-pill {
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: rgba(57,255,20,0.1);
+    color: var(--green);
+    border: 1px solid rgba(57,255,20,0.3);
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+
+  /* MINI/MICRO toggle — required */
+  .contract-toggle {
+    display: flex;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+  }
+  .contract-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 5px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+  }
+  .contract-toggle button.active {
+    background: rgba(0,240,255,0.18);
+    color: var(--cyan);
+    box-shadow: 0 0 12px rgba(0,240,255,0.2);
+  }
+
+  /* KPI strip */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background: rgba(11,14,30,0.5);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    backdrop-filter: blur(14px);
+  }
+  .kpi { padding: 0 8px; border-right: 1px dashed rgba(255,255,255,0.05); }
+  .kpi:last-child { border-right: none; }
+  .kpi-label {
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+  }
+  .kpi-val { font-size: 16px; font-weight: 800; margin-top: 3px; }
+  .kpi-val.pos { color: var(--green); }
+  .kpi-val.neg { color: var(--red); }
+
+  /* Split layout */
+  .split {
+    display: grid;
+    grid-template-columns: 1.05fr 1.6fr;
+    gap: 16px;
+    height: 580px;
+  }
+
+  .pane {
+    background: rgba(11,14,30,0.55);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    backdrop-filter: blur(16px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .pane-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pane-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+  .pane-sub { font-size: 10px; color: var(--muted); }
+
+  /* Operations cards */
+  .ops { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+  .ops-card {
+    background: rgba(20,25,38,0.7);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .ops-card.fire-short { border-color: rgba(255,56,56,0.45); box-shadow: 0 0 16px rgba(255,56,56,0.1); }
+  .ops-card.fire-long  { border-color: rgba(57,255,20,0.45); box-shadow: 0 0 16px rgba(57,255,20,0.1); }
+  .ops-card.chop { opacity: 0.6; }
+  .ops-card.disabled { opacity: 0.4; filter: grayscale(40%); }
+
+  .ops-head { display: flex; justify-content: space-between; align-items: center; }
+  .ops-sym { font-size: 16px; font-weight: 800; }
+  .ops-onoff {
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+  }
+  .ops-onoff.on { background: rgba(57,255,20,0.15); color: var(--green); border: 1px solid var(--green); }
+  .ops-onoff.off { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid rgba(255,255,255,0.1); }
+
+  .ops-row2 { display: flex; align-items: center; gap: 8px; }
+  .r-pill {
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+  .r-pill.up   { background: rgba(57,255,20,0.12); color: var(--green); border: 1px solid rgba(57,255,20,0.3); }
+  .r-pill.down { background: rgba(255,56,56,0.12); color: var(--red);   border: 1px solid rgba(255,56,56,0.3); }
+  .r-pill.vol  { background: rgba(0,240,255,0.12); color: var(--cyan);  border: 1px solid rgba(0,240,255,0.3); }
+  .r-pill.chop { background: rgba(154,160,166,0.1); color: var(--muted); border: 1px solid rgba(154,160,166,0.2); }
+  .fire-badge {
+    margin-left: auto;
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+  .fire-badge.long  { background: rgba(57,255,20,0.2);  color: var(--green); border: 1px solid var(--green); }
+  .fire-badge.short { background: rgba(255,56,56,0.2);  color: var(--red);   border: 1px solid var(--red); }
+  .fire-badge.wait  { background: rgba(154,160,166,0.1); color: var(--muted); border: 1px solid rgba(154,160,166,0.25); }
+
+  .spec {
+    font-family: 'Consolas', monospace;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .spec strong { color: var(--text); }
+
+  .prob {
+    display: grid;
+    grid-template-columns: 24px 1fr 44px;
+    gap: 8px;
+    align-items: center;
+    font-size: 11px;
+  }
+  .prob-l { color: var(--green); font-weight: 800; }
+  .prob-s { color: var(--red);   font-weight: 800; }
+  .prob-track {
+    position: relative;
+    height: 8px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .prob-fill { display: block; height: 100%; border-radius: 4px; }
+  .prob-fill.long  { background: linear-gradient(90deg, rgba(57,255,20,0.3), var(--green)); }
+  .prob-fill.short { background: linear-gradient(90deg, rgba(255,56,56,0.3), var(--red)); }
+  .prob-th {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: rgba(255,255,255,0.5);
+  }
+  .prob-val { text-align: right; font-weight: 700; font-feature-settings: "tnum"; }
+
+  .ops-pos {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+  .ops-pos.has { background: rgba(0,240,255,0.05); border-color: rgba(0,240,255,0.2); }
+  .ops-pos strong { color: var(--text); }
+
+  /* Event stream */
+  .stream {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 14px 14px 14px;
+    font-family: 'Consolas', monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+  .ev {
+    display: grid;
+    grid-template-columns: 70px 40px 38px 1fr;
+    gap: 8px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border-left: 2px solid transparent;
+    align-items: baseline;
+  }
+  .ev.t-DEC  { border-left-color: rgba(0,240,255,0.4); }
+  .ev.t-ENT  { border-left-color: var(--green); background: rgba(57,255,20,0.04); }
+  .ev.t-EXT  { border-left-color: var(--orange); background: rgba(255,152,0,0.04); }
+  .ev.t-REG  { border-left-color: rgba(122,59,245,0.5); background: rgba(122,59,245,0.04); }
+  .ev.t-BAR  { opacity: 0.55; }
+  .ev.t-BLK  { color: var(--muted); border-left-color: rgba(255,56,56,0.3); }
+  .ev-t  { color: var(--muted); font-size: 10px; }
+  .ev-s  { font-weight: 800; color: var(--cyan); font-size: 10px; text-align: center; }
+  .ev-y  { font-weight: 700; font-size: 9px; color: var(--muted); }
+  .ev-m  { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .stream-filters { display: flex; gap: 4px; }
+  .sf {
+    font-size: 9px; font-weight: 800; padding: 4px 10px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.07);
+    cursor: pointer;
+  }
+  .sf.active { background: rgba(0,240,255,0.15); color: var(--cyan); border-color: var(--cyan); }
+
+  .back {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    background: rgba(0,240,255,0.1);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← Back to mockups</a>
+
+<div class="topbar">
+  <div class="brand">⚡ ANTIGRAVITY <span>v2</span> · DESIGN A — Trading Floor Terminal</div>
+  <div class="top-meta">
+    <div class="contract-toggle" id="contractToggle">
+      <button class="active" data-c="mini">MINI</button>
+      <button data-c="micro">MICRO</button>
+    </div>
+    <span class="regime-pill">● RTH</span>
+    <span>14:23:18 PT</span>
+  </div>
+</div>
+
+<div class="kpi-strip">
+  <div class="kpi"><div class="kpi-label">Master Equity</div><div class="kpi-val">$289,212</div></div>
+  <div class="kpi"><div class="kpi-label">Open P&amp;L</div><div class="kpi-val pos">+$2,200</div></div>
+  <div class="kpi"><div class="kpi-label">Active Trades</div><div class="kpi-val">2</div></div>
+  <div class="kpi"><div class="kpi-label">Paper WR (v2)</div><div class="kpi-val">66.7% (12)</div></div>
+  <div class="kpi"><div class="kpi-label">Paper PF (v2)</div><div class="kpi-val pos">2.84</div></div>
+  <div class="kpi"><div class="kpi-label">Models On</div><div class="kpi-val">14/48</div></div>
+  <div class="kpi"><div class="kpi-label">APX Target</div><div class="kpi-val">$53,000</div></div>
+</div>
+
+<div class="split">
+  <!-- LEFT: ops cards -->
+  <div class="pane">
+    <div class="pane-head">
+      <span class="pane-title">⚙ OPERATIONS</span>
+      <span class="pane-sub" id="paneSub">PAPER · 4 mini contracts</span>
+    </div>
+    <div class="ops">
+
+      <div class="ops-card fire-short">
+        <div class="ops-head">
+          <span class="ops-sym" data-sym-mini="NQ" data-sym-micro="MNQ">NQ</span>
+          <span class="ops-onoff on">● ON</span>
+        </div>
+        <div class="ops-row2">
+          <span class="r-pill vol">VOL EXP</span>
+          <span style="font-size:9px; color:var(--muted);">RTH</span>
+          <span class="fire-badge short">▼ FIRE SHORT</span>
+        </div>
+        <div class="spec">active: <strong>NQ_RTH_VOL_EXPANSION_short</strong></div>
+        <div class="prob"><span class="prob-l">L</span><div class="prob-track"><span class="prob-fill long" style="width:34%;"></span><span class="prob-th" style="left:68%;"></span></div><span class="prob-val">34%</span></div>
+        <div class="prob"><span class="prob-s">S</span><div class="prob-track"><span class="prob-fill short" style="width:71%;"></span><span class="prob-th" style="left:62%;"></span></div><span class="prob-val" style="color:var(--red);">71%</span></div>
+        <div class="ops-pos has"><span>Short × 1 @ 21430.25</span><strong style="color:var(--green);">+$240</strong></div>
+      </div>
+
+      <div class="ops-card fire-long">
+        <div class="ops-head">
+          <span class="ops-sym" data-sym-mini="ES" data-sym-micro="MES">ES</span>
+          <span class="ops-onoff on">● ON</span>
+        </div>
+        <div class="ops-row2">
+          <span class="r-pill up">TREND UP</span>
+          <span style="font-size:9px; color:var(--muted);">ETH</span>
+          <span class="fire-badge long">▲ FIRE LONG</span>
+        </div>
+        <div class="spec">active: <strong>ES_ETH_TREND_UP_long</strong></div>
+        <div class="prob"><span class="prob-l">L</span><div class="prob-track"><span class="prob-fill long" style="width:74%;"></span><span class="prob-th" style="left:68%;"></span></div><span class="prob-val" style="color:var(--green);">74%</span></div>
+        <div class="prob"><span class="prob-s">S</span><div class="prob-track"><span class="prob-fill short" style="width:18%;"></span><span class="prob-th" style="left:72%;"></span></div><span class="prob-val">18%</span></div>
+        <div class="ops-pos has"><span>Long × 1 @ 5840.25</span><strong style="color:var(--green);">+$72</strong></div>
+      </div>
+
+      <div class="ops-card chop">
+        <div class="ops-head">
+          <span class="ops-sym" data-sym-mini="CL" data-sym-micro="MCL">CL</span>
+          <span class="ops-onoff on">● ON</span>
+        </div>
+        <div class="ops-row2">
+          <span class="r-pill chop">CHOP</span>
+          <span style="font-size:9px; color:var(--muted);">RTH</span>
+          <span class="fire-badge wait">CHOP</span>
+        </div>
+        <div class="spec">CHOP — no specialist active</div>
+        <div class="prob"><span class="prob-l">L</span><div class="prob-track"><span class="prob-fill long" style="width:0%;"></span></div><span class="prob-val" style="opacity:0.5;">—</span></div>
+        <div class="prob"><span class="prob-s">S</span><div class="prob-track"><span class="prob-fill short" style="width:0%;"></span></div><span class="prob-val" style="opacity:0.5;">—</span></div>
+        <div class="ops-pos"><span>no open position</span><span>px 72.41</span></div>
+      </div>
+
+      <div class="ops-card">
+        <div class="ops-head">
+          <span class="ops-sym" data-sym-mini="GC" data-sym-micro="MGC">GC</span>
+          <span class="ops-onoff off">○ OFF</span>
+        </div>
+        <div class="ops-row2">
+          <span class="r-pill down">TREND DN</span>
+          <span style="font-size:9px; color:var(--muted);">ETH</span>
+          <span class="fire-badge wait">WAIT</span>
+        </div>
+        <div class="spec">active: <strong>GC_ETH_TREND_DOWN_{long|short}</strong></div>
+        <div class="prob"><span class="prob-l">L</span><div class="prob-track"><span class="prob-fill long" style="width:42%;"></span><span class="prob-th" style="left:62%;"></span></div><span class="prob-val" style="opacity:0.5;">gated</span></div>
+        <div class="prob"><span class="prob-s">S</span><div class="prob-track"><span class="prob-fill short" style="width:55%;"></span><span class="prob-th" style="left:65%;"></span></div><span class="prob-val">55%</span></div>
+        <div class="ops-pos"><span>symbol OFF — paused</span><span>px 2620.10</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: event stream -->
+  <div class="pane">
+    <div class="pane-head">
+      <span class="pane-title">📡 LIVE EVENT STREAM</span>
+      <div class="stream-filters">
+        <button class="sf active">ALL</button>
+        <button class="sf">NQ</button>
+        <button class="sf">ES</button>
+        <button class="sf">CL</button>
+        <button class="sf">GC</button>
+        <button class="sf">⚠ errors</button>
+        <button class="sf">⏸</button>
+      </div>
+    </div>
+    <div class="stream">
+      <div class="ev t-ENT"><span class="ev-t">14:25:00</span><span class="ev-s">NQ</span><span class="ev-y">ENT</span><span class="ev-m">📍 PAPER Short @ 21430.25 SL=21458 TP=21380 (VOL_EXPANSION)</span></div>
+      <div class="ev t-DEC"><span class="ev-t">14:25:00</span><span class="ev-s">NQ</span><span class="ev-y">DEC</span><span class="ev-m">SELL prob=0.71 ≥ thresh=0.62 (VOL_EXPANSION)</span></div>
+      <div class="ev t-BAR"><span class="ev-t">14:25:00</span><span class="ev-s">NQ</span><span class="ev-y">BAR</span><span class="ev-m">close=21430.25 atr=18.4</span></div>
+      <div class="ev t-DEC"><span class="ev-t">14:24:55</span><span class="ev-s">ES</span><span class="ev-y">DEC</span><span class="ev-m">BUY prob=0.74 ≥ thresh=0.68 (TREND_UP)</span></div>
+      <div class="ev t-ENT"><span class="ev-t">14:24:55</span><span class="ev-s">ES</span><span class="ev-y">ENT</span><span class="ev-m">📍 PAPER Long @ 5840.25 SL=5832 TP=5856 (TREND_UP)</span></div>
+      <div class="ev t-BAR"><span class="ev-t">14:24:55</span><span class="ev-s">ES</span><span class="ev-y">BAR</span><span class="ev-m">close=5841.50 atr=4.2</span></div>
+      <div class="ev t-DEC"><span class="ev-t">14:24:50</span><span class="ev-s">CL</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — regime=CHOP (no trade)</span></div>
+      <div class="ev t-BAR"><span class="ev-t">14:24:50</span><span class="ev-s">CL</span><span class="ev-y">BAR</span><span class="ev-m">close=72.41 atr=0.18</span></div>
+      <div class="ev t-BLK"><span class="ev-t">14:24:45</span><span class="ev-s">GC</span><span class="ev-y">BLK</span><span class="ev-m">decision suppressed — symbol toggled OFF</span></div>
+      <div class="ev t-BAR"><span class="ev-t">14:24:45</span><span class="ev-s">GC</span><span class="ev-y">BAR</span><span class="ev-m">close=2620.10 atr=8.2</span></div>
+      <div class="ev t-REG"><span class="ev-t">14:24:00</span><span class="ev-s">ES</span><span class="ev-y">REG</span><span class="ev-m">regime: CHOP → TREND_UP</span></div>
+      <div class="ev t-EXT"><span class="ev-t">14:22:30</span><span class="ev-s">NQ</span><span class="ev-y">EXT</span><span class="ev-m">🏁 PAPER Long closed @ 21420.50 +$120.00 (TP)</span></div>
+      <div class="ev t-DEC"><span class="ev-t">14:20:00</span><span class="ev-s">NQ</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — below threshold (long=0.42&lt;0.68, short=0.31&lt;0.62)</span></div>
+      <div class="ev t-DEC"><span class="ev-t">14:19:55</span><span class="ev-s">ES</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — below threshold</span></div>
+      <div class="ev t-BAR"><span class="ev-t">14:19:55</span><span class="ev-s">ES</span><span class="ev-y">BAR</span><span class="ev-m">close=5839.75 atr=4.1</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // MINI/MICRO toggle — swaps displayed symbol labels in real-time.
+  document.querySelectorAll('#contractToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#contractToggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.c;
+      document.querySelectorAll('.ops-sym').forEach(s => {
+        s.textContent = mode === 'micro' ? s.dataset.symMicro : s.dataset.symMini;
+      });
+      document.getElementById('paneSub').textContent = 'PAPER · 4 ' + (mode === 'micro' ? 'micro' : 'mini') + ' contracts';
+    });
+  });
+</script>
+</body>
+</html>

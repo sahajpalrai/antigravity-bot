@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design B — Holographic Hex Cockpit</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --text: #f5f6f8;
+    --muted: #a5b4fc;
+    --cyan: #00F0FF;
+    --magenta: #FF007A;
+    --green: #39ff14;
+    --red: #ff3838;
+    --purple: #9d4edd;
+    --gold: #ffc700;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    padding: 24px;
+    background:
+      radial-gradient(at 20% 10%, rgba(157,78,221,0.22), transparent 50%),
+      radial-gradient(at 80% 60%, rgba(0,240,255,0.16), transparent 55%),
+      radial-gradient(at 50% 100%, rgba(255,0,122,0.18), transparent 50%),
+      #06061a;
+    overflow-x: hidden;
+  }
+
+  /* Animated particle background — subtle stars */
+  body::before, body::after {
+    content: '';
+    position: fixed;
+    pointer-events: none;
+    inset: 0;
+  }
+  body::before {
+    background:
+      radial-gradient(1px 1px at 12% 30%, white, transparent),
+      radial-gradient(1px 1px at 25% 70%, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1px 1px at 42% 14%, white, transparent),
+      radial-gradient(2px 2px at 60% 55%, rgba(0,240,255,0.7), transparent),
+      radial-gradient(1px 1px at 78% 35%, white, transparent),
+      radial-gradient(1px 1px at 88% 80%, rgba(255,0,122,0.7), transparent),
+      radial-gradient(1px 1px at 8% 88%, white, transparent);
+    opacity: 0.5;
+    animation: drift 60s linear infinite;
+  }
+  @keyframes drift {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-40px); }
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 30px;
+    position: relative; z-index: 10;
+  }
+  .brand {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 2px;
+  }
+  .brand .v {
+    color: var(--cyan);
+    text-shadow: 0 0 12px rgba(0,240,255,0.7);
+  }
+  .top-right { display: flex; gap: 14px; align-items: center; }
+
+  /* MINI/MICRO toggle — required */
+  .contract-toggle {
+    display: flex;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 30px;
+    padding: 4px;
+    backdrop-filter: blur(10px);
+  }
+  .contract-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 6px 16px;
+    border-radius: 24px;
+    cursor: pointer;
+    letter-spacing: 1.5px;
+    transition: all 0.3s;
+  }
+  .contract-toggle button.active {
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: white;
+    box-shadow: 0 0 24px rgba(0,240,255,0.5);
+  }
+
+  .session-bubble {
+    padding: 6px 14px;
+    border-radius: 24px;
+    background: rgba(57,255,20,0.1);
+    color: var(--green);
+    border: 1px solid rgba(57,255,20,0.4);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 20px rgba(57,255,20,0.15);
+  }
+  .clock {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'Consolas', monospace;
+  }
+
+  /* Top stat ring — 4 master metrics in glowing pills */
+  .stat-ring {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 36px;
+    position: relative; z-index: 10;
+  }
+  .stat-bubble {
+    padding: 18px 22px;
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      0 8px 30px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .stat-bubble::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -30%;
+    width: 80%;
+    height: 200%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.06), transparent 60%);
+    pointer-events: none;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .stat-val {
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 6px;
+    text-shadow: 0 0 14px rgba(255,255,255,0.15);
+  }
+  .stat-val.pos { color: var(--green); text-shadow: 0 0 14px rgba(57,255,20,0.4); }
+  .stat-val.neg { color: var(--red); text-shadow: 0 0 14px rgba(255,56,56,0.4); }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Hex honeycomb grid — 2 rows of 2, offset for honeycomb feel */
+  .honeycomb {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 30px;
+    max-width: 1100px;
+    margin: 0 auto;
+    position: relative; z-index: 10;
+  }
+  .honeycomb > *:nth-child(2) { transform: translateY(28px); }
+  .honeycomb > *:nth-child(4) { transform: translateY(28px); }
+
+  /* Hex card — clipped polygon with glass effect + glowing ring */
+  .hex-card {
+    position: relative;
+    aspect-ratio: 1 / 0.95;
+    background: linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 24px;
+    padding: 24px 28px 28px 28px;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+    box-shadow:
+      0 16px 40px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+  .hex-card:hover { transform: translateY(-4px); }
+
+  /* Glowing gradient ring around card */
+  .hex-card::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 24px;
+    padding: 1.5px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple), var(--magenta));
+    -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.45;
+  }
+  .hex-card.fire-long::before  { background: linear-gradient(135deg, var(--green), var(--cyan)); opacity: 0.8; }
+  .hex-card.fire-short::before { background: linear-gradient(135deg, var(--red), var(--magenta)); opacity: 0.8; }
+  .hex-card.chop::before { opacity: 0.15; }
+  .hex-card.disabled { opacity: 0.4; }
+
+  /* Card header row: symbol + on/off */
+  .h-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .h-sym {
+    font-size: 46px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -1px;
+    text-shadow: 0 0 24px rgba(255,255,255,0.2);
+  }
+  .h-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+  .toggle-pill {
+    cursor: pointer;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 5px 12px;
+    border-radius: 16px;
+    letter-spacing: 1px;
+    backdrop-filter: blur(10px);
+  }
+  .toggle-pill.on  {
+    background: rgba(57,255,20,0.15);
+    color: var(--green);
+    border: 1px solid var(--green);
+    box-shadow: 0 0 14px rgba(57,255,20,0.3);
+  }
+  .toggle-pill.off {
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+
+  /* Regime row */
+  .h-regime {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .r-tag {
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    backdrop-filter: blur(10px);
+  }
+  .r-tag.up { background: rgba(57,255,20,0.15); color: var(--green); border: 1px solid rgba(57,255,20,0.4); }
+  .r-tag.down { background: rgba(255,56,56,0.15); color: var(--red); border: 1px solid rgba(255,56,56,0.4); }
+  .r-tag.vol { background: rgba(0,240,255,0.15); color: var(--cyan); border: 1px solid rgba(0,240,255,0.4); }
+  .r-tag.chop { background: rgba(165,180,252,0.1); color: var(--muted); border: 1px solid rgba(165,180,252,0.3); }
+
+  .verdict {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 5px 12px;
+    border-radius: 16px;
+    letter-spacing: 1px;
+  }
+  .verdict.long  { background: rgba(57,255,20,0.2);  color: var(--green); border: 1px solid var(--green);
+                   box-shadow: 0 0 22px rgba(57,255,20,0.4); animation: pulse 1.6s infinite; }
+  .verdict.short { background: rgba(255,56,56,0.2); color: var(--red); border: 1px solid var(--red);
+                   box-shadow: 0 0 22px rgba(255,56,56,0.4); animation: pulse 1.6s infinite; }
+  .verdict.wait  { background: rgba(165,180,252,0.08); color: var(--muted); border: 1px solid rgba(165,180,252,0.3); }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+
+  /* Probability rings */
+  .ring-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 16px 0 14px 0;
+  }
+  .ring-box {
+    text-align: center;
+    padding: 10px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+  }
+  .ring {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 6px auto;
+    position: relative;
+  }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 7; }
+  .ring-fg { fill: none; stroke-width: 7; stroke-linecap: round; }
+  .ring-fg.long  { stroke: url(#gradLong); filter: drop-shadow(0 0 6px rgba(57,255,20,0.7)); }
+  .ring-fg.short { stroke: url(#gradShort); filter: drop-shadow(0 0 6px rgba(255,56,56,0.7)); }
+  .ring-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .ring-num.l { color: var(--green); }
+  .ring-num.s { color: var(--red); }
+  .ring-cap {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .ring-th {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 2px;
+    font-family: 'Consolas', monospace;
+  }
+
+  /* Specialist + position footer */
+  .spec-line {
+    font-family: 'Consolas', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .spec-line strong { color: var(--text); }
+
+  .pos-strip {
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+  }
+  .pos-strip.has { background: rgba(0,240,255,0.06); border-color: rgba(0,240,255,0.25); }
+  .pos-strip strong { color: var(--text); }
+  .pos-pnl { font-weight: 800; }
+  .pos-pnl.pos { color: var(--green); text-shadow: 0 0 10px rgba(57,255,20,0.5); }
+
+  .back {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    background: rgba(0,240,255,0.12);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    border-radius: 24px;
+    padding: 8px 16px;
+    font-size: 11px;
+    font-weight: 800;
+    text-decoration: none;
+    backdrop-filter: blur(12px);
+    z-index: 100;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← back to mockups</a>
+
+<!-- SVG gradient defs (shared by all rings) -->
+<svg width="0" height="0" style="position:absolute;">
+  <defs>
+    <linearGradient id="gradLong" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#39ff14"/>
+      <stop offset="1" stop-color="#00F0FF"/>
+    </linearGradient>
+    <linearGradient id="gradShort" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3838"/>
+      <stop offset="1" stop-color="#FF007A"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="topbar">
+  <div class="brand">⚡ ANTIGRAVITY <span class="v">v2</span> · DESIGN B</div>
+  <div class="top-right">
+    <div class="contract-toggle" id="contractToggle">
+      <button class="active" data-c="mini">MINI</button>
+      <button data-c="micro">MICRO</button>
+    </div>
+    <span class="session-bubble">● RTH SESSION</span>
+    <span class="clock">14:23:18 PT</span>
+  </div>
+</div>
+
+<div class="stat-ring">
+  <div class="stat-bubble">
+    <div class="stat-label">Master Equity</div>
+    <div class="stat-val">$289,212</div>
+    <div class="stat-sub">+$1,160 today · 75% WR</div>
+  </div>
+  <div class="stat-bubble">
+    <div class="stat-label">Open P&amp;L</div>
+    <div class="stat-val pos">+$2,200</div>
+    <div class="stat-sub">2 active · 2 paused</div>
+  </div>
+  <div class="stat-bubble">
+    <div class="stat-label">Paper Engine v2</div>
+    <div class="stat-val">66.7%</div>
+    <div class="stat-sub">12 trades · PF 2.84</div>
+  </div>
+  <div class="stat-bubble">
+    <div class="stat-label">Specialists Online</div>
+    <div class="stat-val">14<span style="color:var(--muted); font-size:14px;"> / 48</span></div>
+    <div class="stat-sub">34 gated by quality bar</div>
+  </div>
+</div>
+
+<div class="honeycomb">
+
+  <!-- NQ: FIRE SHORT -->
+  <div class="hex-card fire-short">
+    <div class="h-head">
+      <div>
+        <div class="h-sym" data-sym-mini="NQ" data-sym-micro="MNQ">NQ</div>
+        <div class="h-sub">E-mini Nasdaq-100 · 21,430.25</div>
+      </div>
+      <span class="toggle-pill on">● ON</span>
+    </div>
+    <div class="h-regime">
+      <span class="r-tag vol">⚡ VOL EXPANSION</span>
+      <span style="font-size:9px; color:var(--muted);">RTH</span>
+      <span class="verdict short">▼ FIRE SHORT</span>
+    </div>
+    <div class="ring-row">
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg long" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="174.2"/>
+          </svg>
+          <div class="ring-num l">34%</div>
+        </div>
+        <div class="ring-cap">LONG</div>
+        <div class="ring-th">th 0.68</div>
+      </div>
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg short" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="76.5"/>
+          </svg>
+          <div class="ring-num s">71%</div>
+        </div>
+        <div class="ring-cap">SHORT</div>
+        <div class="ring-th">th 0.62 ✓ HIT</div>
+      </div>
+    </div>
+    <div class="spec-line">active: <strong>NQ_RTH_VOL_EXPANSION_short</strong></div>
+    <div class="pos-strip has">
+      <span>Short × 1 @ <strong>21,430.25</strong></span>
+      <span class="pos-pnl pos">+$240</span>
+    </div>
+  </div>
+
+  <!-- ES: FIRE LONG -->
+  <div class="hex-card fire-long">
+    <div class="h-head">
+      <div>
+        <div class="h-sym" data-sym-mini="ES" data-sym-micro="MES">ES</div>
+        <div class="h-sub">E-mini S&amp;P 500 · 5,841.50</div>
+      </div>
+      <span class="toggle-pill on">● ON</span>
+    </div>
+    <div class="h-regime">
+      <span class="r-tag up">▲ TREND UP</span>
+      <span style="font-size:9px; color:var(--muted);">ETH</span>
+      <span class="verdict long">▲ FIRE LONG</span>
+    </div>
+    <div class="ring-row">
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg long" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="68.6"/>
+          </svg>
+          <div class="ring-num l">74%</div>
+        </div>
+        <div class="ring-cap">LONG</div>
+        <div class="ring-th">th 0.68 ✓ HIT</div>
+      </div>
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg short" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="216.4"/>
+          </svg>
+          <div class="ring-num s">18%</div>
+        </div>
+        <div class="ring-cap">SHORT</div>
+        <div class="ring-th">th 0.72</div>
+      </div>
+    </div>
+    <div class="spec-line">active: <strong>ES_ETH_TREND_UP_long</strong></div>
+    <div class="pos-strip has">
+      <span>Long × 1 @ <strong>5,840.25</strong></span>
+      <span class="pos-pnl pos">+$72</span>
+    </div>
+  </div>
+
+  <!-- CL: CHOP -->
+  <div class="hex-card chop">
+    <div class="h-head">
+      <div>
+        <div class="h-sym" data-sym-mini="CL" data-sym-micro="MCL">CL</div>
+        <div class="h-sub">Crude Oil · $72.41</div>
+      </div>
+      <span class="toggle-pill on">● ON</span>
+    </div>
+    <div class="h-regime">
+      <span class="r-tag chop">─ CHOP</span>
+      <span style="font-size:9px; color:var(--muted);">RTH</span>
+      <span class="verdict wait">CHOP — NO TRADE</span>
+    </div>
+    <div class="ring-row">
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+          </svg>
+          <div class="ring-num" style="color:var(--muted); font-size:14px;">—</div>
+        </div>
+        <div class="ring-cap">LONG</div>
+        <div class="ring-th" style="opacity:0.5;">no spec</div>
+      </div>
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+          </svg>
+          <div class="ring-num" style="color:var(--muted); font-size:14px;">—</div>
+        </div>
+        <div class="ring-cap">SHORT</div>
+        <div class="ring-th" style="opacity:0.5;">no spec</div>
+      </div>
+    </div>
+    <div class="spec-line">CHOP regime — no specialist active</div>
+    <div class="pos-strip">
+      <span>no open position</span>
+      <span style="color:var(--muted);">flat · waiting</span>
+    </div>
+  </div>
+
+  <!-- GC: OFF + gated -->
+  <div class="hex-card disabled">
+    <div class="h-head">
+      <div>
+        <div class="h-sym" data-sym-mini="GC" data-sym-micro="MGC">GC</div>
+        <div class="h-sub">Gold · $2,620.10</div>
+      </div>
+      <span class="toggle-pill off">○ OFF</span>
+    </div>
+    <div class="h-regime">
+      <span class="r-tag down">▼ TREND DOWN</span>
+      <span style="font-size:9px; color:var(--muted);">ETH</span>
+      <span class="verdict wait">SYMBOL PAUSED</span>
+    </div>
+    <div class="ring-row">
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg long" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="153.1" opacity="0.5"/>
+          </svg>
+          <div class="ring-num l" style="opacity:0.5;">42%</div>
+        </div>
+        <div class="ring-cap">LONG</div>
+        <div class="ring-th" style="color:var(--red);">⊘ GATED</div>
+      </div>
+      <div class="ring-box">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg short" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="118.7" opacity="0.5"/>
+          </svg>
+          <div class="ring-num s" style="opacity:0.5;">55%</div>
+        </div>
+        <div class="ring-cap">SHORT</div>
+        <div class="ring-th">th 0.65</div>
+      </div>
+    </div>
+    <div class="spec-line">long bundle gated by quality filter (WR &lt; 55%)</div>
+    <div class="pos-strip">
+      <span>symbol toggled OFF</span>
+      <span style="color:var(--muted);">held — won't fire</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  document.querySelectorAll('#contractToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#contractToggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.c;
+      document.querySelectorAll('.h-sym').forEach(s => {
+        s.textContent = mode === 'micro' ? s.dataset.symMicro : s.dataset.symMini;
+      });
+    });
+  });
+</script>
+</body>
+</html>

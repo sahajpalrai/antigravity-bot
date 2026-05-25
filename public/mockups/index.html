@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antigravity v2 — Dashboard Design Mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --panel: rgba(18, 22, 33, 0.9);
+    --text: #f5f6f8;
+    --muted: #9aa0a6;
+    --cyan: #00F0FF;
+    --magenta: #FF007A;
+    --green: #39ff14;
+    --orange: #ff9800;
+    --purple: #7a3bf5;
+  }
+  body {
+    margin: 0;
+    background: radial-gradient(at 30% 0%, #1a1340 0%, transparent 50%),
+                radial-gradient(at 80% 100%, #4a1058 0%, transparent 60%),
+                #0a0c10;
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 {
+    font-weight: 800;
+    font-size: 32px;
+    letter-spacing: -0.5px;
+    margin: 0 0 6px 0;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 36px;
+  }
+  .req {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 32px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .req strong { color: var(--cyan); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px;
+  }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: rgba(11, 14, 30, 0.5);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 22px;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(0,240,255,0.4);
+    box-shadow: 0 12px 36px rgba(0,240,255,0.12);
+  }
+  .card-letter {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    text-align: center;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 10px;
+  }
+  .l-a { background: rgba(0,240,255,0.15); color: var(--cyan); }
+  .l-b { background: rgba(122,59,245,0.2); color: var(--purple); }
+  .l-c { background: rgba(255,152,0,0.15); color: var(--orange); }
+  .l-d { background: rgba(57,255,20,0.15); color: var(--green); }
+  .card h2 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 800;
+  }
+  .card p {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0 0 14px 0;
+  }
+  .feel {
+    font-size: 11px;
+    color: var(--cyan);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .picker {
+    margin-top: 50px;
+    padding: 20px;
+    background: rgba(0,240,255,0.04);
+    border: 1px dashed rgba(0,240,255,0.25);
+    border-radius: 12px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .picker strong { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Antigravity v2 — Dashboard Design Mockups</h1>
+  <div class="sub">Pick the design direction. Each mockup below is a real HTML page — open in a new tab and judge it on layout, density, and feel.</div>
+
+  <div class="req">
+    <strong>Required in every design:</strong>
+    All 4 mini futures (NQ · ES · CL · GC) ·
+    a <strong>MINI ↔ MICRO toggle</strong> (swaps to MNQ · MES · MCL · MGC) ·
+    a per-symbol <strong>ON/OFF pill</strong> on each card ·
+    visible "active specialist" model name per symbol ·
+    long/short probability indicators with threshold marks ·
+    paper P&amp;L per symbol.
+  </div>
+
+  <div class="grid">
+    <a class="card" href="design-a.html" target="_blank">
+      <span class="card-letter l-a">A</span>
+      <h2>Trading Floor Terminal <span style="font-weight:400; font-size:11px; color:var(--muted);">(currently built)</span></h2>
+      <p>Split-screen: 4 operation cards on the LEFT, real-time event stream on the RIGHT. Bloomberg / NASA control-room feel. Maximum functional transparency — every bot decision is logged live.</p>
+      <span class="feel">→ Operator / Debugger Mode</span>
+    </a>
+
+    <a class="card" href="design-b.html" target="_blank">
+      <span class="card-letter l-b">B</span>
+      <h2>Holographic Hex Cockpit</h2>
+      <p>Hexagonal cards in a honeycomb layout. Deep purple-cyan gradient, heavy glassmorphism, neon glow rings around each symbol. Inspired by Iron Man HUD + Tradebotx premium theme.</p>
+      <span class="feel">→ Premium Pilot Mode</span>
+    </a>
+
+    <a class="card" href="design-c.html" target="_blank">
+      <span class="card-letter l-c">C</span>
+      <h2>Bloomberg Tape Console</h2>
+      <p>Ultra-high-density data tape — multiple horizontal strips packing 4 symbols × full state into the smallest possible footprint. Monospace heavy, deep blacks, amber/green ticker colors. Bloomberg / Trader Workstation aesthetic.</p>
+      <span class="feel">→ Pro Trader / Data Density</span>
+    </a>
+
+    <a class="card" href="design-d.html" target="_blank">
+      <span class="card-letter l-d">D</span>
+      <h2>Crypto Exchange Cards + Sparklines</h2>
+      <p>Modern exchange dashboard: each symbol gets a large card with a live mini equity-curve sparkline, gauge-style probability rings, big readable numbers. Glass + soft neon. Robinhood / Binance Pro vibe.</p>
+      <span class="feel">→ Visual / Mobile-Friendly</span>
+    </a>
+  </div>
+
+  <h2 style="margin-top: 44px; margin-bottom: 4px; font-size: 22px; font-weight: 800; letter-spacing: -0.3px;">Design E variants — D + Live Event Stream</h2>
+  <div class="sub" style="margin-bottom: 20px;">You picked D as the base. These three variants add the live event stream in different positions. Pick which placement.</div>
+
+  <div class="grid">
+    <a class="card" href="design-e1.html" target="_blank" style="border-color: rgba(57,255,20,0.25);">
+      <span class="card-letter" style="background: rgba(57,255,20,0.15); color: var(--green);">E1</span>
+      <h2>D + Bottom Tape <span style="font-weight:400; font-size:11px; color:var(--green);">(my pick)</span></h2>
+      <p>D's 2×2 card grid stays full-size as the hero. Adds a 240px-tall full-width event-stream tape below the cards. Stream is always visible without competing. Cleanest balance of card focus and live transparency.</p>
+      <span class="feel" style="color: var(--green);">→ Cards hero · stream always-on</span>
+    </a>
+
+    <a class="card" href="design-e2.html" target="_blank">
+      <span class="card-letter" style="background: rgba(255,152,0,0.15); color: var(--orange);">E2</span>
+      <h2>D + Right Sidebar</h2>
+      <p>Symbol cards become single-column stacked on the left (60% width). Event stream is a tall right-side panel (40% width) that stays sticky as you scroll. Lots of stream visibility but each card is narrower.</p>
+      <span class="feel" style="color: var(--orange);">→ Stream big · cards narrow</span>
+    </a>
+
+    <a class="card" href="design-e3.html" target="_blank">
+      <span class="card-letter" style="background: rgba(122,59,245,0.2); color: var(--purple);">E3</span>
+      <h2>D + Floating Drawer</h2>
+      <p>D's 2×2 grid stays pure (full-size cards). A "📡 Stream" button with pulsing "X new" badge lives in the top bar — click it and the stream slides in from the right as an overlay. Click outside or ✕ to close. On-demand only.</p>
+      <span class="feel" style="color: var(--purple);">→ Cards pure · stream on demand</span>
+    </a>
+
+    <div class="card" style="opacity: 0.6; cursor: default;">
+      <span class="card-letter" style="background: rgba(154,160,166,0.15); color: var(--muted);">tip</span>
+      <h2>How to choose</h2>
+      <p>Open all three in tabs. Ask yourself: <strong>do I want the stream always visible</strong> (E1, E2) <strong>or only when I look for it</strong> (E3)? Then: <strong>cards bigger</strong> (E1, E3) <strong>or stream bigger</strong> (E2)?</p>
+      <span class="feel">→ My pick: E1 — best balance</span>
+    </div>
+  </div>
+
+  <div class="picker">
+    <strong>How to decide:</strong>
+    Look at A &amp; C if you want to see <em>everything live</em> (busy, info-dense, debug-friendly).
+    Look at B if you want a <em>premium "this looks expensive" feel</em>.
+    Look at D if you want <em>charts and gauges as the dominant visual</em>.
+    <br><br>
+    Each mockup is static (fake live data) so you can judge the layout. Tell me the letter and I'll rebuild the production dashboard in that style.
+  </div>
+</div>
+</body>
+</html>

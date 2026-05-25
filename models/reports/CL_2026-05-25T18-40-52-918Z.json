@@ -1,0 +1,199 @@
+{
+  "symbol": "CL=F",
+  "trainedAt": "2026-05-25T18:30:36.881Z",
+  "candleCount": 210776,
+  "bundles": {
+    "RTH_TREND_UP_long": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.62,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 88,
+        "winRate": 0.45454545454545453,
+        "profitFactor": 1.3171764705882352,
+        "sharpe": 0.6832235063035585,
+        "maxDD": 8,
+        "threshold": 0.62
+      },
+      "sampleCount": 7646
+    },
+    "RTH_TREND_UP_short": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.68,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 173,
+        "winRate": 0.5202312138728323,
+        "profitFactor": 6.727050861361772,
+        "sharpe": 11.60213073531834,
+        "maxDD": 21.2,
+        "threshold": 0.68
+      },
+      "sampleCount": 7646
+    },
+    "RTH_TREND_DOWN_long": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.72,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 121,
+        "winRate": 0.6198347107438017,
+        "profitFactor": 2.858823529411764,
+        "sharpe": 7.8362119457065305,
+        "maxDD": 9,
+        "threshold": 0.72
+      },
+      "sampleCount": 6056
+    },
+    "RTH_TREND_DOWN_short": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.62,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 108,
+        "winRate": 0.49074074074074076,
+        "profitFactor": 1.6699675324675323,
+        "sharpe": 3.8490457834510026,
+        "maxDD": 7,
+        "threshold": 0.62
+      },
+      "sampleCount": 6056
+    },
+    "RTH_VOL_EXPANSION_long": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.72,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 77,
+        "winRate": 0.4805194805194805,
+        "profitFactor": 1.3212499999999998,
+        "sharpe": -1.7867774911890248,
+        "maxDD": 14,
+        "threshold": 0.72
+      },
+      "sampleCount": 18289
+    },
+    "RTH_VOL_EXPANSION_short": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.65,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 242,
+        "winRate": 0.5247933884297521,
+        "profitFactor": 2.6644153225806444,
+        "sharpe": 6.4521852013385015,
+        "maxDD": 12.2,
+        "threshold": 0.65
+      },
+      "sampleCount": 18289
+    },
+    "ETH_TREND_UP_long": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.6,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 71,
+        "winRate": 0.5774647887323944,
+        "profitFactor": 4.060681818181818,
+        "sharpe": 4.146206184853444,
+        "maxDD": 6,
+        "threshold": 0.6
+      },
+      "sampleCount": 16342
+    },
+    "ETH_TREND_UP_short": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.72,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 62,
+        "winRate": 0.5967741935483871,
+        "profitFactor": 4.6450000000000005,
+        "sharpe": 4.576979400146518,
+        "maxDD": 6.199999999999999,
+        "threshold": 0.72
+      },
+      "sampleCount": 16342
+    },
+    "ETH_TREND_DOWN_long": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.65,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 161,
+        "winRate": 0.577639751552795,
+        "profitFactor": 2.6130681818181816,
+        "sharpe": 7.3774024399871365,
+        "maxDD": 14,
+        "threshold": 0.65
+      },
+      "sampleCount": 14052
+    },
+    "ETH_TREND_DOWN_short": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.62,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 45,
+        "winRate": 0.6222222222222222,
+        "profitFactor": 2.2581818181818183,
+        "sharpe": 6.49566091007963,
+        "maxDD": 7,
+        "threshold": 0.62
+      },
+      "sampleCount": 14052
+    },
+    "ETH_VOL_EXPANSION_long": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.68,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 123,
+        "winRate": 0.5284552845528455,
+        "profitFactor": 2.4907342657342655,
+        "sharpe": 6.835855659891674,
+        "maxDD": 11,
+        "threshold": 0.68
+      },
+      "sampleCount": 13769
+    },
+    "ETH_VOL_EXPANSION_short": {
+      "trained": true,
+      "deployed": true,
+      "rollbackReason": null,
+      "threshold": 0.65,
+      "aggregate": {
+        "folds": 4,
+        "totalTestTrades": 183,
+        "winRate": 0.4426229508196721,
+        "profitFactor": 1.3556553643724691,
+        "sharpe": 1.163757560483412,
+        "maxDD": 19.599999999999998,
+        "threshold": 0.65
+      },
+      "sampleCount": 13769
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "antigravity-v2",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "port": 3099,
+      "env": {
+        "PORT": "3099",
+        "TRADING_MODE": "paper"
+      }
+    }
+  ]
+}

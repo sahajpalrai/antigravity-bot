@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design E3 — D + Floating Drawer Stream</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2128;
+    --border: rgba(240,246,252,0.08);
+    --text: #f0f6fc;
+    --muted: #8b949e;
+    --cyan: #58e1ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #ffa657;
+    --purple: #d2a8ff;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(at 0% 0%, rgba(88,225,255,0.05), transparent 50%),
+      radial-gradient(at 100% 100%, rgba(210,168,255,0.04), transparent 50%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    padding: 24px;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+  }
+  .brand-stack {
+    display: flex;
+    flex-direction: column;
+  }
+  .brand-stack h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .brand-stack h1 span { color: var(--cyan); }
+  .brand-stack p {
+    margin: 2px 0 0 0;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .top-right {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  /* MINI/MICRO toggle as segmented button — required */
+  .contract-toggle {
+    display: inline-flex;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+  }
+  .contract-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .contract-toggle button.active {
+    background: var(--cyan);
+    color: #0d1117;
+    font-weight: 800;
+  }
+  .session-chip {
+    padding: 6px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .session-chip .dot { color: var(--green); margin-right: 6px; }
+  .clock { font-size: 11px; color: var(--muted); }
+
+  /* KPI strip — clean cards */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .kpi-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .kpi-value {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .kpi-value.pos { color: var(--green); }
+  .kpi-value.neg { color: var(--red); }
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .kpi-pct {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .kpi-pct.pos { background: rgba(63,185,80,0.15); color: var(--green); }
+  .kpi-pct.neg { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  /* Symbol card grid — 2 x 2 */
+  .symbols {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+  .sym-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .sym-card:hover { border-color: rgba(88,225,255,0.3); transform: translateY(-2px); }
+  .sym-card.fire-long {
+    border-color: rgba(63,185,80,0.4);
+    box-shadow: 0 0 24px rgba(63,185,80,0.12);
+  }
+  .sym-card.fire-short {
+    border-color: rgba(248,81,73,0.4);
+    box-shadow: 0 0 24px rgba(248,81,73,0.12);
+  }
+  .sym-card.chop  { opacity: 0.65; }
+  .sym-card.off   { opacity: 0.45; }
+
+  /* Header row of each card */
+  .sc-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .sc-sym-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .sc-sym {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+  .sc-px {
+    font-size: 18px;
+    color: var(--text);
+    font-weight: 600;
+    font-feature-settings: "tnum";
+  }
+  .sc-chg {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .sc-chg.pos { background: rgba(63,185,80,0.15); color: var(--green); }
+  .sc-chg.neg { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  .toggle-pill {
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 5px 12px;
+    border-radius: 16px;
+    letter-spacing: 0.5px;
+  }
+  .toggle-pill.on  { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid var(--green); }
+  .toggle-pill.off { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid rgba(255,255,255,0.15); }
+
+  /* Regime + verdict row */
+  .sc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .r-pill {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 14px;
+  }
+  .r-pill.up   { background: rgba(63,185,80,0.12); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .r-pill.down { background: rgba(248,81,73,0.12); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+  .r-pill.vol  { background: rgba(88,225,255,0.12); color: var(--cyan); border: 1px solid rgba(88,225,255,0.3); }
+  .r-pill.chop { background: rgba(139,148,158,0.12); color: var(--muted); border: 1px solid rgba(139,148,158,0.3); }
+  .sess-text { font-size: 11px; color: var(--muted); }
+
+  .verdict-pill {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 5px 14px;
+    border-radius: 16px;
+    letter-spacing: 0.5px;
+  }
+  .verdict-pill.long  { background: var(--green); color: #0d1117; box-shadow: 0 0 18px rgba(63,185,80,0.5); animation: glow 1.6s infinite; }
+  .verdict-pill.short { background: var(--red); color: #0d1117; box-shadow: 0 0 18px rgba(248,81,73,0.5); animation: glow 1.6s infinite; }
+  .verdict-pill.wait  { background: rgba(139,148,158,0.15); color: var(--muted); border: 1px solid rgba(139,148,158,0.3); }
+  @keyframes glow {
+    0%,100% { box-shadow: 0 0 18px currentColor; }
+    50% { box-shadow: 0 0 24px currentColor; }
+  }
+
+  /* Live equity sparkline */
+  .sparkline-wrap {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: end;
+  }
+  .sparkline {
+    height: 60px;
+    width: 100%;
+  }
+  .spark-stats {
+    text-align: right;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .spark-stats strong { color: var(--text); font-size: 14px; display: block; font-weight: 700; }
+
+  /* Gauge ring duo */
+  .gauges {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .gauge {
+    background: var(--panel-2);
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+  }
+  .gauge svg { width: 90px; height: 50px; }
+  .g-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 7; }
+  .g-fg { fill: none; stroke-width: 7; stroke-linecap: round; }
+  .g-fg.long  { stroke: var(--green); filter: drop-shadow(0 0 4px rgba(63,185,80,0.6)); }
+  .g-fg.short { stroke: var(--red); filter: drop-shadow(0 0 4px rgba(248,81,73,0.6)); }
+  .gauge-num {
+    font-size: 16px;
+    font-weight: 800;
+    margin-top: 2px;
+  }
+  .gauge-num.l { color: var(--green); }
+  .gauge-num.s { color: var(--red); }
+  .gauge-cap { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
+  .gauge-th { font-size: 9px; color: var(--muted); font-family: 'Consolas', monospace; margin-top: 2px; }
+  .gauge-th.hit { color: var(--green); font-weight: 700; }
+  .gauge-th.hit-s { color: var(--red); font-weight: 700; }
+
+  /* Specialist + position footer */
+  .sc-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .spec-name { color: var(--muted); font-family: 'Consolas', monospace; font-size: 10px; }
+  .spec-name strong { color: var(--text); }
+  .pos-info { display: flex; flex-direction: column; align-items: end; gap: 2px; }
+  .pos-status { font-size: 11px; color: var(--muted); }
+  .pos-pnl { font-weight: 800; font-size: 14px; }
+  .pos-pnl.pos { color: var(--green); }
+  .pos-pnl.neg { color: var(--red); }
+
+  .back {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    background: var(--panel);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    z-index: 100;
+  }
+
+  /* ─── E3: Stream toggle button (in top bar) ──────────────────────────── */
+  .stream-toggle-btn {
+    position: relative;
+    padding: 7px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+  }
+  .stream-toggle-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .stream-toggle-btn.active {
+    background: rgba(88,225,255,0.12);
+    color: var(--cyan);
+    border-color: var(--cyan);
+    box-shadow: 0 0 14px rgba(88,225,255,0.25);
+  }
+  .stream-toggle-btn .badge {
+    background: var(--red);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 10px;
+    animation: badgePulse 1.6s infinite;
+  }
+  @keyframes badgePulse {
+    0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(248,81,73,0.5); }
+    50%     { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(248,81,73,0); }
+  }
+
+  /* ─── E3: Slide-in drawer + dimmer overlay ───────────────────────────── */
+  .stream-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(2px);
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .stream-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .stream-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 460px;
+    max-width: 96vw;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    box-shadow: -18px 0 40px rgba(0,0,0,0.55);
+    z-index: 201;
+    transform: translateX(100%);
+    transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+  }
+  .stream-drawer.open { transform: translateX(0); }
+  .drawer-head {
+    padding: 18px 22px 14px 22px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(88,225,255,0.05), transparent);
+  }
+  .drawer-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .drawer-title {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-transform: uppercase;
+  }
+  .drawer-title .pulse {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green);
+    animation: livePulse 1.4s infinite;
+  }
+  @keyframes livePulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: 0.4; transform: scale(0.85); }
+  }
+  .drawer-close {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .drawer-close:hover { background: rgba(255,255,255,0.1); }
+  .drawer-filters {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .drawer-filter {
+    font-size: 9px;
+    font-weight: 800;
+    padding: 4px 11px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.07);
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  .drawer-filter.active {
+    background: rgba(88,225,255,0.18);
+    color: var(--cyan);
+    border-color: var(--cyan);
+  }
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px 16px 14px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 11.5px;
+    line-height: 1.6;
+  }
+  .ev-row {
+    display: grid;
+    grid-template-columns: 56px 38px 36px 1fr;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border-left: 2px solid transparent;
+    align-items: baseline;
+  }
+  .ev-row.t-DEC { border-left-color: rgba(88,225,255,0.4); }
+  .ev-row.t-ENT { border-left-color: var(--green); background: rgba(63,185,80,0.04); }
+  .ev-row.t-EXT { border-left-color: var(--orange); background: rgba(255,166,87,0.04); }
+  .ev-row.t-REG { border-left-color: var(--purple); background: rgba(210,168,255,0.04); }
+  .ev-row.t-BLK { border-left-color: rgba(248,81,73,0.4); color: var(--muted); }
+  .ev-row.t-BAR { opacity: 0.5; }
+  .ev-t { color: var(--muted); font-size: 10px; }
+  .ev-s { font-weight: 800; color: var(--cyan); font-size: 10px; text-align: center; }
+  .ev-y { font-weight: 700; font-size: 9px; letter-spacing: 0.5px; color: var(--muted); text-transform: uppercase; }
+  .ev-m { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+<a class="back" href="index.html">← mockups</a>
+
+<div class="topbar">
+  <div class="brand-stack">
+    <h1>Antigravity <span>v2</span></h1>
+    <p>Design E3 · D + Floating Drawer (toggle button → slide-in stream)</p>
+  </div>
+  <div class="top-right">
+    <div class="contract-toggle" id="contractToggle">
+      <button class="active" data-c="mini">MINI</button>
+      <button data-c="micro">MICRO</button>
+    </div>
+    <button class="stream-toggle-btn active" id="streamToggle">
+      📡 Stream
+      <span class="badge" id="streamBadge">3 new</span>
+    </button>
+    <span class="session-chip"><span class="dot">●</span> RTH</span>
+    <span class="clock">14:23:18 PT</span>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Total equity</div>
+    <div class="kpi-value">$289,212<span class="kpi-pct pos">+0.40%</span></div>
+    <div class="kpi-sub">+$1,160 today · WR 75%</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Open P&amp;L</div>
+    <div class="kpi-value pos">+$2,200</div>
+    <div class="kpi-sub">2 active · 2 paused</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Paper engine WR</div>
+    <div class="kpi-value">66.7%<span class="kpi-pct pos">PF 2.84</span></div>
+    <div class="kpi-sub">12 paper trades · target 65%+</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Models deployed</div>
+    <div class="kpi-value">14 / 48</div>
+    <div class="kpi-sub">34 gated by quality filter</div>
+  </div>
+</div>
+
+<div class="symbols">
+
+  <!-- NQ — FIRE SHORT -->
+  <div class="sym-card fire-short">
+    <div class="sc-head">
+      <div class="sc-sym-row">
+        <div class="sc-sym" data-sym-mini="NQ" data-sym-micro="MNQ">NQ</div>
+        <div class="sc-px">21,430.25</div>
+        <span class="sc-chg neg">−0.09%</span>
+      </div>
+      <span class="toggle-pill on">● ON</span>
+    </div>
+    <div class="sc-row">
+      <span class="r-pill vol">⚡ VOL EXPANSION</span>
+      <span class="sess-text">RTH</span>
+      <span class="verdict-pill short">▼ FIRE SHORT</span>
+    </div>
+    <div class="sparkline-wrap">
+      <svg class="sparkline" viewBox="0 0 200 60" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="nqFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f85149" stop-opacity="0.3"/>
+            <stop offset="1" stop-color="#f85149" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0,18 L15,15 L30,22 L45,18 L60,28 L75,20 L90,30 L105,25 L120,35 L135,32 L150,42 L165,38 L180,50 L200,46 L200,60 L0,60 Z" fill="url(#nqFill)"/>
+        <polyline points="0,18 15,15 30,22 45,18 60,28 75,20 90,30 105,25 120,35 135,32 150,42 165,38 180,50 200,46"
+                  fill="none" stroke="#f85149" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 3px rgba(248,81,73,0.5))"/>
+      </svg>
+      <div class="spark-stats"><strong>+$240</strong>today<br>1d · 5m</div>
+    </div>
+    <div class="gauges">
+      <div class="gauge">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+          <path class="g-fg long" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="125.7" stroke-dashoffset="82.9"/>
+        </svg>
+        <div class="gauge-num l">34%</div>
+        <div class="gauge-cap">LONG prob</div>
+        <div class="gauge-th">th 0.68</div>
+      </div>
+      <div class="gauge">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+          <path class="g-fg short" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="125.7" stroke-dashoffset="36.5"/>
+        </svg>
+        <div class="gauge-num s">71%</div>
+        <div class="gauge-cap">SHORT prob</div>
+        <div class="gauge-th hit-s">th 0.62 ✓ HIT</div>
+      </div>
+    </div>
+    <div class="sc-foot">
+      <div class="spec-name">specialist: <strong>NQ_RTH_VOL_EXP_short</strong></div>
+      <div class="pos-info">
+        <span class="pos-status">Short × 1 @ 21,430.25</span>
+        <span class="pos-pnl pos">+$240</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ES — FIRE LONG -->
+  <div class="sym-card fire-long">
+    <div class="sc-head">
+      <div class="sc-sym-row">
+        <div class="sc-sym" data-sym-mini="ES" data-sym-micro="MES">ES</div>
+        <div class="sc-px">5,841.50</div>
+        <span class="sc-chg pos">+0.20%</span>
+      </div>
+      <span class="toggle-pill on">● ON</span>
+    </div>
+    <div class="sc-row">
+      <span class="r-pill up">▲ TREND UP</span>
+      <span class="sess-text">ETH</span>
+      <span class="verdict-pill long">▲ FIRE LONG</span>
+    </div>
+    <div class="sparkline-wrap">
+      <svg class="sparkline" viewBox="0 0 200 60" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="esFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#3fb950" stop-opacity="0.3"/>
+            <stop offset="1" stop-color="#3fb950" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0,45 L15,42 L30,38 L45,40 L60,32 L75,35 L90,28 L105,30 L120,22 L135,18 L150,20 L165,12 L180,10 L200,8 L200,60 L0,60 Z" fill="url(#esFill)"/>
+        <polyline points="0,45 15,42 30,38 45,40 60,32 75,35 90,28 105,30 120,22 135,18 150,20 165,12 180,10 200,8"
+                  fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 3px rgba(63,185,80,0.5))"/>
+      </svg>
+      <div class="spark-stats"><strong>+$180</strong>today<br>1d · 5m</div>
+    </div>
+    <div class="gauges">
+      <div class="gauge">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+          <path class="g-fg long" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="125.7" stroke-dashoffset="32.7"/>
+        </svg>
+        <div class="gauge-num l">74%</div>
+        <div class="gauge-cap">LONG prob</div>
+        <div class="gauge-th hit">th 0.68 ✓ HIT</div>
+      </div>
+      <div class="gauge">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+          <path class="g-fg short" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="125.7" stroke-dashoffset="103.1"/>
+        </svg>
+        <div class="gauge-num s">18%</div>
+        <div class="gauge-cap">SHORT prob</div>
+        <div class="gauge-th">th 0.72</div>
+      </div>
+    </div>
+    <div class="sc-foot">
+      <div class="spec-name">specialist: <strong>ES_ETH_TREND_UP_long</strong></div>
+      <div class="pos-info">
+        <span class="pos-status">Long × 1 @ 5,840.25</span>
+        <span class="pos-pnl pos">+$72</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CL — CHOP -->
+  <div class="sym-card chop">
+    <div class="sc-head">
+      <div class="sc-sym-row">
+        <div class="sc-sym" data-sym-mini="CL" data-sym-micro="MCL">CL</div>
+        <div class="sc-px">72.41</div>
+        <span class="sc-chg neg">−0.79%</span>
+      </div>
+      <span class="toggle-pill on">● ON</span>
+    </div>
+    <div class="sc-row">
+      <span class="r-pill chop">─ CHOP</span>
+      <span class="sess-text">RTH</span>
+      <span class="verdict-pill wait">CHOP — STAND DOWN</span>
+    </div>
+    <div class="sparkline-wrap">
+      <svg class="sparkline" viewBox="0 0 200 60" preserveAspectRatio="none">
+        <polyline points="0,30 15,32 30,28 45,33 60,29 75,31 90,30 105,28 120,32 135,30 150,29 165,31 180,30 200,30"
+                  fill="none" stroke="#8b949e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="spark-stats"><strong>$0</strong>today<br>flat</div>
+    </div>
+    <div class="gauges" style="opacity:0.5;">
+      <div class="gauge">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+        </svg>
+        <div class="gauge-num" style="color:var(--muted);">—</div>
+        <div class="gauge-cap">LONG prob</div>
+        <div class="gauge-th">no model</div>
+      </div>
+      <div class="gauge">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+        </svg>
+        <div class="gauge-num" style="color:var(--muted);">—</div>
+        <div class="gauge-cap">SHORT prob</div>
+        <div class="gauge-th">no model</div>
+      </div>
+    </div>
+    <div class="sc-foot">
+      <div class="spec-name">CHOP regime — no specialist active</div>
+      <div class="pos-info">
+        <span class="pos-status">waiting for ADX ≥ 22</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- GC — OFF -->
+  <div class="sym-card off">
+    <div class="sc-head">
+      <div class="sc-sym-row">
+        <div class="sc-sym" data-sym-mini="GC" data-sym-micro="MGC">GC</div>
+        <div class="sc-px">2,620.10</div>
+        <span class="sc-chg pos">+0.09%</span>
+      </div>
+      <span class="toggle-pill off">○ OFF</span>
+    </div>
+    <div class="sc-row">
+      <span class="r-pill down">▼ TREND DOWN</span>
+      <span class="sess-text">ETH</span>
+      <span class="verdict-pill wait">SYMBOL PAUSED</span>
+    </div>
+    <div class="sparkline-wrap">
+      <svg class="sparkline" viewBox="0 0 200 60" preserveAspectRatio="none">
+        <polyline points="0,15 15,18 30,20 45,16 60,22 75,25 90,28 105,24 120,30 135,28 150,32 165,30 180,35 200,38"
+                  fill="none" stroke="#8b949e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+      </svg>
+      <div class="spark-stats"><strong>$0</strong>off<br>paused</div>
+    </div>
+    <div class="gauges">
+      <div class="gauge" style="opacity:0.4;">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+          <path class="g-fg long" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="125.7" stroke-dashoffset="72.9"/>
+        </svg>
+        <div class="gauge-num l">42%</div>
+        <div class="gauge-cap">LONG prob</div>
+        <div class="gauge-th" style="color:var(--red);">⊘ GATED</div>
+      </div>
+      <div class="gauge" style="opacity:0.5;">
+        <svg viewBox="0 0 100 55">
+          <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
+          <path class="g-fg short" d="M 10 50 A 40 40 0 0 1 90 50" stroke-dasharray="125.7" stroke-dashoffset="56.6"/>
+        </svg>
+        <div class="gauge-num s">55%</div>
+        <div class="gauge-cap">SHORT prob</div>
+        <div class="gauge-th">th 0.65</div>
+      </div>
+    </div>
+    <div class="sc-foot">
+      <div class="spec-name">long bundle gated · short specialist OK</div>
+      <div class="pos-info">
+        <span class="pos-status">trading disabled — click ○ OFF to enable</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- E3: Slide-in drawer + dimmer overlay (open by default in mockup so you can see it) -->
+<div class="stream-overlay open" id="streamOverlay"></div>
+<aside class="stream-drawer open" id="streamDrawer">
+  <div class="drawer-head">
+    <div class="drawer-title-row">
+      <div class="drawer-title"><span class="pulse"></span> Live Event Stream</div>
+      <button class="drawer-close" id="drawerClose" title="Close drawer">✕</button>
+    </div>
+    <div class="drawer-filters">
+      <button class="drawer-filter active">ALL</button>
+      <button class="drawer-filter">NQ</button>
+      <button class="drawer-filter">ES</button>
+      <button class="drawer-filter">CL</button>
+      <button class="drawer-filter">GC</button>
+      <button class="drawer-filter">⚠ errors</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <div class="ev-row t-ENT"><span class="ev-t">14:25:00</span><span class="ev-s">NQ</span><span class="ev-y">ENT</span><span class="ev-m">📍 PAPER SHORT 1 @ 21430.25 SL=21458 TP=21380</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:25:00</span><span class="ev-s">NQ</span><span class="ev-y">DEC</span><span class="ev-m">SELL prob=0.71 ≥ thresh=0.62 (VOL_EXP)</span></div>
+    <div class="ev-row t-BAR"><span class="ev-t">14:25:00</span><span class="ev-s">NQ</span><span class="ev-y">BAR</span><span class="ev-m">close=21430.25 atr=18.4 vol=1822</span></div>
+    <div class="ev-row t-ENT"><span class="ev-t">14:24:55</span><span class="ev-s">ES</span><span class="ev-y">ENT</span><span class="ev-m">📍 PAPER LONG 1 @ 5840.25 SL=5832 TP=5856</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:24:55</span><span class="ev-s">ES</span><span class="ev-y">DEC</span><span class="ev-m">BUY prob=0.74 ≥ thresh=0.68 (TREND_UP)</span></div>
+    <div class="ev-row t-BAR"><span class="ev-t">14:24:55</span><span class="ev-s">ES</span><span class="ev-y">BAR</span><span class="ev-m">close=5841.50 atr=4.2</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:24:50</span><span class="ev-s">CL</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — regime=CHOP (adx=14.8)</span></div>
+    <div class="ev-row t-BAR"><span class="ev-t">14:24:50</span><span class="ev-s">CL</span><span class="ev-y">BAR</span><span class="ev-m">close=72.41 atr=0.18</span></div>
+    <div class="ev-row t-BLK"><span class="ev-t">14:24:45</span><span class="ev-s">GC</span><span class="ev-y">BLK</span><span class="ev-m">symbol toggled OFF — suppressed</span></div>
+    <div class="ev-row t-BAR"><span class="ev-t">14:24:45</span><span class="ev-s">GC</span><span class="ev-y">BAR</span><span class="ev-m">close=2620.10 atr=8.2</span></div>
+    <div class="ev-row t-REG"><span class="ev-t">14:24:00</span><span class="ev-s">ES</span><span class="ev-y">REG</span><span class="ev-m">regime: CHOP → TREND_UP (ADX 22.8)</span></div>
+    <div class="ev-row t-EXT"><span class="ev-t">14:22:30</span><span class="ev-s">NQ</span><span class="ev-y">EXT</span><span class="ev-m">🏁 PAPER LONG closed @ 21420.50 +$120 (TP, +1.8R)</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:20:00</span><span class="ev-s">NQ</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — below threshold (L=0.42 S=0.31)</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:19:55</span><span class="ev-s">ES</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — below threshold</span></div>
+    <div class="ev-row t-BAR"><span class="ev-t">14:19:55</span><span class="ev-s">ES</span><span class="ev-y">BAR</span><span class="ev-m">close=5839.75 atr=4.1</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:19:50</span><span class="ev-s">CL</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — regime=CHOP</span></div>
+    <div class="ev-row t-DEC"><span class="ev-t">14:18:00</span><span class="ev-s">NQ</span><span class="ev-y">DEC</span><span class="ev-m">FLAT — regime transitional</span></div>
+  </div>
+</aside>
+
+<script>
+  // MINI/MICRO toggle
+  document.querySelectorAll('#contractToggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#contractToggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const mode = btn.dataset.c;
+      document.querySelectorAll('.sc-sym').forEach(s => {
+        s.textContent = mode === 'micro' ? s.dataset.symMicro : s.dataset.symMini;
+      });
+    });
+  });
+  // Stream drawer toggle
+  const drawer = document.getElementById('streamDrawer');
+  const overlay = document.getElementById('streamOverlay');
+  const toggleBtn = document.getElementById('streamToggle');
+  const closeBtn = document.getElementById('drawerClose');
+  const badge = document.getElementById('streamBadge');
+  function openDrawer() {
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    toggleBtn.classList.add('active');
+    if (badge) badge.style.display = 'none';
+  }
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+    toggleBtn.classList.remove('active');
+    if (badge) { badge.style.display = ''; badge.textContent = '3 new'; }
+  }
+  toggleBtn.addEventListener('click', () => {
+    drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+  });
+  closeBtn.addEventListener('click', closeDrawer);
+  overlay.addEventListener('click', closeDrawer);
+  // Hide the badge on initial open (drawer starts open in mockup)
+  if (badge) badge.style.display = 'none';
+  // Drawer filter buttons
+  document.querySelectorAll('.drawer-filter').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.drawer-filter').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

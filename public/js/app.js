@@ -9,7 +9,7 @@ async function updateDashboard() {
     const res = await fetch('/api/state');
     if (!res.ok) throw new Error('API failure');
     const data = await res.json();
-    
+
     apiState = data;
     renderKPIs(data);
     renderAccounts(data.accounts);
@@ -18,6 +18,9 @@ async function updateDashboard() {
     renderYahooNews(data.yahooNews);
     renderTradeHistory(data.history);
     renderRegime(data.regime, data.schedule);
+    renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode);
+    // v2 Trading Floor Terminal hook — populates KPI strip + ops cards.
+    if (typeof window.terminalOnState === 'function') window.terminalOnState(data);
     
     // Update config inputs if values exist
     if (data.tastytradeId) {
@@ -48,33 +51,38 @@ async function updateDashboard() {
   }
 }
 
-// Render Master KPIs
+// Render Master KPIs — superseded by terminal.js renderKpiStrip for v2.
+// Kept as a no-op fallback (only acts on elements that actually exist in the
+// current DOM so it doesn't crash with the new Trading Floor layout).
 function renderKPIs(data) {
-  const equityElement = document.getElementById('kpi-equity');
-  const balanceElement = document.getElementById('kpi-balance');
+  const setIfExists = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+  setIfExists('kpi-equity', formatCurrency(data.totalEquity));
+  setIfExists('kpi-balance', formatCurrency(data.totalBalance));
+
   const openPnLElement = document.getElementById('kpi-open-pnl');
-  const activeTradesElement = document.getElementById('kpi-active-trades');
-  const progressElement = document.getElementById('kpi-progress');
-
-  equityElement.textContent = formatCurrency(data.totalEquity);
-  balanceElement.textContent = formatCurrency(data.totalBalance);
-  
-  // Format Open P&L with positive/negative colors
-  openPnLElement.textContent = (data.totalOpenPnL >= 0 ? '+' : '') + formatCurrency(data.totalOpenPnL);
-  openPnLElement.className = 'value ' + (data.totalOpenPnL > 0 ? 'profit' : (data.totalOpenPnL < 0 ? 'loss' : 'neutral'));
-
-  // Count active open positions
-  let activeCount = 0;
-  for (const sym of Object.keys(data.accounts)) {
-    if (data.accounts[sym].activePosition) activeCount++;
+  if (openPnLElement) {
+    openPnLElement.textContent = (data.totalOpenPnL >= 0 ? '+' : '') + formatCurrency(data.totalOpenPnL);
+    openPnLElement.className = openPnLElement.className.replace(/\s?(profit|loss|neutral)/g, '') +
+      ' ' + (data.totalOpenPnL > 0 ? 'profit' : (data.totalOpenPnL < 0 ? 'loss' : 'neutral'));
   }
-  activeTradesElement.textContent = activeCount;
 
-  // Calculate Progress toward $53,000 APX target (on a $50,000 base)
-  const profitMade = Math.max(0, data.totalBalance - 200000); // base for 4 accounts is $200k
-  const totalTarget = 12000; // 4 accounts * $3000 = $12k total profit target
-  const percent = Math.min(100, (profitMade / totalTarget) * 100);
-  progressElement.style.width = `${percent}%`;
+  let activeCount = 0;
+  if (data.accounts) {
+    for (const sym of Object.keys(data.accounts)) {
+      if (data.accounts[sym].activePosition) activeCount++;
+    }
+  }
+  setIfExists('kpi-active-trades', activeCount);
+
+  const progressElement = document.getElementById('kpi-progress');
+  if (progressElement) {
+    const profitMade = Math.max(0, data.totalBalance - 200000);
+    const percent = Math.min(100, (profitMade / 12000) * 100);
+    progressElement.style.width = percent + '%';
+  }
 }
 
 // Render Futures Sub-Accounts
@@ -538,6 +546,42 @@ function renderTradeHistory(history) {
     `;
     container.appendChild(item);
   });
+}
+
+// Render v2 Engine Status — per-symbol regime + GBDT long/short probability + paper P&L
+// (Full version to be expanded in the next session; this stub keeps the dashboard safe.)
+function renderEngineStatus(lastDecisions, livePrices, tradingMode) {
+  const grid = document.getElementById('engine-status-grid');
+  if (!grid) return;
+  const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
+  const cards = [];
+  for (const sym of symbols) {
+    const d = lastDecisions[sym];
+    const cleanSym = sym.replace('=F', '');
+    if (!d) {
+      cards.push(`<div class="glass-card" style="padding:14px; opacity:0.5;"><div style="font-size:13px; font-weight:800;">${cleanSym}</div><div style="font-size:11px; color:var(--text-secondary); margin-top:6px;">Awaiting first NT8 bar push…</div></div>`);
+      continue;
+    }
+    const action = d.action || 'FLAT';
+    const regime = d.regime || '—';
+    const session = d.session || '—';
+    const probs = d.probabilities || {};
+    const longP = probs.long !== undefined ? (probs.long * 100).toFixed(0) + '%' : '—';
+    const shortP = probs.short !== undefined ? (probs.short * 100).toFixed(0) + '%' : '—';
+    const px = livePrices[sym] ? livePrices[sym].toFixed(2) : '—';
+    const actionColor = action === 'BUY' ? 'var(--neon-green)' : (action === 'SELL' ? 'var(--neon-red)' : 'var(--text-secondary)');
+    cards.push(`
+      <div class="glass-card" style="padding:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:13px; font-weight:800;">${cleanSym}</div>
+          <div style="font-size:11px; color:${actionColor}; font-weight:800;">${action}</div>
+        </div>
+        <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">${session} • ${regime}</div>
+        <div style="font-size:11px; margin-top:8px;">px <strong>${px}</strong> · L <strong>${longP}</strong> · S <strong>${shortP}</strong></div>
+      </div>
+    `);
+  }
+  grid.innerHTML = cards.join('');
 }
 
 // Render RTH/ETH regimes

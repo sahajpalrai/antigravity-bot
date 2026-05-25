@@ -110,10 +110,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                 signalTakeProfit = 0;
                 signalBreakevenPrice = 0;
                 signalTrailingPrice = 0;
+                beApplied = false;
+                trailApplied = false;
             }
             else
             {
                 currentAtr = ATR(14)[0];
+                // ── Break-even + trailing stop management ──
+                // Python brain set signalBreakevenPrice and signalTrailingPrice
+                // when entry was submitted. When price crosses them, advance SL.
+                ManageBreakevenAndTrail();
             }
             UpdateChartOverlay();
 
@@ -125,6 +131,22 @@ namespace NinjaTrader.NinjaScript.Strategies
             // 2. ETH Session Mean Reversion (Bollinger Bands Upper and Lower)
             Values[2][0] = Bollinger(parsedBbDev, 20).Upper[0];
             Values[3][0] = Bollinger(parsedBbDev, 20).Lower[0];
+
+            // ── Bar push to Node decision engine ──
+            // Only on first tick of a new bar (closed-bar inference).
+            if (isConnected && stream != null && IsFirstTickOfBar && CurrentBar >= 220)
+            {
+                try
+                {
+                    string sym = ResolveSymbolCode();
+                    // BAR,symbol,iso8601,open,high,low,close,volume
+                    string barMsg = string.Format("BAR,{0},{1:yyyy-MM-ddTHH:mm:ss},{2},{3},{4},{5},{6}\n",
+                        sym, Time[1], Open[1], High[1], Low[1], Close[1], (long)Volume[1]);
+                    byte[] buf = Encoding.UTF8.GetBytes(barMsg);
+                    stream.Write(buf, 0, buf.Length);
+                }
+                catch {}
+            }
 
             // Real-time synchronization of account metrics (Balance, Realized, and Unrealized P&Ls)
             if (isConnected && stream != null && Account != null)
@@ -139,14 +161,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                         Math.Abs(currentRealized - lastSentRealized) > 0.01 ||
                         Math.Abs(currentUnrealized - lastSentUnrealized) > 0.01)
                     {
-                        string symbol = "NQ=F";
-                        string name = Instrument.FullName.ToUpper();
-                        if (name.Contains("NQ")) symbol = "NQ=F";
-                        else if (name.Contains("ES")) symbol = "ES=F";
-                        else if (name.Contains("CL")) symbol = "CL=F";
-                        else if (name.Contains("GC")) symbol = "GC=F";
-
-                        string metricsMsg = string.Format("METRICS,{0},{1},{2},{3}\n", symbol, currentBalance, currentRealized, currentUnrealized);
+                        string symbol = ResolveSymbolCode();
+                        // Extended METRICS v2 — includes authoritative position info
+                        // so Node doesn't have to guess direction from sign of P&L.
+                        string posLabel = Position.MarketPosition == MarketPosition.Long ? "Long"
+                                        : Position.MarketPosition == MarketPosition.Short ? "Short"
+                                        : "Flat";
+                        int posQty = Position.Quantity;
+                        double avgPrice = Position.AveragePrice;
+                        string metricsMsg = string.Format("METRICS,{0},{1},{2},{3},{4},{5},{6}\n",
+                            symbol, currentBalance, currentRealized, currentUnrealized, posLabel, posQty, avgPrice);
                         byte[] writeBuffer = Encoding.UTF8.GetBytes(metricsMsg);
                         stream.Write(writeBuffer, 0, writeBuffer.Length);
 
@@ -156,6 +180,77 @@ namespace NinjaTrader.NinjaScript.Strategies
                     }
                 }
                 catch {}
+            }
+        }
+
+        // Resolves Yahoo-style symbol code from current chart instrument
+        private string ResolveSymbolCode()
+        {
+            string name = Instrument.FullName.ToUpper();
+            if (name.Contains("NQ")) return "NQ=F";
+            if (name.Contains("ES")) return "ES=F";
+            if (name.Contains("CL")) return "CL=F";
+            if (name.Contains("GC")) return "GC=F";
+            return "NQ=F";
+        }
+
+        // State for BE/trail (declared as fields below in #region)
+        private bool beApplied = false;
+        private bool trailApplied = false;
+
+        // Moves SL to breakeven once price crosses signalBreakevenPrice, and
+        // starts trailing once price crosses signalTrailingPrice. SL only
+        // advances in our favor (never backs off).
+        private void ManageBreakevenAndTrail()
+        {
+            if (Position.MarketPosition == MarketPosition.Flat) return;
+            if (signalBreakevenPrice <= 0 || signalTrailingPrice <= 0) return;
+
+            double px = Close[0];
+            double entry = Position.AveragePrice;
+            bool isLong = Position.MarketPosition == MarketPosition.Long;
+
+            // Stage 1: Break-even
+            if (!beApplied)
+            {
+                bool beHit = isLong ? px >= signalBreakevenPrice : px <= signalBreakevenPrice;
+                if (beHit)
+                {
+                    double newSL = entry; // pure breakeven
+                    double slTicks = Math.Abs(px - newSL) / TickSize;
+                    try
+                    {
+                        SetStopLoss(isLong ? "AntigravityLong" : "AntigravityShort",
+                                    CalculationMode.Price, newSL, false);
+                        beApplied = true;
+                        signalStopLoss = newSL;
+                        Print(string.Format("AntigravityBridge: BE applied @ {0:F2}", newSL));
+                    }
+                    catch (Exception ex) { Print("BE move error: " + ex.Message); }
+                }
+            }
+
+            // Stage 2: Trailing — once trail trigger hit, advance SL at currentAtr * 1.0 behind price
+            if (beApplied)
+            {
+                bool trailHit = isLong ? px >= signalTrailingPrice : px <= signalTrailingPrice;
+                if (trailHit)
+                {
+                    double trailDist = currentAtr > 0 ? currentAtr * 1.0 : (TickSize * 20);
+                    double newSL = isLong ? px - trailDist : px + trailDist;
+                    bool advances = isLong ? newSL > signalStopLoss : newSL < signalStopLoss;
+                    if (advances)
+                    {
+                        try
+                        {
+                            SetStopLoss(isLong ? "AntigravityLong" : "AntigravityShort",
+                                        CalculationMode.Price, newSL, false);
+                            signalStopLoss = newSL;
+                            trailApplied = true;
+                        }
+                        catch (Exception ex) { Print("Trail move error: " + ex.Message); }
+                    }
+                }
             }
         }
 
@@ -219,14 +314,21 @@ namespace NinjaTrader.NinjaScript.Strategies
                             double currentRealized = Account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar);
                             double currentUnrealized = Account.Get(AccountItem.UnrealizedProfitLoss, Currency.UsDollar);
 
-                            string metricsMsg = string.Format("METRICS,{0},{1},{2},{3}\n", symbol, currentBalance, currentRealized, currentUnrealized);
+                            string posLabel = Position.MarketPosition == MarketPosition.Long ? "Long"
+                                            : Position.MarketPosition == MarketPosition.Short ? "Short"
+                                            : "Flat";
+                            int posQty = Position.Quantity;
+                            double avgPrice = Position.AveragePrice;
+                            string metricsMsg = string.Format("METRICS,{0},{1},{2},{3},{4},{5},{6}\n",
+                                symbol, currentBalance, currentRealized, currentUnrealized, posLabel, posQty, avgPrice);
                             byte[] metricsBuf = Encoding.UTF8.GetBytes(metricsMsg);
                             stream.Write(metricsBuf, 0, metricsBuf.Length);
 
                             lastSentBalance = currentBalance;
                             lastSentRealized = currentRealized;
                             lastSentUnrealized = currentUnrealized;
-                            Print(string.Format("AntigravityBridge: Initial metrics sync -> METRICS,{0},{1},{2},{3}", symbol, currentBalance, currentRealized, currentUnrealized));
+                            Print(string.Format("AntigravityBridge: Initial metrics sync -> METRICS,{0},{1},{2},{3} pos={4} qty={5}",
+                                symbol, currentBalance, currentRealized, currentUnrealized, posLabel, posQty));
                         }
                         
                         // Force a UI label refresh on connect
