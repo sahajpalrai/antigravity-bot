@@ -2,19 +2,23 @@
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>Antigravity v2</Author>
-    <Description>Weekly walkforward retrain. Runs Sunday 12:00 PM PT, 5 hours before CME reopens. Uses --auto-rollback so bad new models cannot replace good existing ones.</Description>
-    <URI>\Antigravity Weekly Retrain</URI>
+    <Description>Daily walkforward retrain — fires TWICE: 04:30 AM PT (30 min before pre-market warmup) and 14:30 PM PT (30 min after CME maintenance window closes). Uses --auto-rollback so any new model that backtests worse than the existing one is automatically reverted. Bad daily retrains can never poison live behavior.</Description>
+    <URI>\Antigravity Daily Retrain</URI>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
-      <StartBoundary>2026-05-31T12:00:00</StartBoundary>
+      <StartBoundary>2026-05-26T04:30:00</StartBoundary>
       <Enabled>true</Enabled>
-      <ScheduleByWeek>
-        <DaysOfWeek>
-          <Sunday />
-        </DaysOfWeek>
-        <WeeksInterval>1</WeeksInterval>
-      </ScheduleByWeek>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2026-05-26T14:30:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
     </CalendarTrigger>
   </Triggers>
   <Principals>
@@ -38,13 +42,13 @@
     <Enabled>true</Enabled>
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
-    <WakeToRun>false</WakeToRun>
+    <WakeToRun>true</WakeToRun>
     <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>D:\Google AntiGravity\Scripts\weekly_retrain.bat</Command>
+      <Command>D:\Google AntiGravity\scripts\daily_retrain.bat</Command>
       <WorkingDirectory>D:\Google AntiGravity</WorkingDirectory>
     </Exec>
   </Actions>

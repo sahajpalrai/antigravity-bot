@@ -99,37 +99,48 @@ function renderAccounts(accounts) {
     const cleanSymbol = sym.replace('=F', '');
     const activePosText = acc.activePosition ? `${acc.activePosition.direction} @ ${acc.activePosition.entryPrice.toFixed(2)} (${acc.activePosition.strategyUsed})` : 'None';
     
-    // Determine active trading strategies primed under current session regime
+    // v2 deployed specialists for THIS symbol family. Pulled from the
+    // window._v2ModelStatus cache that terminal.js populates from /api/models.
+    // Replaces V1's "ORB Breakout / VWAP Pullback / FVG..." hardcoded list.
     const isRTH = apiState && apiState.regime && apiState.regime.code === 'RTH';
-    
-    const orbClass = isRTH ? 'strategy-badge trend active' : 'strategy-badge trend dimmed';
-    const vwapClass = isRTH ? 'strategy-badge trend active' : 'strategy-badge trend dimmed';
-    const fvgClass = isRTH ? 'strategy-badge trend active' : 'strategy-badge trend dimmed';
-    const emaClass = isRTH ? 'strategy-badge trend active' : 'strategy-badge trend dimmed';
-    const superClass = isRTH ? 'strategy-badge trend active' : 'strategy-badge trend dimmed';
-    
-    const bbClass = !isRTH ? 'strategy-badge reversion active' : 'strategy-badge reversion dimmed';
-    const stochClass = !isRTH ? 'strategy-badge reversion active' : 'strategy-badge reversion dimmed';
-    
+    const family = sym.replace('=F', '');
+    const models = (window._v2ModelStatus || []).filter(m => m.symbol === sym);
+    const deployed = models.filter(m => m.enabled);
+    const rthDeployed = deployed.filter(m => m.session === 'RTH');
+    const ethDeployed = deployed.filter(m => m.session === 'ETH');
+    const activeList = isRTH ? rthDeployed : ethDeployed;
+
+    function v2Badge(m) {
+      const dir = m.direction === 'long' ? '↑' : '↓';
+      const regimeShort = m.regime.replace('TREND_', 'TREND ').replace('VOL_EXPANSION', 'VOL_EXP').replace('_', ' ');
+      const wr = m.aggregate && m.aggregate.winRate ? (m.aggregate.winRate * 100).toFixed(0) + '%' : '—';
+      const cls = m.session === 'RTH' ? 'strategy-badge trend active' : 'strategy-badge reversion active';
+      return `<span class="${cls}" title="${m.session} · ${m.regime} · ${m.direction} · WR ${wr} · threshold ${m.threshold.toFixed(2)}">${regimeShort} ${dir} <small style="opacity:0.7;">${wr}@${m.threshold.toFixed(2)}</small></span>`;
+    }
+    function v2BadgeGated(m) {
+      return `<span class="strategy-badge trend dimmed" title="GATED by quality filter (${m.gateReason || 'low WR/PF'})">${m.regime.replace('VOL_EXPANSION','VOL_EXP').replace('_',' ')} ${m.direction === 'long' ? '↑' : '↓'} ⊘</span>`;
+    }
+
+    const allActiveBadges = activeList.map(v2Badge).join('');
+    const inactiveSession = isRTH ? ethDeployed : rthDeployed;
+    const inactiveBadges = inactiveSession.map(m => {
+      const dir = m.direction === 'long' ? '↑' : '↓';
+      const cls = 'strategy-badge ' + (m.session === 'RTH' ? 'trend' : 'reversion') + ' dimmed';
+      const regimeShort = m.regime.replace('VOL_EXPANSION','VOL_EXP').replace('_',' ');
+      return `<span class="${cls}" title="${m.session} session — dormant right now">${regimeShort} ${dir}</span>`;
+    }).join('');
+
     const strategiesHTML = `
       <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <span style="font-size: 11px; color: var(--text-secondary);">⚡ Primed Strategies (7 Best Models):</span>
+          <span style="font-size: 11px; color: var(--text-secondary);">⚡ v2 Specialists (deployed):</span>
           <span style="font-size: 9px; color: ${isRTH ? 'var(--neon-green)' : 'var(--neon-orange)'}; font-weight: 800; letter-spacing: 0.5px;">
-            ${isRTH ? 'RTH ACTIVE (5)' : 'ETH ACTIVE (2)'}
+            ${isRTH ? 'RTH' : 'ETH'} ACTIVE (${activeList.length})  ·  ${deployed.length} TOTAL
           </span>
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-          <!-- 5 RTH Trend Strategies -->
-          <span class="${orbClass}" title="Opening Range Breakout (Active during Day)">ORB Breakout</span>
-          <span class="${vwapClass}" title="VWAP Pullback & Trend Continuation (Active during Day)">VWAP Pullback</span>
-          <span class="${fvgClass}" title="Fair Value Gap / Silver Bullet (Active during Day)">FVG Breakout</span>
-          <span class="${emaClass}" title="EMA Crossover Trend Following (Active during Day)">EMA Crossover</span>
-          <span class="${superClass}" title="Supertrend & Momentum (Active during Day)">Supertrend</span>
-          
-          <!-- 2 ETH Reversion Strategies -->
-          <span class="${bbClass}" title="Bollinger Bands Mean Reversion (Active during Night)">BB Reversion</span>
-          <span class="${stochClass}" title="Stochastic & RSI Confluence (Active during Night)">Stoch & RSI</span>
+          ${allActiveBadges || '<span style="font-size:10px; color:var(--text-secondary); opacity:0.7;">No bundles deployed for ' + (isRTH?'RTH':'ETH') + ' on ' + family + ' (quality gate filtered them out — retrain may help)</span>'}
+          ${inactiveBadges}
         </div>
       </div>
     `;
@@ -852,6 +863,40 @@ async function toggleSymbolState(symbol, enabled) {
     }
   } catch (e) {
     console.error('[Dashboard] Error toggling symbol trading state:', e.message);
+  }
+}
+
+// Wipes all 8 accounts back to clean $50K + clears paper history.
+// Two-step confirmation since this is destructive.
+async function resetAllAccountsConfirm() {
+  const status = document.getElementById('reset-status');
+  if (!confirm('Wipe ALL 8 accounts back to $50,000 each and clear paper trade history?\n\nThis cannot be undone (only models are preserved).')) return;
+  if (!confirm('Are you ABSOLUTELY sure?\n\nClick OK to confirm. This will erase all balances, P&L, and trade journals.')) return;
+  if (status) status.textContent = 'Resetting…';
+  try {
+    const res = await fetch('/api/reset-accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'all' })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      if (status) {
+        status.textContent = '✓ All 8 accounts reset to $50,000.';
+        status.style.color = 'var(--neon-green)';
+      }
+      if (typeof updateDashboard === 'function') updateDashboard();
+    } else {
+      if (status) {
+        status.textContent = '✗ Reset failed.';
+        status.style.color = 'var(--neon-red)';
+      }
+    }
+  } catch (e) {
+    if (status) {
+      status.textContent = '✗ Network error: ' + e.message;
+      status.style.color = 'var(--neon-red)';
+    }
   }
 }
 

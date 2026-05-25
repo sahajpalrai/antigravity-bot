@@ -41,7 +41,8 @@ const {
   closeTrade, transitionToPAAccount,
   setContractMode, getContractMode, activeSymbols,
   ALL_SYMBOLS, MINI_SYMBOLS, MICRO_SYMBOLS, CONTRACT_SPECS,
-  familyMiniSymbol, familyMicroSymbol, activeContractFor
+  familyMiniSymbol, familyMicroSymbol, activeContractFor,
+  resetAllAccounts, resetSymbolAccount
 } = require('./lib/paperEngine');
 const { sendTelegramMessage } = require('./lib/telegram');
 const {
@@ -299,6 +300,35 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: 'failed', error: 'invalid session' }));
+      }
+
+      // POST /api/reset-accounts — wipes all 8 accounts + trade history back
+      // to clean $50K starting state. Also clears paper_trades.json so the
+      // paper engine starts fresh. Used when starting a new paper run.
+      if (pathname === '/api/reset-accounts' && req.method === 'POST') {
+        const scope = reqBody.scope || 'all';   // 'all' | 'symbol'
+        const symbol = reqBody.symbol;
+        let ok = false;
+        if (scope === 'symbol' && symbol) {
+          ok = resetSymbolAccount(symbol);
+        } else {
+          ok = resetAllAccounts();
+          // Also wipe paper-trade journal so /api/paper stats start at 0
+          try {
+            const paperFile = path.join(__dirname, 'models', 'paper_trades.json');
+            if (fs.existsSync(paperFile)) fs.unlinkSync(paperFile);
+          } catch (e) {}
+          // And the loss-attribution buckets
+          try {
+            const lossFile = path.join(__dirname, 'models', 'loss_attributions.json');
+            if (fs.existsSync(lossFile)) fs.unlinkSync(lossFile);
+          } catch (e) {}
+        }
+        if (ok) {
+          eventBus.emit('INFO', null, `Account reset — scope=${scope}${symbol ? ' symbol=' + symbol : ''}`);
+        }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'failed' }));
       }
 
       // POST /api/contract-mode — switch between MINI and MICRO globally

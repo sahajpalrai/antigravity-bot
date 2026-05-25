@@ -379,7 +379,50 @@
 
       <!-- View Tab 4: API & Google Sheets webhooks (administrative settings) -->
       <div id="view-settings" class="tab-view" style="display: none;">
-        <div class="glass-card config-panel gradient-glow-card" style="max-width: 900px; margin: 0 auto; padding: 32px;">
+        <div style="max-width: 1100px; margin: 0 auto; display:flex; flex-direction:column; gap: 18px;">
+
+        <!-- v2 Engine — what it is, how it works -->
+        <div class="glass-card gradient-glow-card" style="padding: 26px 30px;">
+          <h2 class="panel-title" style="font-size: 18px; font-weight: 800; color: var(--cyan-glow); margin: 0 0 12px 0;">🧠 v2 Engine — Strategies &amp; Models</h2>
+          <p style="font-size: 13px; line-height: 1.7; color: var(--text-secondary); margin: 0 0 16px 0;">
+            Antigravity v2 is a <strong style="color:var(--text-primary);">regime-aware gradient-boosted decision tree (GBDT)</strong> bot. It doesn't run hand-coded "strategies"
+            like ORB or VWAP-pullback. Instead, every 5-minute bar is classified into a regime, and a specialist ML model trained specifically for that regime decides the direction.
+          </p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div style="background: rgba(0,240,255,0.05); border: 1px solid rgba(0,240,255,0.2); border-radius: 10px; padding: 14px 16px;">
+              <div style="font-size: 11px; color: var(--cyan-glow); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">How a bar gets a decision</div>
+              <ol style="margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; color: var(--text-primary);">
+                <li>5-min bar closes → NT8 pushes to Node</li>
+                <li>22 features computed (RSI, MACD, BB-z, ATR%, EMA distances, vol-Z, time-of-day, etc.)</li>
+                <li>Regime classifier picks one: <strong>TREND_UP</strong>, <strong>TREND_DOWN</strong>, <strong>VOL_EXPANSION</strong>, or <strong>CHOP</strong></li>
+                <li>If CHOP → no trade. Otherwise → load the matching long &amp; short specialist models</li>
+                <li>Each specialist outputs a probability 0–1. If prob ≥ threshold → FIRE.</li>
+                <li>Exit: 1.5×ATR stop, 2.7×ATR target (1.8:1 R:R), BE at 0.8×ATR profit, trail at 1.2×ATR.</li>
+              </ol>
+            </div>
+            <div style="background: rgba(57,255,20,0.05); border: 1px solid rgba(57,255,20,0.2); border-radius: 10px; padding: 14px 16px;">
+              <div style="font-size: 11px; color: var(--neon-green); font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px;">Model inventory</div>
+              <ul style="margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; color: var(--text-primary);">
+                <li><strong>48 total bundles</strong> = 4 families × 2 sessions × 3 regimes × 2 directions</li>
+                <li><strong id="settings-deployed-count">— deployed</strong> (pass quality gate: WR ≥ 55%, PF ≥ 1.5, ≥ 30 test trades)</li>
+                <li><strong id="settings-gated-count">— gated off</strong> (auto-disabled by the quality filter, won't fire)</li>
+                <li>Each bundle has its OWN threshold tuned in walkforward to maximize Sharpe</li>
+                <li><strong>Micros piggyback</strong>: MNQ uses NQ's model, etc. — same edge, smaller notional</li>
+                <li>Trained: <span id="settings-last-trained" style="color:var(--cyan-glow);">—</span></li>
+              </ul>
+            </div>
+          </div>
+          <div id="settings-deployed-list" style="background: rgba(11,14,30,0.5); border: 1px solid var(--border-light); border-radius: 8px; padding: 12px 14px; font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.55; max-height: 240px; overflow-y: auto; color: var(--text-primary);">
+            Loading deployed bundles…
+          </div>
+          <div style="margin-top: 14px; font-size: 11px; color: var(--text-secondary); line-height: 1.6;">
+            <strong style="color: var(--neon-orange);">Daily retrain</strong> runs automatically at 04:30 AM PT and 14:30 PM PT via the Windows scheduled task
+            (<code style="color:var(--cyan-glow);">scripts/install_daily_retrain.bat</code> — run as admin once).
+            New models replace old ones only if walkforward Sharpe is at least as good (<code style="color:var(--cyan-glow);">--auto-rollback</code>).
+          </div>
+        </div>
+
+        <div class="glass-card config-panel gradient-glow-card" style="padding: 32px;">
           <h2 class="panel-title" style="font-size: 20px; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; margin-bottom: 24px; color: var(--magenta-glow);">⚙️ AI Cognitive Engine Credentials</h2>
           <div class="config-grid">
             <div class="input-group">
@@ -395,7 +438,23 @@
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
             <p>🔧 <strong>Global Broker Integration:</strong> Webhook credentials and Tastytrade integrations are written directly to your local encrypted process memory and synchronized asynchronously to your `.env` workspace variables for permanent system persistence across bot runtime starts.</p>
           </div>
+
+          <!-- ── Account Reset ── -->
+          <div style="margin-top: 28px; padding-top: 22px; border-top: 1px solid rgba(255,56,56,0.25);">
+            <h3 style="font-size: 14px; font-weight: 800; color: var(--neon-red); margin: 0 0 8px 0;">⚠ Account Reset</h3>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 14px 0; line-height: 1.6;">
+              Wipes all 8 contract accounts (NQ/ES/CL/GC + MNQ/MES/MCL/MGC) back to clean $50,000 starting state.
+              Clears paper trade history and loss-attribution buckets. Models are NOT affected.
+              Use this to start a fresh paper run with no legacy P&amp;L contamination.
+            </p>
+            <button onclick="resetAllAccountsConfirm()"
+                    style="background: linear-gradient(135deg, var(--neon-red), #ff007a); color: white; border: none; padding: 10px 22px; font-size: 12px; font-weight: 800; letter-spacing: 0.5px; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 16px rgba(255,56,56,0.25);">
+              🔄 RESET ALL 8 ACCOUNTS
+            </button>
+            <span id="reset-status" style="margin-left: 14px; font-size: 12px; color: var(--text-secondary);"></span>
+          </div>
         </div>
+        </div><!-- /.max-width wrapper for settings view -->
       </div>
 
       <!-- View Tab 6: Exits — TP/SL/BE/Trail overrides (RTH vs ETH) -->

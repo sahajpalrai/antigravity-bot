@@ -19,6 +19,15 @@
   const sparkBuffers = { NQ: [], ES: [], CL: [], GC: [] };
   const SPARK_LEN = 30;
 
+  // Loaded model thresholds keyed by family. Populated from /api/models.
+  // Each family entry: { RTH_TREND_UP_long: 0.68, ETH_VOL_EXPANSION_short: 0.62, ... }
+  // Cards use this to display "primed specialists" before any decision fires.
+  const modelThresholdsByFamily = { NQ: {}, ES: {}, CL: {}, GC: {} };
+  // Quality status per bundle key: 'OK' | 'DISABLED' | undefined (untrained)
+  const bundleStatusByFamily   = { NQ: {}, ES: {}, CL: {}, GC: {} };
+  // Aggregate WR per bundle for display
+  const bundleAggregateByFamily = { NQ: {}, ES: {}, CL: {}, GC: {} };
+
   // ── Public hooks (called from app.js) ──────────────────────────────────
   window.terminalOnState = function (data) {
     if (!data) return;
@@ -174,29 +183,52 @@
     else if (isChop)            verdictHtml = `<span class="e2-verdict wait">CHOP</span>`;
     else                        verdictHtml = `<span class="e2-verdict wait">WAIT</span>`;
 
-    // Specialist line
+    // Specialist line — shows ALL primed specialists for this family even
+    // before any decision fires, so the user can see what the bot is armed
+    // to do at any moment.
     let specLine;
-    if (!decision) {
-      specLine = '<em style="opacity:0.6;">waiting for first NT8 bar push…</em>';
-    } else if (isChop) {
+    if (isChop) {
       specLine = 'CHOP — no specialist active';
-    } else if (longBundle === 'DISABLED' && shortBundle === 'DISABLED') {
+    } else if (decision && (longBundle === 'DISABLED' && shortBundle === 'DISABLED')) {
       specLine = '<span style="color:var(--neon-red);">all bundles gated off (low quality)</span>';
-    } else if (longBundle === 'MISSING' && shortBundle === 'MISSING') {
+    } else if (decision && (longBundle === 'MISSING' && shortBundle === 'MISSING')) {
       specLine = '<span style="color:var(--neon-orange);">no model trained for this regime</span>';
+    } else if (decision && (action === 'BUY' || action === 'SELL')) {
+      const dir = action === 'BUY' ? 'long' : 'short';
+      specLine = `<strong>active: ${family}_${session}_${regime}_${dir}</strong>`;
     } else {
-      const fam = isMicro ? family : family;
-      const dir = action === 'BUY' ? 'long' : (action === 'SELL' ? 'short' : '{long|short}');
-      specLine = `<strong>${fam}_${session}_${regime}_${dir}</strong>`;
+      // No decision yet — list deployed bundles for this family
+      const bundles = deployedBundlesFor(family);
+      if (bundles.length === 0) {
+        specLine = '<span style="opacity:0.6;">no deployed bundles · waiting for retrain</span>';
+      } else {
+        const compact = bundles.slice(0, 3).map(b => {
+          const k = b.key.replace('_long', '↑').replace('_short', '↓').replace('VOL_EXPANSION', 'VOL_EXP');
+          return `<strong>${k}</strong>@${b.threshold.toFixed(2)}`;
+        }).join('  ·  ');
+        const more = bundles.length > 3 ? `  +${bundles.length - 3}` : '';
+        specLine = `<span style="opacity:0.85;">primed: ${compact}${more}</span>`;
+      }
     }
 
     // Sparkline
     const sparkPoints = sparkBuffers[family] || [];
     const sparkSvg = buildSparkline(sparkPoints, todayPnl);
 
-    // Gauges
-    const longGauge = buildGauge('long', longP, longTh, longBundle);
-    const shortGauge = buildGauge('short', shortP, shortTh, shortBundle);
+    // Gauges. When no decision yet, surface the BEST threshold across the
+    // family's deployed bundles for each direction (gives user the firing
+    // bar before any bar arrives).
+    let displayLongTh = longTh, displayShortTh = shortTh;
+    if (displayLongTh === undefined || displayLongTh === null) {
+      const dl = deployedBundlesFor(family).filter(b => b.key.endsWith('_long'));
+      displayLongTh = dl.length > 0 ? Math.min(...dl.map(b => b.threshold)) : null;
+    }
+    if (displayShortTh === undefined || displayShortTh === null) {
+      const ds = deployedBundlesFor(family).filter(b => b.key.endsWith('_short'));
+      displayShortTh = ds.length > 0 ? Math.min(...ds.map(b => b.threshold)) : null;
+    }
+    const longGauge = buildGauge('long', longP, displayLongTh, longBundle, decision);
+    const shortGauge = buildGauge('short', shortP, displayShortTh, shortBundle, decision);
 
     // Change percentage placeholder (computed from sparkline)
     const chgPct = sparkPoints.length >= 2
@@ -241,17 +273,37 @@
       </div>`;
   }
 
-  function buildGauge(side, prob, threshold, status) {
+  function buildGauge(side, prob, threshold, status, decision) {
     const cls = side === 'long' ? 'l' : 's';
     const fillCls = side === 'long' ? 'long' : 'short';
-    if (status === 'MISSING' || status === 'DISABLED' || prob === null || prob === undefined) {
-      const label = status === 'DISABLED' ? '⊘ GATED' : 'no model';
-      const cap = side === 'long' ? 'LONG' : 'SHORT';
+    const cap = side === 'long' ? 'LONG' : 'SHORT';
+    // Status-based dead states
+    if (status === 'DISABLED') {
       return `<div class="e2-gauge" style="opacity:0.45;">
         <svg viewBox="0 0 100 55"><path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/></svg>
         <div class="e2-gauge-num muted">—</div>
         <div class="e2-gauge-cap">${cap} prob</div>
-        <div class="e2-gauge-th ${status === 'DISABLED' ? 'gated' : ''}">${label}</div>
+        <div class="e2-gauge-th gated">⊘ GATED</div>
+      </div>`;
+    }
+    if (status === 'MISSING') {
+      return `<div class="e2-gauge" style="opacity:0.45;">
+        <svg viewBox="0 0 100 55"><path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/></svg>
+        <div class="e2-gauge-num muted">—</div>
+        <div class="e2-gauge-cap">${cap} prob</div>
+        <div class="e2-gauge-th">no model</div>
+      </div>`;
+    }
+    // No prob yet (waiting for first bar) but threshold IS known → show it
+    if (prob === null || prob === undefined) {
+      const thLabel = threshold !== null && threshold !== undefined
+        ? `th ${threshold.toFixed(2)} (primed)`
+        : 'awaiting bar';
+      return `<div class="e2-gauge" style="opacity:0.7;">
+        <svg viewBox="0 0 100 55"><path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/></svg>
+        <div class="e2-gauge-num muted">—</div>
+        <div class="e2-gauge-cap">${cap} prob</div>
+        <div class="e2-gauge-th">${thLabel}</div>
       </div>`;
     }
     const pct = Math.max(0, Math.min(1, prob));
@@ -260,7 +312,6 @@
     const hit = threshold !== undefined && prob >= threshold;
     const thLabel = threshold !== undefined ? `th ${threshold.toFixed(2)}${hit ? ' ✓ HIT' : ''}` : '—';
     const thCls = hit ? (side === 'long' ? 'hit' : 'hit-s') : '';
-    const cap = side === 'long' ? 'LONG' : 'SHORT';
     return `<div class="e2-gauge">
       <svg viewBox="0 0 100 55">
         <path class="g-bg" d="M 10 50 A 40 40 0 0 1 90 50"/>
@@ -469,13 +520,95 @@
       const res = await fetch('/api/models');
       if (!res.ok) return;
       const data = await res.json();
-      if (data.models) {
-        const enabled = data.models.filter(m => m.enabled).length;
-        const total = data.models.length;
-        const el = document.getElementById('kpi-models-on');
-        if (el) el.textContent = `${enabled} / ${total}`;
+      if (!data.models) return;
+      // Top-line KPI: deployed / total
+      const enabled = data.models.filter(m => m.enabled).length;
+      const total = data.models.length;
+      const el = document.getElementById('kpi-models-on');
+      if (el) el.textContent = `${enabled} / ${total}`;
+      // Global cache so app.js (Futures Funded Accounts cards) can show
+      // the same per-family bundle list without re-fetching.
+      window._v2ModelStatus = data.models;
+      // Populate the Settings → "v2 Engine" info panel
+      renderSettingsModelsInfo(data.models);
+      // Per-family bundle tables (used by the ops cards to show "primed
+      // specialists" with thresholds BEFORE any decision fires).
+      for (const fam of Object.keys(modelThresholdsByFamily)) {
+        modelThresholdsByFamily[fam]   = {};
+        bundleStatusByFamily[fam]      = {};
+        bundleAggregateByFamily[fam]   = {};
+      }
+      for (const m of data.models) {
+        const fam = (m.symbol || '').replace('=F', '');
+        if (!modelThresholdsByFamily[fam]) continue;
+        const key = `${m.session}_${m.regime}_${m.direction}`;
+        modelThresholdsByFamily[fam][key] = m.threshold;
+        bundleStatusByFamily[fam][key]    = m.enabled ? 'OK' : 'DISABLED';
+        bundleAggregateByFamily[fam][key] = m.aggregate || null;
       }
     } catch (e) {}
+  }
+
+  // Populates the Settings tab's "v2 Engine" panel with live model stats.
+  function renderSettingsModelsInfo(models) {
+    if (!Array.isArray(models)) return;
+    const deployed = models.filter(m => m.enabled);
+    const gated = models.filter(m => !m.enabled);
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setText('settings-deployed-count', deployed.length + ' deployed');
+    setText('settings-gated-count',    gated.length    + ' gated off');
+    // Latest train timestamp — pick max trainedAt across models
+    let latest = null;
+    for (const m of models) {
+      if (!m.trainedAt) continue;
+      const t = new Date(m.trainedAt);
+      if (!latest || t > latest) latest = t;
+    }
+    setText('settings-last-trained', latest ? latest.toLocaleString() : '—');
+
+    const list = document.getElementById('settings-deployed-list');
+    if (!list) return;
+    if (deployed.length === 0) {
+      list.innerHTML = '<span style="color:var(--neon-orange);">No bundles pass the quality gate. Run a retrain or relax MIN_WR / MIN_PF / MIN_TRADES env vars.</span>';
+      return;
+    }
+    // Sort by WR descending and render as a tidy table
+    const sorted = deployed.slice().sort((a, b) => (b.aggregate?.winRate || 0) - (a.aggregate?.winRate || 0));
+    const rows = sorted.map(m => {
+      const a = m.aggregate || {};
+      const wr = ((a.winRate || 0) * 100).toFixed(1).padStart(5) + '%';
+      const pf = (a.profitFactor || 0).toFixed(2).padStart(5);
+      const sh = (a.sharpe || 0).toFixed(2).padStart(6);
+      const tr = String(a.totalTestTrades || 0).padStart(5);
+      const sym = m.symbol.replace('=F', '').padEnd(3);
+      const sess = m.session.padEnd(4);
+      const reg  = m.regime.padEnd(14);
+      const dir  = m.direction.padEnd(6);
+      const th   = (m.threshold || 0).toFixed(2);
+      return `  ✓ ${sym} ${sess} ${reg} ${dir}  WR=${wr}  PF=${pf}  Sharpe=${sh}  trades=${tr}  th=${th}`;
+    }).join('\n');
+    list.textContent = rows;
+  }
+
+  // Returns the deployed (gate-passing) bundles for a family, summarized
+  // for the "primed specialists" line on each card.
+  function deployedBundlesFor(family) {
+    const status = bundleStatusByFamily[family] || {};
+    const ths = modelThresholdsByFamily[family] || {};
+    const aggs = bundleAggregateByFamily[family] || {};
+    const out = [];
+    for (const key of Object.keys(status)) {
+      if (status[key] !== 'OK') continue;
+      const a = aggs[key] || {};
+      out.push({
+        key,
+        threshold: ths[key] || 0.65,
+        winRate:   a.winRate || 0,
+        pf:        a.profitFactor || 0,
+        trades:    a.totalTestTrades || 0
+      });
+    }
+    return out;
   }
 
   // ── Boot ───────────────────────────────────────────────────────────────
