@@ -231,12 +231,15 @@
             <div style="display:flex; flex-direction:column; gap:20px;">
               <!-- Selection filters -->
               <div class="input-group">
-                <label>Engine</label>
+                <label>Action</label>
                 <select id="backtest-algorithm-select" class="glass-select" style="width: 100%; padding: 8px !important;">
-                  <option>Antigravity v2 GBDT (Regime-Aware)</option>
-                  <option>Per-Regime Specialists (deployed bundle)</option>
-                  <option>Show Latest Walkforward Report</option>
+                  <option value="report">Show Latest Walkforward Report (no training)</option>
+                  <option value="quick">Quick Calibration — all 48 bundles, ~5 min (50 trees, depth 3)</option>
+                  <option value="full">Full Calibration — all 48 bundles, ~25 min (150 trees, depth 4)</option>
                 </select>
+                <p style="margin-top: 8px; font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+                  Calibration retrains every bundle (4 families × 2 sessions × 3 regimes × 2 directions = 48 bundles) with walkforward + auto-rollback. Bad new models cannot replace good ones.
+                </p>
               </div>
 
               <!-- Risk slider -->
@@ -265,10 +268,9 @@
               </div>
 
               <!-- Backtest execution trigger -->
-              <button class="btn btn-backtest" onclick="runBacktester()" style="width:100%; padding:14px; margin-top: 10px;">⚡ Show Walkforward Report</button>
+              <button class="btn btn-backtest" id="backtest-run-btn" onclick="runBacktester()" style="width:100%; padding:14px; margin-top: 10px;">⚡ Run</button>
               <p style="margin-top: 10px; font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
-                Reads the latest <code style="color: var(--cyan-glow);">models/latest_report.json</code>.
-                Real walkforward folds — no hardcoded numbers, no sine curves.
+                Calibration runs in background — close this tab and the training keeps going. Status updates appear in the log box on the right.
               </p>
             </div>
           </div>

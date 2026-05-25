@@ -404,20 +404,53 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ status: 'success' }));
       }
 
-      // POST /api/backtest — returns the LATEST walkforward report (real numbers)
-      // Replaces the old hardcoded LSTM/MTF/EMA simulator.
+      // POST /api/backtest — three actions:
+      //   { action: 'report' } (default) → return latest walkforward report
+      //   { action: 'quick' }  → kick off `node scripts/train.js --quick --auto-rollback` in background
+      //   { action: 'full' }   → kick off `node scripts/train.js --auto-rollback` (150-tree full)
+      // For 'quick' and 'full' the response is immediate (training runs async);
+      // the dashboard polls back with { action: 'report' } until reportGeneratedAt advances.
       if (pathname === '/api/backtest' && req.method === 'POST') {
+        const action = (reqBody.action || 'report').toLowerCase();
         const reportPath = path.join(__dirname, 'models', 'latest_report.json');
+
+        if (action === 'quick' || action === 'full') {
+          // Spawn the trainer detached so it survives this request.
+          const { spawn } = require('child_process');
+          const args = ['scripts/train.js', '--auto-rollback'];
+          if (action === 'quick') args.push('--quick');
+          try {
+            const child = spawn('node', args, { cwd: __dirname, detached: true, stdio: 'ignore' });
+            child.unref();
+            eventBus.emit('INFO', null, `Calibration started: ${action.toUpperCase()} (background) — args=${args.join(' ')}`);
+            res.writeHead(202, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              status: 'started',
+              action,
+              message: `${action === 'full' ? 'Full' : 'Quick'} calibration running in background. Poll /api/backtest {action:"report"} for results.`,
+              expectedDurationMin: action === 'full' ? 25 : 5
+            }));
+          } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ status: 'failed', error: e.message }));
+          }
+        }
+
+        // Default: 'report' — load and format latest_report.json
         if (!fs.existsSync(reportPath)) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
-            results: '⚠️  No training report found. Run: node scripts/train.js --quick',
+            results: '⚠️  No training report yet. Use "Quick Calibration" to generate one.',
             summary: { totalProfitPercent: 0, drawdownPercent: 0, winRate: 0, profitFactor: 0, totalTrades: 0 },
-            chartData: []
+            chartData: [],
+            reportGeneratedAt: null
           }));
         }
         const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
         const formatted = _formatBacktestReport(report, reqBody);
+        // Include the file's mtime so the dashboard can detect when a new report lands
+        const mtime = fs.statSync(reportPath).mtimeMs;
+        formatted.reportGeneratedAt = mtime;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(formatted));
       }

@@ -911,46 +911,104 @@ async function updateWebhookUrl(val) {
   } catch (e) {}
 }
 
-// Run Historical Backtester
+// Run Backtester — three actions:
+//   'report'  → just display the latest walkforward report
+//   'quick'   → kick off `node scripts/train.js --quick` and poll for completion
+//   'full'    → kick off `node scripts/train.js` (full 150-tree) and poll
 async function runBacktester() {
   const box = document.getElementById('backtest-results');
+  const btn = document.getElementById('backtest-run-btn');
   const algoSelect = document.getElementById('backtest-algorithm-select');
-  const selectedAlgo = algoSelect ? algoSelect.value : 'LSTM Neural Network Model';
-  
-  box.innerHTML = `📥 Loading local NinjaTrader 8 historical exports and executing training & backtest for: ${selectedAlgo}...\n`;
+  const action = algoSelect ? algoSelect.value : 'report';
 
-  try {
-    const res = await fetch('/api/backtest', { 
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ algorithm: selectedAlgo })
-    });
-    if (!res.ok) throw new Error('Failed to run');
-    const data = await res.json();
-    
-    // Print logs
-    box.innerHTML = data.results;
-    
-    // Update performance KPI text badges
-    if (data.summary) {
-      const profitBadge = document.getElementById('backtest-total-profit');
-      const drawdownBadge = document.getElementById('backtest-max-drawdown');
-      
-      profitBadge.textContent = `+${data.summary.totalProfitPercent.toFixed(1)}%`;
-      drawdownBadge.textContent = `${data.summary.drawdownPercent.toFixed(1)}%`;
-      
-      // Flash glowing highlights
-      profitBadge.style.textShadow = '0 0 15px rgba(57, 255, 20, 0.6)';
-      drawdownBadge.style.textShadow = '0 0 15px rgba(255, 0, 122, 0.6)';
+  // Always paint latest report first as a baseline
+  async function paintReport(prefix) {
+    try {
+      const res = await fetch('/api/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'report' })
+      });
+      const data = await res.json();
+      box.innerHTML = (prefix || '') + (data.results || 'No report yet — calibrate first.');
+      if (data.summary) {
+        const pb = document.getElementById('backtest-total-profit');
+        const db = document.getElementById('backtest-max-drawdown');
+        if (pb) pb.textContent = `+${data.summary.totalProfitPercent.toFixed(1)}%`;
+        if (db) db.textContent = `${data.summary.drawdownPercent.toFixed(1)}%`;
+      }
+      if (data.chartData) drawNeonPerformanceChart('neon-backtest-chart', data.chartData);
+    } catch (e) {
+      box.innerHTML = '❌ Failed to load report: ' + e.message;
     }
-
-    // Plot beautiful Canvas neon line chart
-    if (data.chartData) {
-      drawNeonPerformanceChart('neon-backtest-chart', data.chartData);
-    }
-  } catch (err) {
-    box.innerHTML = '❌ Backtest run failed. Verify your files are in the data/ folder.';
   }
+
+  if (action === 'report') {
+    box.innerHTML = '📥 Loading latest walkforward report…\n';
+    await paintReport();
+    return;
+  }
+
+  // Calibration action — kicks off background training, then polls for completion
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Training in background…'; }
+  box.innerHTML = `🧠 Kicking off ${action === 'full' ? 'FULL' : 'QUICK'} calibration on all 48 bundles…\n` +
+                  `This trains every bundle (4 families × 2 sessions × 3 regimes × 2 directions).\n` +
+                  `--auto-rollback is enabled: bad new models won't replace good ones.\n\n` +
+                  `Started at ${new Date().toLocaleTimeString()}. ` +
+                  `Expected duration: ${action === 'full' ? '~25 min' : '~5 min'}.\n` +
+                  `You can close this tab — training continues in background. ` +
+                  `When done, the new report appears here automatically.\n`;
+  try {
+    await fetch('/api/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+  } catch (e) {
+    box.innerHTML += '\n❌ Failed to kick off training: ' + e.message;
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Run'; }
+    return;
+  }
+
+  // Poll every 20s for completion (latest_report.json mtime advances)
+  const startMs = Date.now();
+  let lastSeenMtime = null;
+  try {
+    const r0 = await fetch('/api/backtest', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'report' })
+    });
+    const d0 = await r0.json();
+    lastSeenMtime = d0.reportGeneratedAt || null;
+  } catch (e) {}
+
+  const poll = setInterval(async () => {
+    try {
+      const r = await fetch('/api/backtest', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'report' })
+      });
+      const d = await r.json();
+      const newMtime = d.reportGeneratedAt || null;
+      const elapsedMin = ((Date.now() - startMs) / 60000).toFixed(1);
+      if (newMtime && newMtime !== lastSeenMtime) {
+        clearInterval(poll);
+        await paintReport(`✓ Calibration complete in ${elapsedMin} min.\n\n`);
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Run'; }
+      } else {
+        const dots = '.'.repeat(Math.floor(Date.now()/500) % 4);
+        const status = `⏳ Training… ${elapsedMin} min elapsed${dots}\n` +
+                       `Polling for completion every 20s. Models are being written to models/ as each bundle finishes.\n`;
+        if (!box.innerHTML.includes('⏳ Training…')) {
+          box.innerHTML += '\n' + status;
+        } else {
+          box.innerHTML = box.innerHTML.replace(/⏳ Training… [\d.]+ min elapsed[.]*\n.*\n/, status);
+        }
+      }
+    } catch (e) {
+      // soft-fail; next poll
+    }
+  }, 20000);
 }
 
 // Run Cognitive Optimizer
