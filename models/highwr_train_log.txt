@@ -1,0 +1,27 @@
+╔══════════════════════════════════════════════════════════╗
+║   ANTIGRAVITY v2 — WALKFORWARD TRAINER                  ║
+╚══════════════════════════════════════════════════════════╝
+Symbols:         NQ=F, ES=F, CL=F, GC=F
+Auto-rollback:   ON
+Mode:            full (150 trees)
+High-WR mode:    ON — require WR ≥ 65%, prefer high-WR thresholds
+Started:         2026-05-26T00:13:30.733Z
+Backup created:  D:\Google AntiGravity\models_baseline_2026-05-26T00-13-30-735Z
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Loading NQ=F…
+  211721 candles loaded (2023-05-23 22:05:00-07:00 → 2026-05-22 21:00:00-07:00)
+
+[NQ=F RTH_TREND_UP_long] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_UP, dir=long)...
+  [Walkforward]   2786 samples extracted
+  [Walkforward]   Fold 1/4: train=557, test=557
+  [Walkforward]     train 2305ms | thresh=0.75 | test: trades=27 winRate=66.7% PF=3.60 Sharpe=10.42
+  [Walkforward]   Fold 2/4: train=1114, test=557
+  [Walkforward]     train 6385ms | thresh=0.72 | test: trades=44 winRate=47.7% PF=1.64 Sharpe=3.82
+  [Walkforward]   Fold 3/4: train=1671, test=557
+  [Walkforward]     train 11026ms | thresh=0.72 | test: trades=19 winRate=63.2% PF=3.09 Sharpe=9.03
+  [Walkforward]   Fold 4/4: train=2228, test=557
+  [Walkforward]     train 16312ms | thresh=0.68 | test: trades=12 winRate=8.3% PF=0.16 Sharpe=-15.73
+  [Walkforward]   Training deployment model on full dataset (2786 samples)...

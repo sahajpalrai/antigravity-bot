@@ -560,8 +560,19 @@ function _formatBacktestReport(report, reqBody) {
   text += `Engine:         Regime-aware GBDT (per regime × session × direction)\n`;
   text += `Algorithm:      ${algo}\n\n`;
 
-  // Aggregate across all bundles for the headline KPI
-  let totalTrades = 0, weightedWR = 0, weightedPF = 0, maxDD = 0, weightSum = 0;
+  // Quality-gate match (same as decisionEngine — WR≥0.55, PF≥1.5, trades≥30).
+  // Deployed-only stats are the HONEST forward expectation. The all-bundles
+  // aggregate is reported separately so the user can see both numbers.
+  const QG_WR = parseFloat(process.env.MIN_WR || '0.55');
+  const QG_PF = parseFloat(process.env.MIN_PF || '1.5');
+  const QG_TRADES = parseInt(process.env.MIN_TRADES || '30', 10);
+  const passesGate = a => a && a.totalTestTrades >= QG_TRADES &&
+                          a.winRate >= QG_WR && a.profitFactor >= QG_PF;
+
+  // Twin aggregators — deployed-only (headline) and all-bundles (footnote)
+  let dT = 0, dW = 0, dP = 0, dN = 0;  // deployed total trades, weighted WR sum, weighted PF sum, bundle count
+  let aT = 0, aW = 0, aP = 0, aN = 0;  // all-bundles
+  let maxDD = 0;
   const chartData = [];
   let cumulativeR = 0, peakR = 0;
   let pointIdx = 0;
@@ -575,16 +586,25 @@ function _formatBacktestReport(report, reqBody) {
         continue;
       }
       const a = b.aggregate;
-      totalTrades += a.totalTestTrades;
-      weightedWR += a.winRate * a.totalTestTrades;
-      weightedPF += a.profitFactor * a.totalTestTrades;
-      weightSum += a.totalTestTrades;
+      // All-bundles
+      aT += a.totalTestTrades;
+      aW += a.winRate * a.totalTestTrades;
+      aP += a.profitFactor * a.totalTestTrades;
+      aN++;
+      // Deployed-only (passes quality gate)
+      const deployed = passesGate(a);
+      if (deployed) {
+        dT += a.totalTestTrades;
+        dW += a.winRate * a.totalTestTrades;
+        dP += a.profitFactor * a.totalTestTrades;
+        dN++;
+      }
       if (a.maxDD > maxDD) maxDD = a.maxDD;
-      const status = b.deployed ? 'deployed' : 'rolled back';
+      const status = deployed ? '✓ DEPLOYED' : (b.deployed ? 'deployed' : '✗ GATED');
       text += `  ${key.padEnd(34)} trades=${String(a.totalTestTrades).padEnd(5)} ` +
               `WR=${(a.winRate*100).toFixed(1)}% PF=${a.profitFactor.toFixed(2)} ` +
               `Sharpe=${a.sharpe.toFixed(2)} thresh=${b.threshold.toFixed(2)} [${status}]\n`;
-      // Add a chart point per bundle showing cumulative R progression
+      // Chart point per bundle showing cumulative R progression
       cumulativeR += a.totalTestTrades * (a.winRate * 1.8 - (1 - a.winRate) * 1.0);
       if (cumulativeR > peakR) peakR = cumulativeR;
       const dd = peakR - cumulativeR;
@@ -598,13 +618,24 @@ function _formatBacktestReport(report, reqBody) {
     text += `\n`;
   }
 
-  const aggregateWR = weightSum > 0 ? weightedWR / weightSum : 0;
-  const aggregatePF = weightSum > 0 ? weightedPF / weightSum : 0;
-  text += `── AGGREGATE ──\n`;
-  text += `  Total test trades:   ${totalTrades}\n`;
-  text += `  Weighted win rate:   ${(aggregateWR*100).toFixed(1)}%\n`;
-  text += `  Weighted profit factor: ${aggregatePF.toFixed(2)}\n`;
-  text += `  Worst single-bundle max DD: ${maxDD.toFixed(1)} R\n`;
+  const deployedWR = dT > 0 ? dW / dT : 0;
+  const deployedPF = dT > 0 ? dP / dT : 0;
+  const allWR      = aT > 0 ? aW / aT : 0;
+  const allPF      = aT > 0 ? aP / aT : 0;
+  text += `── DEPLOYED AGGREGATE (passes quality gate · honest forward expectation) ──\n`;
+  text += `  Deployed bundles:        ${dN} of ${aN}\n`;
+  text += `  Total deployed trades:   ${dT}\n`;
+  text += `  Deployed weighted WR:    ${(deployedWR*100).toFixed(1)}%\n`;
+  text += `  Deployed weighted PF:    ${deployedPF.toFixed(2)}\n`;
+  text += `── ALL-BUNDLES AGGREGATE (includes gated bundles · misleading if used as forward expectation) ──\n`;
+  text += `  Total test trades:       ${aT}\n`;
+  text += `  All-bundles weighted WR: ${(allWR*100).toFixed(1)}%\n`;
+  text += `  All-bundles weighted PF: ${allPF.toFixed(2)}\n`;
+  text += `  Worst single-bundle DD:  ${maxDD.toFixed(1)} R\n`;
+  // Use deployed-only as the summary headline going forward
+  const aggregateWR = deployedWR;
+  const aggregatePF = deployedPF;
+  const totalTrades = dT;
 
   return {
     results: text,

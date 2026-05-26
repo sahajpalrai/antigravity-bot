@@ -27,7 +27,8 @@ const args = process.argv.slice(2);
 const opts = {
   symbols: ['NQ=F', 'ES=F', 'CL=F', 'GC=F'],
   autoRollback: args.includes('--auto-rollback'),
-  quick: args.includes('--quick')   // fewer trees for fast iteration
+  quick: args.includes('--quick'),       // fewer trees for fast iteration
+  highWR: args.includes('--high-wr')     // require WR ≥ 0.65, prefer high-WR thresholds
 };
 const symArg = args.find(a => a.startsWith('--symbols='));
 if (symArg) opts.symbols = symArg.split('=')[1].split(',').map(s => s.includes('=F') ? s : s + '=F');
@@ -120,14 +121,19 @@ function trainBundle(symbol, candles) {
         const logPrefix = `[${symbol} ${key}]`;
         console.log(`\n${logPrefix} Starting walkforward…`);
 
-        const result = walkforward(candles, {
+        const wfOpts = {
           session,
           regime,
           direction,
           folds: 5,
           params: TRAIN_PARAMS,
           log: (msg) => console.log(`  ${msg}`)
-        });
+        };
+        if (opts.highWR) {
+          wfOpts.winRateFloor = 0.65;
+          wfOpts.objective    = 'winRate';
+        }
+        const result = walkforward(candles, wfOpts);
 
         if (!result.trained) {
           console.log(`${logPrefix} SKIPPED — ${result.reason} (${result.sampleCount || 0} samples)`);
@@ -190,8 +196,34 @@ function main() {
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log(`Symbols:         ${opts.symbols.join(', ')}`);
   console.log(`Auto-rollback:   ${opts.autoRollback ? 'ON' : 'off'}`);
-  console.log(`Mode:            ${opts.quick ? 'quick (40 trees)' : 'full (120 trees)'}`);
+  console.log(`Mode:            ${opts.quick ? 'quick (40 trees)' : 'full (150 trees)'}`);
+  console.log(`High-WR mode:    ${opts.highWR ? 'ON — require WR ≥ 65%, prefer high-WR thresholds' : 'off (winRateFloor=0.55, optimize Sharpe)'}`);
   console.log(`Started:         ${new Date().toISOString()}`);
+
+  // Auto-backup current models/ dir before high-WR overwrite. User can always
+  // revert by copying the backup back. Path: models_baseline_<ISO-ts>/
+  if (opts.highWR) {
+    try {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupDir = path.join(__dirname, '..', `models_baseline_${ts}`);
+      if (fs.existsSync(MODELS_DIR)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+        for (const f of fs.readdirSync(MODELS_DIR)) {
+          if (f.endsWith('.json') &&
+              !f.includes('paper_trades') &&
+              !f.includes('loss_attributions') &&
+              !f.includes('retrain_needed') &&
+              !f.includes('exit_overrides')) {
+            fs.copyFileSync(path.join(MODELS_DIR, f), path.join(backupDir, f));
+          }
+        }
+        console.log(`Backup created:  ${backupDir}`);
+      }
+    } catch (e) {
+      console.error(`⚠️  Failed to backup current models: ${e.message}. Aborting.`);
+      process.exit(2);
+    }
+  }
   console.log('');
 
   const startTime = Date.now();
