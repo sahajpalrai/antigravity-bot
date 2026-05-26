@@ -25,3 +25,337 @@ Loading NQ=F…
   [Walkforward]   Fold 4/4: train=2228, test=557
   [Walkforward]     train 16312ms | thresh=0.68 | test: trades=12 winRate=8.3% PF=0.16 Sharpe=-15.73
   [Walkforward]   Training deployment model on full dataset (2786 samples)...
+  [Walkforward]   AGGREGATE: trades=102 winRate=51.0% PF=2.12 Sharpe=1.89 thresh=0.72
+[NQ=F RTH_TREND_UP_long] ROLLBACK — existing sharpe 3.15 > new 1.89 — keeping existing
+
+[NQ=F RTH_TREND_UP_short] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_UP, dir=short)...
+  [Walkforward]   2786 samples extracted
+  [Walkforward]   Fold 1/4: train=557, test=557
+  [Walkforward]     train 3162ms | thresh=0.75 | test: trades=79 winRate=46.8% PF=1.59 Sharpe=3.54
+  [Walkforward]   Fold 2/4: train=1114, test=557
+  [Walkforward]     train 9164ms | thresh=0.78 | test: trades=4 winRate=25.0% PF=0.60 Sharpe=-3.93
+  [Walkforward]   Fold 3/4: train=1671, test=557
+  [Walkforward]     train 8711ms | thresh=0.75 | test: trades=10 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Fold 4/4: train=2228, test=557
+  [Walkforward]     train 8378ms | thresh=0.75 | test: trades=89 winRate=69.7% PF=4.13 Sharpe=11.72
+  [Walkforward]   Training deployment model on full dataset (2786 samples)...
+  [Walkforward]   AGGREGATE: trades=182 winRate=57.7% PF=2.03 Sharpe=3.97 thresh=0.75
+[NQ=F RTH_TREND_UP_short] ROLLBACK — existing sharpe 4.02 > new 3.97 — keeping existing
+
+[NQ=F RTH_TREND_DOWN_long] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_DOWN, dir=long)...
+  [Walkforward]   1993 samples extracted
+  [Walkforward]   Fold 1/4: train=398, test=398
+  [Walkforward]     train 716ms | thresh=0.75 | test: trades=72 winRate=34.7% PF=0.96 Sharpe=-0.33
+  [Walkforward]   Fold 2/4: train=796, test=398
+  [Walkforward]     train 1718ms | thresh=0.72 | test: trades=51 winRate=52.9% PF=2.02 Sharpe=5.48
+  [Walkforward]   Fold 3/4: train=1194, test=398
+  [Walkforward]     train 3251ms | thresh=0.78 | test: trades=4 winRate=0.0% PF=0.00 Sharpe=0.00
+  [Walkforward]   Fold 4/4: train=1592, test=398
+  [Walkforward]     train 4388ms | thresh=0.75 | test: trades=4 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Training deployment model on full dataset (1993 samples)...
+  [Walkforward]   AGGREGATE: trades=131 winRate=42.7% PF=3.25 Sharpe=1.29 thresh=0.75
+[NQ=F RTH_TREND_DOWN_long] DEPLOYED → NQ_RTH_TREND_DOWN_long.json (thresh=0.75 winRate=42.7% PF=3.25 Sharpe=1.29)
+
+[NQ=F RTH_TREND_DOWN_short] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_DOWN, dir=short)...
+  [Walkforward]   1993 samples extracted
+  [Walkforward]   Fold 1/4: train=398, test=398
+  [Walkforward]     train 504ms | thresh=0.78 | test: trades=10 winRate=30.0% PF=0.77 Sharpe=-1.98
+  [Walkforward]   Fold 2/4: train=796, test=398
+  [Walkforward]     train 1514ms | thresh=0.68 | test: trades=23 winRate=39.1% PF=1.16 Sharpe=1.11
+  [Walkforward]   Fold 3/4: train=1194, test=398
+  [Walkforward]     train 2707ms | thresh=0.72 | test: trades=21 winRate=57.1% PF=2.40 Sharpe=6.87
+  [Walkforward]   Fold 4/4: train=1592, test=398
+  [Walkforward]     train 4062ms | thresh=0.68 | test: trades=22 winRate=72.7% PF=4.80 Sharpe=13.19
+  [Walkforward]   Training deployment model on full dataset (1993 samples)...
+  [Walkforward]   AGGREGATE: trades=76 winRate=52.6% PF=2.28 Sharpe=4.80 thresh=0.72
+[NQ=F RTH_TREND_DOWN_short] ROLLBACK — existing sharpe 5.94 > new 4.80 — keeping existing
+
+[NQ=F RTH_VOL_EXPANSION_long] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=VOL_EXPANSION, dir=long)...
+  [Walkforward]   10368 samples extracted
+  [Walkforward]   Fold 1/4: train=2073, test=2073
+  [Walkforward]     train 5367ms | thresh=0.82 | test: trades=43 winRate=30.2% PF=0.78 Sharpe=-1.89
+  [Walkforward]   Fold 2/4: train=4146, test=2073
+  [Walkforward]     train 14518ms | thresh=0.72 | test: trades=49 winRate=69.4% PF=4.08 Sharpe=11.60
+  [Walkforward]   Fold 3/4: train=6219, test=2073
+  [Walkforward]     train 34727ms | thresh=0.78 | test: trades=142 winRate=52.1% PF=1.96 Sharpe=5.21
+  [Walkforward]   Fold 4/4: train=8292, test=2073
+  [Walkforward]     train 67111ms | thresh=0.68 | test: trades=21 winRate=28.6% PF=0.72 Sharpe=-2.51
+  [Walkforward]   Training deployment model on full dataset (10368 samples)...
+  [Walkforward]   AGGREGATE: trades=255 winRate=49.8% PF=1.88 Sharpe=3.10 thresh=0.78
+[NQ=F RTH_VOL_EXPANSION_long] ROLLBACK — existing sharpe 5.05 > new 3.10 — keeping existing
+
+[NQ=F RTH_VOL_EXPANSION_short] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=VOL_EXPANSION, dir=short)...
+  [Walkforward]   10368 samples extracted
+  [Walkforward]   Fold 1/4: train=2073, test=2073
+  [Walkforward]     train 5548ms | thresh=0.72 | test: trades=39 winRate=46.2% PF=1.54 Sharpe=3.32
+  [Walkforward]   Fold 2/4: train=4146, test=2073
+  [Walkforward]     train 15796ms | thresh=0.68 | test: trades=14 winRate=78.6% PF=6.60 Sharpe=16.58
+  [Walkforward]   Fold 3/4: train=6219, test=2073
+  [Walkforward]     train 26056ms | thresh=0.68 | test: trades=16 winRate=56.3% PF=2.31 Sharpe=6.57
+  [Walkforward]   Fold 4/4: train=8292, test=2073
+  [Walkforward]     train 37324ms | thresh=0.68 | test: trades=2 winRate=0.0% PF=0.00 Sharpe=0.00
+  [Walkforward]   Training deployment model on full dataset (10368 samples)...
+  [Walkforward]   AGGREGATE: trades=71 winRate=53.5% PF=2.61 Sharpe=6.62 thresh=0.68
+[NQ=F RTH_VOL_EXPANSION_short] ROLLBACK — existing sharpe 8.88 > new 6.62 — keeping existing
+
+[NQ=F ETH_TREND_UP_long] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_UP, dir=long)...
+  [Walkforward]   8468 samples extracted
+  [Walkforward]   Fold 1/4: train=1693, test=1693
+  [Walkforward]     train 4711ms | thresh=0.82 | test: trades=47 winRate=53.2% PF=2.05 Sharpe=5.56
+  [Walkforward]   Fold 2/4: train=3386, test=1693
+  [Walkforward]     train 11328ms | thresh=0.78 | test: trades=46 winRate=60.9% PF=2.80 Sharpe=8.18
+  [Walkforward]   Fold 3/4: train=5079, test=1693
+  [Walkforward]     train 20199ms | thresh=0.78 | test: trades=3 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Fold 4/4: train=6772, test=1693
+  [Walkforward]     train 30290ms | thresh=0.75 | test: trades=19 winRate=52.6% PF=2.00 Sharpe=5.38
+  [Walkforward]   Training deployment model on full dataset (8468 samples)...
+  [Walkforward]   AGGREGATE: trades=115 winRate=57.4% PF=4.21 Sharpe=4.78 thresh=0.78
+[NQ=F ETH_TREND_UP_long] DEPLOYED → NQ_ETH_TREND_UP_long.json (thresh=0.78 winRate=57.4% PF=4.21 Sharpe=4.78)
+
+[NQ=F ETH_TREND_UP_short] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_UP, dir=short)...
+  [Walkforward]   8468 samples extracted
+  [Walkforward]   Fold 1/4: train=1693, test=1693
+  [Walkforward]     train 5328ms | thresh=0.78 | test: trades=32 winRate=56.3% PF=2.31 Sharpe=6.57
+  [Walkforward]   Fold 2/4: train=3386, test=1693
+  [Walkforward]     train 20398ms | thresh=0.75 | test: trades=7 winRate=42.9% PF=1.35 Sharpe=2.29
+  [Walkforward]   Fold 3/4: train=5079, test=1693
+  [Walkforward]     train 25424ms | thresh=0.75 | test: trades=7 winRate=57.1% PF=2.40 Sharpe=6.87
+  [Walkforward]   Fold 4/4: train=6772, test=1693
+  [Walkforward]     train 32328ms | thresh=0.72 | test: trades=5 winRate=60.0% PF=2.70 Sharpe=7.87
+  [Walkforward]   Training deployment model on full dataset (8468 samples)...
+  [Walkforward]   AGGREGATE: trades=51 winRate=54.9% PF=2.19 Sharpe=5.90 thresh=0.75
+[NQ=F ETH_TREND_UP_short] DEPLOYED → NQ_ETH_TREND_UP_short.json (thresh=0.75 winRate=54.9% PF=2.19 Sharpe=5.90)
+
+[NQ=F ETH_TREND_DOWN_long] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_DOWN, dir=long)...
+  [Walkforward]   8258 samples extracted
+  [Walkforward]   Fold 1/4: train=1651, test=1651
+  [Walkforward]     train 9001ms | thresh=0.78 | test: trades=152 winRate=46.1% PF=1.54 Sharpe=3.29
+  [Walkforward]   Fold 2/4: train=3302, test=1651
+  [Walkforward]     train 25947ms | thresh=0.68 | test: trades=59 winRate=35.6% PF=0.99 Sharpe=-0.04
+  [Walkforward]   Fold 3/4: train=4953, test=1651
+  [Walkforward]     train 101207ms | thresh=0.68 | test: trades=1 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Fold 4/4: train=6604, test=1651
+  [Walkforward]     train 115641ms | thresh=0.68 | test: trades=7 winRate=71.4% PF=4.50 Sharpe=12.55
+  [Walkforward]   Training deployment model on full dataset (8258 samples)...
+  [Walkforward]   AGGREGATE: trades=219 winRate=44.3% PF=4.26 Sharpe=3.95 thresh=0.68
+[NQ=F ETH_TREND_DOWN_long] ROLLBACK — existing sharpe 6.85 > new 3.95 — keeping existing
+
+[NQ=F ETH_TREND_DOWN_short] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_DOWN, dir=short)...
+  [Walkforward]   8258 samples extracted
+  [Walkforward]   Fold 1/4: train=1651, test=1651
+  [Walkforward]     train 7345ms | thresh=0.68 | test: trades=102 winRate=37.3% PF=1.07 Sharpe=0.51
+  [Walkforward]   Fold 2/4: train=3302, test=1651
+  [Walkforward]     train 18482ms | thresh=0.72 | test: trades=81 winRate=53.1% PF=2.04 Sharpe=5.53
+  [Walkforward]   Fold 3/4: train=4953, test=1651
+  [Walkforward]     train 82860ms | thresh=0.78 | test: trades=3 winRate=0.0% PF=0.00 Sharpe=0.00
+  [Walkforward]   Fold 4/4: train=6604, test=1651
+  [Walkforward]     train 131818ms | thresh=0.72 | test: trades=7 winRate=85.7% PF=10.80 Sharpe=22.68
+  [Walkforward]   Training deployment model on full dataset (8258 samples)...
+  [Walkforward]   AGGREGATE: trades=193 winRate=45.1% PF=3.48 Sharpe=7.18 thresh=0.72
+[NQ=F ETH_TREND_DOWN_short] DEPLOYED → NQ_ETH_TREND_DOWN_short.json (thresh=0.72 winRate=45.1% PF=3.48 Sharpe=7.18)
+
+[NQ=F ETH_VOL_EXPANSION_long] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=VOL_EXPANSION, dir=long)...
+  [Walkforward]   18945 samples extracted
+  [Walkforward]   Fold 1/4: train=3789, test=3789
+  [Walkforward]     train 14295ms | thresh=0.75 | test: trades=11 winRate=27.3% PF=0.68 Sharpe=-3.01
+  [Walkforward]   Fold 2/4: train=7578, test=3789
+  [Walkforward]     train 30594ms | thresh=0.75 | test: trades=28 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Fold 3/4: train=11367, test=3789
+  [Walkforward]     train 49527ms | thresh=0.72 | test: trades=7 winRate=71.4% PF=4.50 Sharpe=12.55
+  [Walkforward]   Fold 4/4: train=15156, test=3789
+  [Walkforward]     train 74993ms | thresh=0.68 | test: trades=2 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Training deployment model on full dataset (18945 samples)...
+  [Walkforward]   AGGREGATE: trades=48 winRate=50.0% PF=4.24 Sharpe=3.52 thresh=0.75
+[NQ=F ETH_VOL_EXPANSION_long] DEPLOYED → NQ_ETH_VOL_EXPANSION_long.json (thresh=0.75 winRate=50.0% PF=4.24 Sharpe=3.52)
+
+[NQ=F ETH_VOL_EXPANSION_short] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=VOL_EXPANSION, dir=short)...
+  [Walkforward]   18945 samples extracted
+  [Walkforward]   Fold 1/4: train=3789, test=3789
+  [Walkforward]     train 14882ms | thresh=0.78 | test: trades=36 winRate=33.3% PF=0.90 Sharpe=-0.80
+  [Walkforward]   Fold 2/4: train=7578, test=3789
+  [Walkforward]     train 25597ms | thresh=0.75 | test: trades=39 winRate=64.1% PF=3.21 Sharpe=9.39
+  [Walkforward]   Fold 3/4: train=11367, test=3789
+  [Walkforward]     train 49350ms | thresh=0.78 | test: trades=13 winRate=69.2% PF=4.05 Sharpe=11.53
+  [Walkforward]   Fold 4/4: train=15156, test=3789
+  [Walkforward]     train 112260ms | thresh=0.72 | test: trades=16 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Training deployment model on full dataset (18945 samples)...
+  [Walkforward]   AGGREGATE: trades=104 winRate=51.9% PF=2.49 Sharpe=6.16 thresh=0.78
+[NQ=F ETH_VOL_EXPANSION_short] DEPLOYED → NQ_ETH_VOL_EXPANSION_short.json (thresh=0.78 winRate=51.9% PF=2.49 Sharpe=6.16)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Loading ES=F…
+  211689 candles loaded (2023-05-23 22:05:00-07:00 → 2026-05-22 21:00:00-07:00)
+
+[ES=F RTH_TREND_UP_long] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_UP, dir=long)...
+  [Walkforward]   1561 samples extracted
+  [Walkforward]   Fold 1/4: train=312, test=312
+  [Walkforward]     train 333ms | thresh=0.68 | test: trades=9 winRate=22.2% PF=0.51 Sharpe=-5.15
+  [Walkforward]   Fold 2/4: train=624, test=312
+  [Walkforward]     train 981ms | thresh=0.78 | test: trades=68 winRate=30.9% PF=0.80 Sharpe=-1.66
+  [Walkforward]   Fold 3/4: train=936, test=312
+  [Walkforward]     train 1637ms | thresh=0.72 | test: trades=15 winRate=33.3% PF=0.90 Sharpe=-0.80
+  [Walkforward]   Fold 4/4: train=1248, test=312
+  [Walkforward]     train 2326ms | thresh=0.72 | test: trades=0 winRate=0.0% PF=0.00 Sharpe=0.00
+  [Walkforward]   Training deployment model on full dataset (1561 samples)...
+  [Walkforward]   AGGREGATE: trades=92 winRate=30.4% PF=0.55 Sharpe=-1.90 thresh=0.72
+[ES=F RTH_TREND_UP_long] DEPLOYED → ES_RTH_TREND_UP_long.json (thresh=0.72 winRate=30.4% PF=0.55 Sharpe=-1.90)
+
+[ES=F RTH_TREND_UP_short] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_UP, dir=short)...
+  [Walkforward]   1561 samples extracted
+  [Walkforward]   Fold 1/4: train=312, test=312
+  [Walkforward]     train 268ms | thresh=0.72 | test: trades=51 winRate=54.9% PF=2.19 Sharpe=6.12
+  [Walkforward]   Fold 2/4: train=624, test=312
+  [Walkforward]     train 904ms | thresh=0.75 | test: trades=7 winRate=28.6% PF=0.72 Sharpe=-2.51
+  [Walkforward]   Fold 3/4: train=936, test=312
+  [Walkforward]     train 1657ms | thresh=0.78 | test: trades=22 winRate=59.1% PF=2.60 Sharpe=7.55
+  [Walkforward]   Fold 4/4: train=1248, test=312
+  [Walkforward]     train 2263ms | thresh=0.78 | test: trades=23 winRate=39.1% PF=1.16 Sharpe=1.11
+  [Walkforward]   Training deployment model on full dataset (1561 samples)...
+  [Walkforward]   AGGREGATE: trades=103 winRate=50.5% PF=1.67 Sharpe=3.07 thresh=0.78
+[ES=F RTH_TREND_UP_short] DEPLOYED → ES_RTH_TREND_UP_short.json (thresh=0.78 winRate=50.5% PF=1.67 Sharpe=3.07)
+
+[ES=F RTH_TREND_DOWN_long] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_DOWN, dir=long)...
+  [Walkforward]   1304 samples extracted
+  [Walkforward]   Fold 1/4: train=260, test=260
+  [Walkforward]     train 191ms | thresh=0.75 | test: trades=39 winRate=30.8% PF=0.80 Sharpe=-1.70
+  [Walkforward]   Fold 2/4: train=520, test=260
+  [Walkforward]     train 659ms | thresh=0.82 | test: trades=3 winRate=66.7% PF=3.60 Sharpe=10.42
+  [Walkforward]   Fold 3/4: train=780, test=260
+  [Walkforward]     train 1257ms | thresh=0.82 | test: trades=20 winRate=25.0% PF=0.60 Sharpe=-3.93
+  [Walkforward]   Fold 4/4: train=1040, test=260
+  [Walkforward]     train 1793ms | thresh=0.75 | test: trades=17 winRate=52.9% PF=2.03 Sharpe=5.48
+  [Walkforward]   Training deployment model on full dataset (1304 samples)...
+  [Walkforward]   AGGREGATE: trades=79 winRate=35.4% PF=1.76 Sharpe=2.57 thresh=0.82
+[ES=F RTH_TREND_DOWN_long] ROLLBACK — existing sharpe 5.52 > new 2.57 — keeping existing
+
+[ES=F RTH_TREND_DOWN_short] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=TREND_DOWN, dir=short)...
+  [Walkforward]   1304 samples extracted
+  [Walkforward]   Fold 1/4: train=260, test=260
+  [Walkforward]     train 212ms | thresh=0.78 | test: trades=8 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Fold 2/4: train=520, test=260
+  [Walkforward]     train 726ms | thresh=0.82 | test: trades=3 winRate=33.3% PF=0.90 Sharpe=-0.80
+  [Walkforward]   Fold 3/4: train=780, test=260
+  [Walkforward]     train 1236ms | thresh=0.75 | test: trades=8 winRate=62.5% PF=3.00 Sharpe=8.78
+  [Walkforward]   Fold 4/4: train=1040, test=260
+  [Walkforward]     train 1916ms | thresh=0.75 | test: trades=2 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Training deployment model on full dataset (1304 samples)...
+  [Walkforward]   AGGREGATE: trades=21 winRate=52.4% PF=1.88 Sharpe=4.26 thresh=0.78
+[ES=F RTH_TREND_DOWN_short] ROLLBACK — existing sharpe 4.57 > new 4.26 — keeping existing
+
+[ES=F RTH_VOL_EXPANSION_long] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=VOL_EXPANSION, dir=long)...
+  [Walkforward]   11233 samples extracted
+  [Walkforward]   Fold 1/4: train=2246, test=2246
+  [Walkforward]     train 5357ms | thresh=0.75 | test: trades=32 winRate=46.9% PF=1.59 Sharpe=3.55
+  [Walkforward]   Fold 2/4: train=4492, test=2246
+  [Walkforward]     train 12019ms | thresh=0.72 | test: trades=71 winRate=47.9% PF=1.65 Sharpe=3.87
+  [Walkforward]   Fold 3/4: train=6738, test=2246
+  [Walkforward]     train 22577ms | thresh=0.72 | test: trades=326 winRate=49.7% PF=1.78 Sharpe=4.44
+  [Walkforward]   Fold 4/4: train=8984, test=2246
+  [Walkforward]     train 40719ms | thresh=0.65 | test: trades=44 winRate=38.6% PF=1.13 Sharpe=0.95
+  [Walkforward]   Training deployment model on full dataset (11233 samples)...
+  [Walkforward]   AGGREGATE: trades=473 winRate=48.2% PF=1.54 Sharpe=3.20 thresh=0.72
+[ES=F RTH_VOL_EXPANSION_long] DEPLOYED → ES_RTH_VOL_EXPANSION_long.json (thresh=0.72 winRate=48.2% PF=1.54 Sharpe=3.20)
+
+[ES=F RTH_VOL_EXPANSION_short] Starting walkforward…
+  [Walkforward] Building dataset (session=RTH, regime=VOL_EXPANSION, dir=short)...
+  [Walkforward]   11233 samples extracted
+  [Walkforward]   Fold 1/4: train=2246, test=2246
+  [Walkforward]     train 7152ms | thresh=0.72 | test: trades=7 winRate=71.4% PF=4.50 Sharpe=12.55
+  [Walkforward]   Fold 2/4: train=4492, test=2246
+  [Walkforward]     train 15629ms | thresh=0.68 | test: trades=35 winRate=68.6% PF=3.93 Sharpe=11.24
+  [Walkforward]   Fold 3/4: train=6738, test=2246
+  [Walkforward]     train 24222ms | thresh=0.68 | test: trades=16 winRate=56.3% PF=2.31 Sharpe=6.57
+  [Walkforward]   Fold 4/4: train=8984, test=2246
+  [Walkforward]     train 35991ms | thresh=0.68 | test: trades=17 winRate=29.4% PF=0.75 Sharpe=-2.20
+  [Walkforward]   Training deployment model on full dataset (11233 samples)...
+  [Walkforward]   AGGREGATE: trades=75 winRate=57.3% PF=2.87 Sharpe=7.04 thresh=0.68
+[ES=F RTH_VOL_EXPANSION_short] DEPLOYED → ES_RTH_VOL_EXPANSION_short.json (thresh=0.68 winRate=57.3% PF=2.87 Sharpe=7.04)
+
+[ES=F ETH_TREND_UP_long] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_UP, dir=long)...
+  [Walkforward]   5922 samples extracted
+  [Walkforward]   Fold 1/4: train=1184, test=1184
+  [Walkforward]     train 3068ms | thresh=0.82 | test: trades=18 winRate=77.8% PF=6.30 Sharpe=16.06
+  [Walkforward]   Fold 2/4: train=2368, test=1184
+  [Walkforward]     train 6867ms | thresh=0.78 | test: trades=4 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Fold 3/4: train=3552, test=1184
+  [Walkforward]     train 10813ms | thresh=0.75 | test: trades=13 winRate=84.6% PF=9.90 Sharpe=21.52
+  [Walkforward]   Fold 4/4: train=4736, test=1184
+  [Walkforward]     train 17736ms | thresh=0.82 | test: trades=6 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Training deployment model on full dataset (5922 samples)...
+  [Walkforward]   AGGREGATE: trades=41 winRate=80.5% PF=7.00 Sharpe=10.53 thresh=0.82
+[ES=F ETH_TREND_UP_long] DEPLOYED → ES_ETH_TREND_UP_long.json (thresh=0.82 winRate=80.5% PF=7.00 Sharpe=10.53)
+
+[ES=F ETH_TREND_UP_short] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_UP, dir=short)...
+  [Walkforward]   5922 samples extracted
+  [Walkforward]   Fold 1/4: train=1184, test=1184
+  [Walkforward]     train 2336ms | thresh=0.68 | test: trades=55 winRate=60.0% PF=2.70 Sharpe=7.87
+  [Walkforward]   Fold 2/4: train=2368, test=1184
+  [Walkforward]     train 5548ms | thresh=0.78 | test: trades=164 winRate=57.9% PF=2.48 Sharpe=7.14
+  [Walkforward]   Fold 3/4: train=3552, test=1184
+  [Walkforward]     train 9019ms | thresh=0.78 | test: trades=10 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Fold 4/4: train=4736, test=1184
+  [Walkforward]     train 12976ms | thresh=0.75 | test: trades=22 winRate=68.2% PF=3.86 Sharpe=11.07
+  [Walkforward]   Training deployment model on full dataset (5922 samples)...
+  [Walkforward]   AGGREGATE: trades=251 winRate=61.0% PF=4.76 Sharpe=6.52 thresh=0.78
+[ES=F ETH_TREND_UP_short] ROLLBACK — existing sharpe 9.67 > new 6.52 — keeping existing
+
+[ES=F ETH_TREND_DOWN_long] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_DOWN, dir=long)...
+  [Walkforward]   5914 samples extracted
+  [Walkforward]   Fold 1/4: train=1182, test=1182
+  [Walkforward]     train 2840ms | thresh=0.82 | test: trades=103 winRate=49.5% PF=1.77 Sharpe=4.38
+  [Walkforward]   Fold 2/4: train=2364, test=1182
+  [Walkforward]     train 10528ms | thresh=0.75 | test: trades=15 winRate=46.7% PF=1.58 Sharpe=3.49
+  [Walkforward]   Fold 3/4: train=3546, test=1182
+  [Walkforward]     train 14589ms | thresh=0.72 | test: trades=9 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Fold 4/4: train=4728, test=1182
+  [Walkforward]     train 18207ms | thresh=0.68 | test: trades=10 winRate=50.0% PF=1.80 Sharpe=4.54
+  [Walkforward]   Training deployment model on full dataset (5914 samples)...
+  [Walkforward]   AGGREGATE: trades=137 winRate=52.6% PF=3.79 Sharpe=3.10 thresh=0.75
+[ES=F ETH_TREND_DOWN_long] ROLLBACK — existing sharpe 6.11 > new 3.10 — keeping existing
+
+[ES=F ETH_TREND_DOWN_short] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=TREND_DOWN, dir=short)...
+  [Walkforward]   5914 samples extracted
+  [Walkforward]   Fold 1/4: train=1182, test=1182
+  [Walkforward]     train 3057ms | thresh=0.72 | test: trades=86 winRate=37.2% PF=1.07 Sharpe=0.49
+  [Walkforward]   Fold 2/4: train=2364, test=1182
+  [Walkforward]     train 5467ms | thresh=0.68 | test: trades=35 winRate=54.3% PF=2.14 Sharpe=5.92
+  [Walkforward]   Fold 3/4: train=3546, test=1182
+  [Walkforward]     train 10363ms | thresh=0.72 | test: trades=17 winRate=47.1% PF=1.60 Sharpe=3.61
+  [Walkforward]   Fold 4/4: train=4728, test=1182
+  [Walkforward]     train 14654ms | thresh=0.75 | test: trades=1 winRate=100.0% PF=10.00 Sharpe=0.00
+  [Walkforward]   Training deployment model on full dataset (5914 samples)...
+  [Walkforward]   AGGREGATE: trades=139 winRate=43.2% PF=3.70 Sharpe=2.50 thresh=0.72
+[ES=F ETH_TREND_DOWN_short] ROLLBACK — existing sharpe 4.81 > new 2.50 — keeping existing
+
+[ES=F ETH_VOL_EXPANSION_long] Starting walkforward…
+  [Walkforward] Building dataset (session=ETH, regime=VOL_EXPANSION, dir=long)...
+  [Walkforward]   19540 samples extracted
+  [Walkforward]   Fold 1/4: train=3908, test=3908
+  [Walkforward]     train 10991ms | thresh=0.75 | test: trades=16 winRate=31.3% PF=0.82 Sharpe=-1.53
+  [Walkforward]   Fold 2/4: train=7816, test=3908
+  [Walkforward]     train 27597ms | thresh=0.72 | test: trades=16 winRate=68.8% PF=3.96 Sharpe=11.31
+  [Walkforward]   Fold 3/4: train=11724, test=3908
+  [Walkforward]     train 48947ms | thresh=0.68 | test: trades=28 winRate=64.3% PF=3.24 Sharpe=9.47
+  [Walkforward]   Fold 4/4: train=15632, test=3908
+  [Walkforward]     train 56579ms | thresh=0.65 | test: trades=10 winRate=80.0% PF=7.20 Sharpe=17.58
+  [Walkforward]   Training deployment model on full dataset (19540 samples)...

@@ -1,8 +1,8 @@
 {
   "RTH": {
     "enabled": false,
-    "profitPoints": 9,
-    "stopPoints": 5,
+    "profitPoints": 12,
+    "stopPoints": 6,
     "breakevenAtPoints": 4,
     "trailStartPoints": 6,
     "trailStepPoints": 5

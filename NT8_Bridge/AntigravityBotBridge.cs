@@ -40,10 +40,34 @@ namespace NinjaTrader.NinjaScript.Strategies
 
         // Draggable WPF Floating Overlay panel
         private Border wpfPanel = null;
-        private TextBlock wpfTextBlock = null;
+        private TextBlock wpfTextBlock = null;   // legacy text block (still updated as fallback)
         private Canvas wpfCanvas = null;
         private Grid chartGrid = null;
         private string activeParamsText = "• RTH EMAs: Default (9/21)\n• ETH Regimes: Default (BB 2.0, RSI 30/70)";
+
+        // ── v2 Brain Panel structured row references (set up in CreateWPFOverlay) ──
+        private StackPanel brainRows           = null;
+        private TextBlock  brainHeaderStatus   = null;
+        private TextBlock  brainSignalArrow    = null;
+        private TextBlock  brainSignalText     = null;
+        private TextBlock  brainLongProbText   = null;
+        private Border     brainLongProbBar    = null;
+        private Border     brainLongProbThMark = null;
+        private TextBlock  brainShortProbText  = null;
+        private Border     brainShortProbBar   = null;
+        private Border     brainShortProbThMark= null;
+        private TextBlock  brainRegimeText     = null;
+        private TextBlock  brainSessionText    = null;
+        private TextBlock  brainSpecText       = null;
+        private TextBlock  brainPositionText   = null;
+        private TextBlock  brainPnLText        = null;
+        private TextBlock  brainBeText         = null;
+        private TextBlock  brainTrailText      = null;
+        private TextBlock  brainAtrText        = null;
+        private TextBlock  brainTradesText     = null;
+        private TextBlock  brainModeText       = null;
+        private TextBlock  brainExitsText      = null;
+        private const double PROB_BAR_WIDTH    = 220;
 
         // Dynamic indicator parameters for real-time plot updates
         private int parsedEmaFast = 8;
@@ -402,6 +426,201 @@ namespace NinjaTrader.NinjaScript.Strategies
         }
 
         // Create draggable WPF Overlay dynamically
+        // ─────────────────────────────────────────────────────────────────
+        // v2 Brain Panel layout — structured rows with colored labels +
+        // probability bars, matching V6's visual style.
+        // ─────────────────────────────────────────────────────────────────
+        private static readonly SolidColorBrush COL_LABEL  = new SolidColorBrush(Color.FromRgb(0, 240, 255));     // cyan
+        private static readonly SolidColorBrush COL_VAL    = new SolidColorBrush(Color.FromRgb(245, 246, 248));   // near-white
+        private static readonly SolidColorBrush COL_MUTED  = new SolidColorBrush(Color.FromRgb(154, 160, 166));   // grey
+        private static readonly SolidColorBrush COL_GREEN  = new SolidColorBrush(Color.FromRgb(57, 255, 20));     // neon green
+        private static readonly SolidColorBrush COL_RED    = new SolidColorBrush(Color.FromRgb(255, 56, 56));     // neon red
+        private static readonly SolidColorBrush COL_AMBER  = new SolidColorBrush(Color.FromRgb(255, 152, 0));     // amber
+        private static readonly SolidColorBrush COL_PURPLE = new SolidColorBrush(Color.FromRgb(167, 139, 250));   // purple
+        private static readonly SolidColorBrush COL_BARBG  = new SolidColorBrush(Color.FromArgb(80, 60, 70, 90)); // bar track
+        private static readonly SolidColorBrush COL_DIVIDER= new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+
+        private StackPanel BuildBrainPanelLayout()
+        {
+            var root = new StackPanel { Orientation = Orientation.Vertical };
+
+            // ── Header row: bolt + brand + status pill ─────────────────────
+            var headerRow = new Grid();
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var hLeft = new TextBlock {
+                Text = "⚡ ANTIGRAVITY v2 BRAIN",
+                Foreground = COL_LABEL,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 13,
+                FontWeight = FontWeights.Bold
+            };
+            brainHeaderStatus = new TextBlock {
+                Text = "● connecting",
+                Foreground = COL_MUTED,
+                FontFamily = new FontFamily("Segoe UI"),
+                FontSize = 10,
+                FontWeight = FontWeights.SemiBold,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(hLeft, 0); Grid.SetColumn(brainHeaderStatus, 1);
+            headerRow.Children.Add(hLeft); headerRow.Children.Add(brainHeaderStatus);
+            root.Children.Add(headerRow);
+            root.Children.Add(MakeDivider(8));
+
+            // ── Signal row ────────────────────────────────────────────────
+            brainSignalArrow = new TextBlock { Text = "—", Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 13, Margin = new Thickness(6, 0, 0, 0) };
+            brainSignalText  = new TextBlock { Text = "WAIT",  Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(8, 0, 0, 0) };
+            root.Children.Add(MakeRow("Signal", new UIElement[] { brainSignalArrow, brainSignalText }));
+
+            // ── Long probability bar ──────────────────────────────────────
+            brainLongProbText = new TextBlock { Text = "0.00", Foreground = COL_GREEN, FontFamily = new FontFamily("Consolas"), FontSize = 12, Width = 42, TextAlignment = TextAlignment.Right };
+            brainLongProbBar  = MakeProbBar(COL_GREEN);
+            brainLongProbThMark = MakeThMark();
+            root.Children.Add(MakeProbRow("Long P", brainLongProbText, brainLongProbBar, brainLongProbThMark));
+
+            // ── Short probability bar ─────────────────────────────────────
+            brainShortProbText = new TextBlock { Text = "0.00", Foreground = COL_RED, FontFamily = new FontFamily("Consolas"), FontSize = 12, Width = 42, TextAlignment = TextAlignment.Right };
+            brainShortProbBar  = MakeProbBar(COL_RED);
+            brainShortProbThMark = MakeThMark();
+            root.Children.Add(MakeProbRow("Short P", brainShortProbText, brainShortProbBar, brainShortProbThMark));
+
+            // ── Regime + Session row ──────────────────────────────────────
+            brainRegimeText = new TextBlock { Text = "—",      Foreground = COL_AMBER, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainSessionText= new TextBlock { Text = "—",      Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(12, 0, 0, 0) };
+            root.Children.Add(MakeRow("Regime", new UIElement[] { brainRegimeText, brainSessionText }));
+
+            // ── Specialist row (small monospace) ──────────────────────────
+            brainSpecText = new TextBlock { Text = "awaiting first bar push…", Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 10, Margin = new Thickness(6, 0, 0, 0), TextWrapping = TextWrapping.NoWrap };
+            root.Children.Add(MakeRow("Spec",   new UIElement[] { brainSpecText }));
+
+            root.Children.Add(MakeDivider(6));
+
+            // ── Position + P&L rows ───────────────────────────────────────
+            brainPositionText = new TextBlock { Text = "FLAT",      Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainPnLText      = new TextBlock { Text = "—",         Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            root.Children.Add(MakeRow("Position", new UIElement[] { brainPositionText }));
+            root.Children.Add(MakeRow("P & L",    new UIElement[] { brainPnLText }));
+
+            // ── BE / Trail countdowns ─────────────────────────────────────
+            brainBeText    = new TextBlock { Text = "—", Foreground = COL_VAL,   FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(6, 0, 0, 0) };
+            brainTrailText = new TextBlock { Text = "—", Foreground = COL_VAL,   FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(6, 0, 0, 0) };
+            root.Children.Add(MakeRow("BE in",    new UIElement[] { brainBeText }));
+            root.Children.Add(MakeRow("Trail in", new UIElement[] { brainTrailText }));
+
+            root.Children.Add(MakeDivider(6));
+
+            // ── Footer: ATR + Trades + Mode + Exits ───────────────────────
+            brainAtrText    = new TextBlock { Text = "—",      Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(6, 0, 12, 0) };
+            brainTradesText = new TextBlock { Text = "—",      Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(0, 0, 0, 0) };
+            var atrTradesRow = new Grid();
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            atrTradesRow.Margin = new Thickness(0, 2, 0, 2);
+            var atrLabel    = new TextBlock { Text = "ATR :",    Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 11 };
+            var tradesLabel = new TextBlock { Text = "Trades :", Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 11 };
+            Grid.SetColumn(atrLabel, 0);    Grid.SetColumn(brainAtrText, 1);
+            Grid.SetColumn(tradesLabel, 3); Grid.SetColumn(brainTradesText, 4);
+            atrTradesRow.Children.Add(atrLabel);
+            atrTradesRow.Children.Add(brainAtrText);
+            atrTradesRow.Children.Add(tradesLabel);
+            atrTradesRow.Children.Add(brainTradesText);
+            root.Children.Add(atrTradesRow);
+
+            brainModeText  = new TextBlock { Text = "MINI · PAPER", Foreground = COL_AMBER,  FontFamily = new FontFamily("Consolas"), FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+            brainExitsText = new TextBlock { Text = "Exits: ATR",   Foreground = COL_VAL,    FontFamily = new FontFamily("Consolas"), FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+            root.Children.Add(MakeRow("Mode",  new UIElement[] { brainModeText }));
+            root.Children.Add(MakeRow("Exits", new UIElement[] { brainExitsText }));
+
+            return root;
+        }
+
+        // Builds a "label : value(s)" row with a fixed-width label column.
+        private Grid MakeRow(string label, UIElement[] valueCells)
+        {
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.Margin = new Thickness(0, 2, 0, 2);
+            var lbl = new TextBlock {
+                Text = label + " :",
+                Foreground = COL_LABEL,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11
+            };
+            Grid.SetColumn(lbl, 0);
+            row.Children.Add(lbl);
+            var stack = new StackPanel { Orientation = Orientation.Horizontal };
+            foreach (var el in valueCells) stack.Children.Add(el);
+            Grid.SetColumn(stack, 1);
+            row.Children.Add(stack);
+            return row;
+        }
+
+        // Probability row: "label :  [bar]  value"
+        private Grid MakeProbRow(string label, TextBlock valueText, Border barFill, Border thMark)
+        {
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Margin = new Thickness(0, 3, 0, 3);
+
+            var lbl = new TextBlock { Text = label + " :", Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(lbl, 0);
+            row.Children.Add(lbl);
+
+            // Bar track (background)
+            var track = new Border {
+                Width = PROB_BAR_WIDTH,
+                Height = 10,
+                Background = COL_BARBG,
+                CornerRadius = new CornerRadius(3),
+                Margin = new Thickness(6, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            // Bar fill (foreground) — width = 0 initially, sized by Update
+            barFill.HorizontalAlignment = HorizontalAlignment.Left;
+            barFill.Width = 0;
+            barFill.Height = 10;
+            barFill.CornerRadius = new CornerRadius(3);
+            // Threshold tick
+            thMark.HorizontalAlignment = HorizontalAlignment.Left;
+            thMark.Width = 2;
+            thMark.Height = 14;
+            thMark.Background = new SolidColorBrush(Colors.White);
+            thMark.Margin = new Thickness(0, -2, 0, -2);
+            var trackGrid = new Grid();
+            trackGrid.Children.Add(barFill);
+            trackGrid.Children.Add(thMark);
+            track.Child = trackGrid;
+            Grid.SetColumn(track, 1);
+            row.Children.Add(track);
+
+            // Value text
+            Grid.SetColumn(valueText, 3);
+            valueText.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(valueText);
+            return row;
+        }
+
+        private Border MakeProbBar(SolidColorBrush color) { return new Border { Background = color }; }
+        private Border MakeThMark() { return new Border(); }
+
+        private Border MakeDivider(double topMargin)
+        {
+            return new Border {
+                Height = 1,
+                Background = COL_DIVIDER,
+                Margin = new Thickness(0, topMargin, 0, topMargin)
+            };
+        }
+
         private void CreateWPFOverlay()
         {
             if (ChartControl == null) return;
@@ -419,26 +638,21 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                     // 2. Create the futuristic charcoal glass border
                     wpfPanel = new Border();
-                    wpfPanel.Background = new SolidColorBrush(Color.FromArgb(220, 10, 12, 16)); // Glassy dark
-                    wpfPanel.BorderBrush = new SolidColorBrush(Color.FromRgb(33, 150, 243)); // Dynamic color
+                    wpfPanel.Background = new SolidColorBrush(Color.FromArgb(230, 10, 12, 18)); // Glassy dark
+                    wpfPanel.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 240, 255));     // Cyan glow
                     wpfPanel.BorderThickness = new Thickness(1.5);
-                    wpfPanel.CornerRadius = new CornerRadius(12);
-                    wpfPanel.Width = 425;
-                    wpfPanel.Height = 355;
-                    wpfPanel.Padding = new Thickness(16);
+                    wpfPanel.CornerRadius = new CornerRadius(10);
+                    wpfPanel.Width = 460;
+                    wpfPanel.Padding = new Thickness(14, 12, 14, 12);
                     wpfPanel.Cursor = Cursors.SizeAll;
 
                     // Position it initially in top-left offset
                     Canvas.SetLeft(wpfPanel, 40);
                     Canvas.SetTop(wpfPanel, 80);
 
-                    // 3. Text block inside border
-                    wpfTextBlock = new TextBlock();
-                    wpfTextBlock.FontFamily = new FontFamily("Consolas");
-                    wpfTextBlock.FontSize = 13;
-                    wpfTextBlock.Foreground = Brushes.White;
-                    wpfTextBlock.TextWrapping = TextWrapping.Wrap;
-                    wpfPanel.Child = wpfTextBlock;
+                    // 3. Build the v2 Brain Panel layout
+                    brainRows = BuildBrainPanelLayout();
+                    wpfPanel.Child = brainRows;
 
                     // 4. Draggable Event Handlers
                     bool isDragging = false;
@@ -689,15 +903,143 @@ namespace NinjaTrader.NinjaScript.Strategies
                 brainSection
             );
 
-            if (wpfTextBlock != null)
+            // ── Populate the v2 structured Brain Panel cells (visual rich version) ──
+            if (brainRows != null)
             {
                 ChartControl.Dispatcher.InvokeAsync(new Action(() => {
-                    wpfTextBlock.Text = labelText;
-                    
-                    // Dynamically set border color
-                    if (wpfPanel != null)
+                    try
                     {
-                        wpfPanel.BorderBrush = new SolidColorBrush(borderGlowColor);
+                        // Header status
+                        if (brainHeaderStatus != null) {
+                            brainHeaderStatus.Text = isConnected
+                                ? (isTradingEnabled ? "● LIVE" : "● HALTED")
+                                : "● DISCONNECTED";
+                            brainHeaderStatus.Foreground = isConnected
+                                ? (isTradingEnabled ? COL_GREEN : COL_AMBER)
+                                : COL_RED;
+                        }
+                        // Signal row
+                        bool isLong  = brainAction == "BUY";
+                        bool isShort = brainAction == "SELL";
+                        if (brainSignalArrow != null) {
+                            brainSignalArrow.Text = isLong ? "▲" : (isShort ? "▼" : "—");
+                            brainSignalArrow.Foreground = isLong ? COL_GREEN : (isShort ? COL_RED : COL_MUTED);
+                        }
+                        if (brainSignalText != null) {
+                            brainSignalText.Text = isLong ? "BUY  (LONG)"
+                                                : isShort ? "SELL (SHORT)"
+                                                : (brainRegime == "CHOP" ? "CHOP — stand down" : "WAIT — below threshold");
+                            brainSignalText.Foreground = isLong ? COL_GREEN : (isShort ? COL_RED : COL_MUTED);
+                        }
+                        // Long probability bar
+                        if (brainLongProbText != null) {
+                            brainLongProbText.Text = brainLongProb.ToString("F2");
+                            bool longHit = brainLongTh > 0 && brainLongProb >= brainLongTh;
+                            brainLongProbText.Foreground = longHit ? COL_GREEN : COL_VAL;
+                        }
+                        if (brainLongProbBar != null) {
+                            double pct = Math.Max(0, Math.Min(1, brainLongProb));
+                            brainLongProbBar.Width = pct * PROB_BAR_WIDTH;
+                        }
+                        if (brainLongProbThMark != null) {
+                            double thFrac = Math.Max(0, Math.Min(1, brainLongTh));
+                            brainLongProbThMark.Margin = new Thickness(thFrac * PROB_BAR_WIDTH, -2, 0, -2);
+                        }
+                        // Short probability bar
+                        if (brainShortProbText != null) {
+                            brainShortProbText.Text = brainShortProb.ToString("F2");
+                            bool shortHit = brainShortTh > 0 && brainShortProb >= brainShortTh;
+                            brainShortProbText.Foreground = shortHit ? COL_RED : COL_VAL;
+                        }
+                        if (brainShortProbBar != null) {
+                            double pct = Math.Max(0, Math.Min(1, brainShortProb));
+                            brainShortProbBar.Width = pct * PROB_BAR_WIDTH;
+                        }
+                        if (brainShortProbThMark != null) {
+                            double thFrac = Math.Max(0, Math.Min(1, brainShortTh));
+                            brainShortProbThMark.Margin = new Thickness(thFrac * PROB_BAR_WIDTH, -2, 0, -2);
+                        }
+                        // Regime / Session
+                        if (brainRegimeText != null) {
+                            brainRegimeText.Text = string.IsNullOrEmpty(brainRegime) ? "—" : brainRegime;
+                            brainRegimeText.Foreground = brainRegime == "TREND_UP"      ? COL_GREEN
+                                                       : brainRegime == "TREND_DOWN"    ? COL_RED
+                                                       : brainRegime == "VOL_EXPANSION" ? COL_LABEL
+                                                       : COL_MUTED;
+                        }
+                        if (brainSessionText != null) {
+                            brainSessionText.Text = "session: " + (string.IsNullOrEmpty(brainSession) ? "—" : brainSession);
+                        }
+                        // Specialist
+                        if (brainSpecText != null) {
+                            brainSpecText.Text = string.IsNullOrEmpty(brainSpecialist) ? "—" : brainSpecialist;
+                            brainSpecText.Foreground = string.IsNullOrEmpty(brainSpecialist) || brainSpecialist == "—" ? COL_MUTED : COL_VAL;
+                        }
+                        // Position + P&L (from NT8 directly, not from brain JSON)
+                        if (Position != null && Position.MarketPosition != MarketPosition.Flat) {
+                            bool posLong = Position.MarketPosition == MarketPosition.Long;
+                            if (brainPositionText != null) {
+                                brainPositionText.Text = (posLong ? "LONG  × " : "SHORT × ") + Position.Quantity + " @ " + Position.AveragePrice.ToString("F2");
+                                brainPositionText.Foreground = posLong ? COL_GREEN : COL_RED;
+                            }
+                            double pnl = Position.GetUnrealizedProfitLoss(PerformanceUnit.Currency, Close[0]);
+                            if (brainPnLText != null) {
+                                brainPnLText.Text = (pnl >= 0 ? "+$" : "-$") + Math.Abs(pnl).ToString("F2");
+                                brainPnLText.Foreground = pnl >= 0 ? COL_GREEN : COL_RED;
+                            }
+                            // BE / Trail countdowns
+                            if (brainBeText != null) {
+                                if (signalBreakevenPrice > 0.01) {
+                                    double beDist = posLong ? (signalBreakevenPrice - Close[0]) : (Close[0] - signalBreakevenPrice);
+                                    if (beDist > 0) {
+                                        double beTicks = Math.Abs(beDist) / TickSize;
+                                        brainBeText.Text = string.Format("{0:F0}t ({1:F2} pts) — armed at {2:F2}", beTicks, beDist, signalBreakevenPrice);
+                                        brainBeText.Foreground = COL_VAL;
+                                    } else {
+                                        brainBeText.Text = "🛡️ ACTIVE — stop at " + signalBreakevenPrice.ToString("F2");
+                                        brainBeText.Foreground = COL_GREEN;
+                                    }
+                                } else { brainBeText.Text = "—"; brainBeText.Foreground = COL_MUTED; }
+                            }
+                            if (brainTrailText != null) {
+                                if (signalTrailingPrice > 0.01) {
+                                    double trDist = posLong ? (signalTrailingPrice - Close[0]) : (Close[0] - signalTrailingPrice);
+                                    if (trDist > 0) {
+                                        double trTicks = Math.Abs(trDist) / TickSize;
+                                        brainTrailText.Text = string.Format("{0:F0}t ({1:F2} pts) — starts at {2:F2}", trTicks, trDist, signalTrailingPrice);
+                                        brainTrailText.Foreground = COL_VAL;
+                                    } else {
+                                        brainTrailText.Text = "📈 ACTIVE — chasing price";
+                                        brainTrailText.Foreground = COL_GREEN;
+                                    }
+                                } else { brainTrailText.Text = "—"; brainTrailText.Foreground = COL_MUTED; }
+                            }
+                        } else {
+                            if (brainPositionText != null) { brainPositionText.Text = "FLAT"; brainPositionText.Foreground = COL_MUTED; }
+                            if (brainPnLText != null)      { brainPnLText.Text = "—"; brainPnLText.Foreground = COL_MUTED; }
+                            if (brainBeText != null)       { brainBeText.Text = "—"; brainBeText.Foreground = COL_MUTED; }
+                            if (brainTrailText != null)    { brainTrailText.Text = "—"; brainTrailText.Foreground = COL_MUTED; }
+                        }
+                        // ATR + Trades
+                        if (brainAtrText != null)    brainAtrText.Text    = brainAtr > 0 ? brainAtr.ToString("F2") : "—";
+                        if (brainTradesText != null) brainTradesText.Text = todayTrades.ToString();
+                        // Mode + Exits
+                        if (brainModeText != null) {
+                            brainModeText.Text = brainContractMode + " · " + brainTradingMode.ToUpper();
+                            brainModeText.Foreground = brainTradingMode == "live" ? COL_RED : COL_AMBER;
+                        }
+                        if (brainExitsText != null) {
+                            brainExitsText.Text = "Exits: " + brainExitMode + (brainExitMode == "FIXED" ? "  (override active)" : "  (ATR-dynamic)");
+                            brainExitsText.Foreground = brainExitMode == "FIXED" ? COL_AMBER : COL_VAL;
+                        }
+                        // Border glow color — matches old behavior: green when in profit,
+                        // red when losing, cyan when flat & connected, orange when halted,
+                        // red when disconnected.
+                        if (wpfPanel != null) {
+                            wpfPanel.BorderBrush = new SolidColorBrush(borderGlowColor);
+                        }
+                    } catch (Exception ex) {
+                        Print("Brain panel update error: " + ex.Message);
                     }
                 }));
             }
