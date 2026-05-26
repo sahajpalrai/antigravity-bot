@@ -69,6 +69,11 @@ namespace NinjaTrader.NinjaScript.Strategies
         private TextBlock  brainExitsText      = null;
         private const double PROB_BAR_WIDTH    = 220;
 
+        // Counts entries since last session-open. Reset in OnStateChange to
+        // State.Realtime so the panel always shows today's trade count.
+        private int todayTrades = 0;
+        private DateTime todayDate = DateTime.MinValue;
+
         // Dynamic indicator parameters for real-time plot updates
         private int parsedEmaFast = 8;
         private int parsedEmaSlow = 20;
@@ -233,6 +238,19 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (name.Contains("CL")) return "CL=F";
             if (name.Contains("GC")) return "GC=F";
             return "NQ=F";
+        }
+
+        // Increment today's trade counter, auto-resetting at calendar-day rollover
+        // so the panel always shows the current trading day's count.
+        private void BumpTodayTrades()
+        {
+            DateTime today = (CurrentBar > 0) ? Time[0].Date : DateTime.Now.Date;
+            if (today != todayDate)
+            {
+                todayDate = today;
+                todayTrades = 0;
+            }
+            todayTrades++;
         }
 
         // State for BE/trail (declared as fields below in #region)
@@ -430,15 +448,32 @@ namespace NinjaTrader.NinjaScript.Strategies
         // v2 Brain Panel layout — structured rows with colored labels +
         // probability bars, matching V6's visual style.
         // ─────────────────────────────────────────────────────────────────
-        private static readonly SolidColorBrush COL_LABEL  = new SolidColorBrush(Color.FromRgb(0, 240, 255));     // cyan
-        private static readonly SolidColorBrush COL_VAL    = new SolidColorBrush(Color.FromRgb(245, 246, 248));   // near-white
-        private static readonly SolidColorBrush COL_MUTED  = new SolidColorBrush(Color.FromRgb(154, 160, 166));   // grey
-        private static readonly SolidColorBrush COL_GREEN  = new SolidColorBrush(Color.FromRgb(57, 255, 20));     // neon green
-        private static readonly SolidColorBrush COL_RED    = new SolidColorBrush(Color.FromRgb(255, 56, 56));     // neon red
-        private static readonly SolidColorBrush COL_AMBER  = new SolidColorBrush(Color.FromRgb(255, 152, 0));     // amber
-        private static readonly SolidColorBrush COL_PURPLE = new SolidColorBrush(Color.FromRgb(167, 139, 250));   // purple
-        private static readonly SolidColorBrush COL_BARBG  = new SolidColorBrush(Color.FromArgb(80, 60, 70, 90)); // bar track
-        private static readonly SolidColorBrush COL_DIVIDER= new SolidColorBrush(Color.FromArgb(40, 255, 255, 255));
+        // Frozen brushes are immutable and safe to use across WPF threads (no dispatcher affinity).
+        // Creating an un-frozen SolidColorBrush on the static-init thread then setting it as
+        // Foreground/Background on a WPF element from the Dispatcher thread throws:
+        //   "Cannot use a DependencyObject that belongs to a different thread than its parent Freezable."
+        private static SolidColorBrush FrozenRgb(byte r, byte g, byte b)
+        {
+            var br = new SolidColorBrush(Color.FromRgb(r, g, b));
+            br.Freeze();
+            return br;
+        }
+        private static SolidColorBrush FrozenArgb(byte a, byte r, byte g, byte b)
+        {
+            var br = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+            br.Freeze();
+            return br;
+        }
+
+        private static readonly SolidColorBrush COL_LABEL  = FrozenRgb(0, 240, 255);      // cyan
+        private static readonly SolidColorBrush COL_VAL    = FrozenRgb(245, 246, 248);    // near-white
+        private static readonly SolidColorBrush COL_MUTED  = FrozenRgb(154, 160, 166);    // grey
+        private static readonly SolidColorBrush COL_GREEN  = FrozenRgb(57, 255, 20);      // neon green
+        private static readonly SolidColorBrush COL_RED    = FrozenRgb(255, 56, 56);      // neon red
+        private static readonly SolidColorBrush COL_AMBER  = FrozenRgb(255, 152, 0);      // amber
+        private static readonly SolidColorBrush COL_PURPLE = FrozenRgb(167, 139, 250);    // purple
+        private static readonly SolidColorBrush COL_BARBG  = FrozenArgb(80, 60, 70, 90);  // bar track
+        private static readonly SolidColorBrush COL_DIVIDER= FrozenArgb(40, 255, 255, 255);
 
         private StackPanel BuildBrainPanelLayout()
         {
@@ -452,15 +487,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Text = "⚡ ANTIGRAVITY v2 BRAIN",
                 Foreground = COL_LABEL,
                 FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 13,
+                FontSize = 15,
                 FontWeight = FontWeights.Bold
             };
             brainHeaderStatus = new TextBlock {
                 Text = "● connecting",
                 Foreground = COL_MUTED,
                 FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 10,
-                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -470,59 +505,59 @@ namespace NinjaTrader.NinjaScript.Strategies
             root.Children.Add(MakeDivider(8));
 
             // ── Signal row ────────────────────────────────────────────────
-            brainSignalArrow = new TextBlock { Text = "—", Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 13, Margin = new Thickness(6, 0, 0, 0) };
-            brainSignalText  = new TextBlock { Text = "WAIT",  Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(8, 0, 0, 0) };
+            brainSignalArrow = new TextBlock { Text = "—", Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 15, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainSignalText  = new TextBlock { Text = "WAIT",  Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 15, FontWeight = FontWeights.Bold, Margin = new Thickness(8, 0, 0, 0) };
             root.Children.Add(MakeRow("Signal", new UIElement[] { brainSignalArrow, brainSignalText }));
 
             // ── Long probability bar ──────────────────────────────────────
-            brainLongProbText = new TextBlock { Text = "0.00", Foreground = COL_GREEN, FontFamily = new FontFamily("Consolas"), FontSize = 12, Width = 42, TextAlignment = TextAlignment.Right };
+            brainLongProbText = new TextBlock { Text = "0.00", Foreground = COL_GREEN, FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Width = 50, TextAlignment = TextAlignment.Right };
             brainLongProbBar  = MakeProbBar(COL_GREEN);
             brainLongProbThMark = MakeThMark();
             root.Children.Add(MakeProbRow("Long P", brainLongProbText, brainLongProbBar, brainLongProbThMark));
 
             // ── Short probability bar ─────────────────────────────────────
-            brainShortProbText = new TextBlock { Text = "0.00", Foreground = COL_RED, FontFamily = new FontFamily("Consolas"), FontSize = 12, Width = 42, TextAlignment = TextAlignment.Right };
+            brainShortProbText = new TextBlock { Text = "0.00", Foreground = COL_RED, FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Width = 50, TextAlignment = TextAlignment.Right };
             brainShortProbBar  = MakeProbBar(COL_RED);
             brainShortProbThMark = MakeThMark();
             root.Children.Add(MakeProbRow("Short P", brainShortProbText, brainShortProbBar, brainShortProbThMark));
 
             // ── Regime + Session row ──────────────────────────────────────
-            brainRegimeText = new TextBlock { Text = "—",      Foreground = COL_AMBER, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
-            brainSessionText= new TextBlock { Text = "—",      Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(12, 0, 0, 0) };
+            brainRegimeText = new TextBlock { Text = "—",      Foreground = COL_AMBER, FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainSessionText= new TextBlock { Text = "—",      Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(12, 0, 0, 0) };
             root.Children.Add(MakeRow("Regime", new UIElement[] { brainRegimeText, brainSessionText }));
 
             // ── Specialist row (small monospace) ──────────────────────────
-            brainSpecText = new TextBlock { Text = "awaiting first bar push…", Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 10, Margin = new Thickness(6, 0, 0, 0), TextWrapping = TextWrapping.NoWrap };
+            brainSpecText = new TextBlock { Text = "awaiting first bar push…", Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0), TextWrapping = TextWrapping.NoWrap };
             root.Children.Add(MakeRow("Spec",   new UIElement[] { brainSpecText }));
 
-            root.Children.Add(MakeDivider(6));
+            root.Children.Add(MakeDivider(8));
 
             // ── Position + P&L rows ───────────────────────────────────────
-            brainPositionText = new TextBlock { Text = "FLAT",      Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
-            brainPnLText      = new TextBlock { Text = "—",         Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainPositionText = new TextBlock { Text = "FLAT",      Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainPnLText      = new TextBlock { Text = "—",         Foreground = COL_MUTED, FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
             root.Children.Add(MakeRow("Position", new UIElement[] { brainPositionText }));
             root.Children.Add(MakeRow("P & L",    new UIElement[] { brainPnLText }));
 
             // ── BE / Trail countdowns ─────────────────────────────────────
-            brainBeText    = new TextBlock { Text = "—", Foreground = COL_VAL,   FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(6, 0, 0, 0) };
-            brainTrailText = new TextBlock { Text = "—", Foreground = COL_VAL,   FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(6, 0, 0, 0) };
+            brainBeText    = new TextBlock { Text = "—", Foreground = COL_VAL,   FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainTrailText = new TextBlock { Text = "—", Foreground = COL_VAL,   FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
             root.Children.Add(MakeRow("BE in",    new UIElement[] { brainBeText }));
             root.Children.Add(MakeRow("Trail in", new UIElement[] { brainTrailText }));
 
-            root.Children.Add(MakeDivider(6));
+            root.Children.Add(MakeDivider(8));
 
             // ── Footer: ATR + Trades + Mode + Exits ───────────────────────
-            brainAtrText    = new TextBlock { Text = "—",      Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(6, 0, 12, 0) };
-            brainTradesText = new TextBlock { Text = "—",      Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 11, Margin = new Thickness(0, 0, 0, 0) };
+            brainAtrText    = new TextBlock { Text = "—",      Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 12, 0) };
+            brainTradesText = new TextBlock { Text = "—",      Foreground = COL_VAL, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 0) };
             var atrTradesRow = new Grid();
-            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
             atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(60) });
+            atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
             atrTradesRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            atrTradesRow.Margin = new Thickness(0, 2, 0, 2);
-            var atrLabel    = new TextBlock { Text = "ATR :",    Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 11 };
-            var tradesLabel = new TextBlock { Text = "Trades :", Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 11 };
+            atrTradesRow.Margin = new Thickness(0, 4, 0, 4);
+            var atrLabel    = new TextBlock { Text = "ATR :",    Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold };
+            var tradesLabel = new TextBlock { Text = "Trades :", Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold };
             Grid.SetColumn(atrLabel, 0);    Grid.SetColumn(brainAtrText, 1);
             Grid.SetColumn(tradesLabel, 3); Grid.SetColumn(brainTradesText, 4);
             atrTradesRow.Children.Add(atrLabel);
@@ -531,8 +566,8 @@ namespace NinjaTrader.NinjaScript.Strategies
             atrTradesRow.Children.Add(brainTradesText);
             root.Children.Add(atrTradesRow);
 
-            brainModeText  = new TextBlock { Text = "MINI · PAPER", Foreground = COL_AMBER,  FontFamily = new FontFamily("Consolas"), FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
-            brainExitsText = new TextBlock { Text = "Exits: ATR",   Foreground = COL_VAL,    FontFamily = new FontFamily("Consolas"), FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+            brainModeText  = new TextBlock { Text = "MINI · PAPER", Foreground = COL_AMBER,  FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
+            brainExitsText = new TextBlock { Text = "Exits: ATR",   Foreground = COL_VAL,    FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
             root.Children.Add(MakeRow("Mode",  new UIElement[] { brainModeText }));
             root.Children.Add(MakeRow("Exits", new UIElement[] { brainExitsText }));
 
@@ -543,14 +578,15 @@ namespace NinjaTrader.NinjaScript.Strategies
         private Grid MakeRow(string label, UIElement[] valueCells)
         {
             var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(94) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.Margin = new Thickness(0, 2, 0, 2);
+            row.Margin = new Thickness(0, 4, 0, 4);
             var lbl = new TextBlock {
                 Text = label + " :",
                 Foreground = COL_LABEL,
                 FontFamily = new FontFamily("Consolas"),
-                FontSize = 11
+                FontSize = 13,
+                FontWeight = FontWeights.Bold
             };
             Grid.SetColumn(lbl, 0);
             row.Children.Add(lbl);
@@ -565,20 +601,20 @@ namespace NinjaTrader.NinjaScript.Strategies
         private Grid MakeProbRow(string label, TextBlock valueText, Border barFill, Border thMark)
         {
             var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(94) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Margin = new Thickness(0, 3, 0, 3);
+            row.Margin = new Thickness(0, 5, 0, 5);
 
-            var lbl = new TextBlock { Text = label + " :", Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+            var lbl = new TextBlock { Text = label + " :", Foreground = COL_LABEL, FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(lbl, 0);
             row.Children.Add(lbl);
 
             // Bar track (background)
             var track = new Border {
                 Width = PROB_BAR_WIDTH,
-                Height = 10,
+                Height = 14,
                 Background = COL_BARBG,
                 CornerRadius = new CornerRadius(3),
                 Margin = new Thickness(6, 0, 6, 0),
@@ -587,13 +623,13 @@ namespace NinjaTrader.NinjaScript.Strategies
             // Bar fill (foreground) — width = 0 initially, sized by Update
             barFill.HorizontalAlignment = HorizontalAlignment.Left;
             barFill.Width = 0;
-            barFill.Height = 10;
+            barFill.Height = 14;
             barFill.CornerRadius = new CornerRadius(3);
             // Threshold tick
             thMark.HorizontalAlignment = HorizontalAlignment.Left;
             thMark.Width = 2;
-            thMark.Height = 14;
-            thMark.Background = new SolidColorBrush(Colors.White);
+            thMark.Height = 18;
+            { var _b = new SolidColorBrush(Colors.White); _b.Freeze(); thMark.Background = _b; }
             thMark.Margin = new Thickness(0, -2, 0, -2);
             var trackGrid = new Grid();
             trackGrid.Children.Add(barFill);
@@ -638,12 +674,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                     // 2. Create the futuristic charcoal glass border
                     wpfPanel = new Border();
-                    wpfPanel.Background = new SolidColorBrush(Color.FromArgb(230, 10, 12, 18)); // Glassy dark
-                    wpfPanel.BorderBrush = new SolidColorBrush(Color.FromRgb(0, 240, 255));     // Cyan glow
+                    { var _bg = new SolidColorBrush(Color.FromArgb(230, 10, 12, 18)); _bg.Freeze(); wpfPanel.Background = _bg; } // Glassy dark
+                    { var _bb = new SolidColorBrush(Color.FromRgb(0, 240, 255));      _bb.Freeze(); wpfPanel.BorderBrush = _bb; } // Cyan glow
                     wpfPanel.BorderThickness = new Thickness(1.5);
                     wpfPanel.CornerRadius = new CornerRadius(10);
-                    wpfPanel.Width = 460;
-                    wpfPanel.Padding = new Thickness(14, 12, 14, 12);
+                    wpfPanel.Width = 525;
+                    wpfPanel.Padding = new Thickness(18, 16, 18, 16);
                     wpfPanel.Cursor = Cursors.SizeAll;
 
                     // Position it initially in top-left offset
@@ -1036,7 +1072,9 @@ namespace NinjaTrader.NinjaScript.Strategies
                         // red when losing, cyan when flat & connected, orange when halted,
                         // red when disconnected.
                         if (wpfPanel != null) {
-                            wpfPanel.BorderBrush = new SolidColorBrush(borderGlowColor);
+                            var _glow = new SolidColorBrush(borderGlowColor);
+                            _glow.Freeze();
+                            wpfPanel.BorderBrush = _glow;
                         }
                     } catch (Exception ex) {
                         Print("Brain panel update error: " + ex.Message);
@@ -1133,6 +1171,32 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             try
             {
+                // ── Symbol filter ──────────────────────────────────────────────
+                // Node broadcasts BRAIN packets to ALL connected NT8 clients
+                // (one socket per chart). Without this filter, every chart's
+                // panel would update on every other chart's bar close —
+                // leaving the NQ chart showing ES data, etc. We read the
+                // packet's family (e.g. "NQ=F") and discard it unless it
+                // matches this chart's resolved symbol code.
+                string packetFamily = JsonStr(json, "family") ?? JsonStr(json, "symbol");
+                if (!string.IsNullOrEmpty(packetFamily))
+                {
+                    // Strip leading "M" (micro prefix MNQ/MES/etc) so MNQ=F
+                    // also accepts a packet tagged NQ=F (same family).
+                    string normalized = packetFamily.StartsWith("M") &&
+                                        (packetFamily.StartsWith("MNQ") ||
+                                         packetFamily.StartsWith("MES") ||
+                                         packetFamily.StartsWith("MCL") ||
+                                         packetFamily.StartsWith("MGC"))
+                                        ? packetFamily.Substring(1)
+                                        : packetFamily;
+                    string mySym = ResolveSymbolCode();   // e.g. "NQ=F"
+                    if (!string.Equals(normalized, mySym, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return; // Packet is for a different chart's instrument — ignore.
+                    }
+                }
+
                 brainRegime       = JsonStr(json, "regime")        ?? "—";
                 brainSession      = JsonStr(json, "session")       ?? "—";
                 brainAction       = JsonStr(json, "action")        ?? "FLAT";
@@ -1363,6 +1427,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         }
                         Print(string.Format("AntigravityBridge: Submitting BUY market order. Qty: {0}, SL: {1} ticks, TP: {2} ticks", qty, stopLossTicks, takeProfitTicks));
                         EnterLong(qty, "AntigravityLong");
+                        BumpTodayTrades();
                     }
                     else if (action == "SELL")
                     {
@@ -1373,6 +1438,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                         }
                         Print(string.Format("AntigravityBridge: Submitting SELL market order. Qty: {0}, SL: {1} ticks, TP: {2} ticks", qty, stopLossTicks, takeProfitTicks));
                         EnterShort(qty, "AntigravityShort");
+                        BumpTodayTrades();
                     }
                 }
             }

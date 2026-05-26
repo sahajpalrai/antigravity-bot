@@ -28,10 +28,30 @@ const opts = {
   symbols: ['NQ=F', 'ES=F', 'CL=F', 'GC=F'],
   autoRollback: args.includes('--auto-rollback'),
   quick: args.includes('--quick'),       // fewer trees for fast iteration
-  highWR: args.includes('--high-wr')     // require WR ≥ 0.65, prefer high-WR thresholds
+  highWR: args.includes('--high-wr'),    // legacy flat 0.65 floor across both sessions
+  // ── HYBRID PER-SESSION FLOORS (default) ──
+  // RTH: 60% — balanced. Strict enough to filter noise, permissive enough
+  //   to deploy 4-8 RTH specialists per family during NY hours.
+  // ETH: 55% — realistic for overnight noise + low volume.
+  // Override via --rth-floor / --eth-floor or set to same value to disable hybrid.
+  rthFloor: 0.60,
+  ethFloor: 0.55,
+  // ── DATA WINDOW (optional) ──
+  // By default we train on the full ~2y CSV. --recent=30 trims to last 30 days
+  // (smaller sample, more reactive to recent regime). Use sparingly — under
+  // ~3 months has too few samples for the walkforward to be reliable.
+  recentDays: 0
 };
 const symArg = args.find(a => a.startsWith('--symbols='));
 if (symArg) opts.symbols = symArg.split('=')[1].split(',').map(s => s.includes('=F') ? s : s + '=F');
+const rthArg = args.find(a => a.startsWith('--rth-floor='));
+if (rthArg) opts.rthFloor = parseFloat(rthArg.split('=')[1]);
+const ethArg = args.find(a => a.startsWith('--eth-floor='));
+if (ethArg) opts.ethFloor = parseFloat(ethArg.split('=')[1]);
+const recentArg = args.find(a => a.startsWith('--recent='));
+if (recentArg) opts.recentDays = parseInt(recentArg.split('=')[1], 10);
+// Legacy --high-wr maps to flat 0.65/0.65
+if (opts.highWR) { opts.rthFloor = 0.65; opts.ethFloor = 0.65; }
 
 // Tighter regularization — these GBDTs train on 2-10k samples per regime/session/dir
 // slice. Conservative settings beat overfit settings on small samples every time.
@@ -129,10 +149,11 @@ function trainBundle(symbol, candles) {
           params: TRAIN_PARAMS,
           log: (msg) => console.log(`  ${msg}`)
         };
-        if (opts.highWR) {
-          wfOpts.winRateFloor = 0.65;
-          wfOpts.objective    = 'winRate';
-        }
+        // Per-session floor — RTH gets the strict bar, ETH gets the realistic one.
+        const sessionFloor = session === 'RTH' ? opts.rthFloor : opts.ethFloor;
+        wfOpts.winRateFloor = sessionFloor;
+        // When the floor is >= 0.60, prefer high-WR thresholds over Sharpe-max
+        wfOpts.objective    = sessionFloor >= 0.60 ? 'winRate' : 'sharpe';
         const result = walkforward(candles, wfOpts);
 
         if (!result.trained) {
@@ -197,12 +218,13 @@ function main() {
   console.log(`Symbols:         ${opts.symbols.join(', ')}`);
   console.log(`Auto-rollback:   ${opts.autoRollback ? 'ON' : 'off'}`);
   console.log(`Mode:            ${opts.quick ? 'quick (40 trees)' : 'full (150 trees)'}`);
-  console.log(`High-WR mode:    ${opts.highWR ? 'ON — require WR ≥ 65%, prefer high-WR thresholds' : 'off (winRateFloor=0.55, optimize Sharpe)'}`);
+  console.log(`WR floors:       RTH=${(opts.rthFloor*100).toFixed(0)}%  ETH=${(opts.ethFloor*100).toFixed(0)}%${opts.rthFloor!==opts.ethFloor ? '  (hybrid)' : ''}`);
   console.log(`Started:         ${new Date().toISOString()}`);
 
-  // Auto-backup current models/ dir before high-WR overwrite. User can always
-  // revert by copying the backup back. Path: models_baseline_<ISO-ts>/
-  if (opts.highWR) {
+  // Auto-backup current models/ dir before any non-baseline run overwrites.
+  // User can always revert by copying the backup back. Path: models_baseline_<ISO-ts>/
+  const isCustomFloor = opts.highWR || opts.rthFloor !== 0.55 || opts.ethFloor !== 0.55;
+  if (isCustomFloor) {
     try {
       const ts = new Date().toISOString().replace(/[:.]/g, '-');
       const backupDir = path.join(__dirname, '..', `models_baseline_${ts}`);
@@ -226,16 +248,43 @@ function main() {
   }
   console.log('');
 
+  // Persist the active floor config so the dashboard + decision engine can
+  // display "RTH 65% · ETH 55%" on each card. Read by /api/state.
+  try {
+    const cfgPath = path.join(MODELS_DIR, 'quality_floors.json');
+    fs.writeFileSync(cfgPath, JSON.stringify({
+      rthFloor: opts.rthFloor,
+      ethFloor: opts.ethFloor,
+      minPF: 1.5,
+      minTrades: 30,
+      lastTrainedAt: new Date().toISOString()
+    }, null, 2));
+  } catch (e) {
+    console.error(`⚠️  Failed to write quality_floors.json: ${e.message}`);
+  }
+
   const startTime = Date.now();
   const reports = [];
 
   for (const symbol of opts.symbols) {
     console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log(`Loading ${symbol}…`);
-    const candles = loadCsv(symbol);
+    let candles = loadCsv(symbol);
     if (!candles || candles.length < 1000) {
       console.log(`  ⚠️  Skipped — only ${candles ? candles.length : 0} candles`);
       continue;
+    }
+    // Optional: trim to last N days
+    if (opts.recentDays > 0) {
+      const lastTs = new Date(candles[candles.length - 1].time).getTime();
+      const cutoff = lastTs - opts.recentDays * 24 * 60 * 60 * 1000;
+      const before = candles.length;
+      candles = candles.filter(c => new Date(c.time).getTime() >= cutoff);
+      console.log(`  Trimmed to last ${opts.recentDays}d: ${before} → ${candles.length} candles`);
+      if (candles.length < 1000) {
+        console.log(`  ⚠️  Skipped — only ${candles.length} candles after trim`);
+        continue;
+      }
     }
     console.log(`  ${candles.length} candles loaded (${candles[0].time} → ${candles[candles.length - 1].time})`);
 

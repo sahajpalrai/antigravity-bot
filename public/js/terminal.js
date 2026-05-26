@@ -138,10 +138,15 @@
       }
     }
 
-    container.innerHTML = symbols.map(sym => buildE2Card(sym, decisions[sym], accounts[sym], livePrices[sym], specs[sym])).join('');
+    // Per-session WR floors — surfaced on each card so the user sees at a
+    // glance what the quality bar is for their current session.
+    const floors = data.qualityFloors || { rth: 0.65, eth: 0.55 };
+
+    container.innerHTML = symbols.map(sym => buildE2Card(sym, decisions[sym], accounts[sym], livePrices[sym], specs[sym], floors)).join('');
   }
 
-  function buildE2Card(sym, decision, acc, px, spec) {
+  function buildE2Card(sym, decision, acc, px, spec, floors) {
+    floors = floors || { rth: 0.65, eth: 0.55 };
     const family = (spec && spec.family) || sym.replace(/^M/, '').replace('=F', '');
     const isMicro = spec && spec.isMicro;
     const displaySym = sym.replace('=F', '');
@@ -260,6 +265,11 @@
           <span class="e2-regime-pill ${rClass}">${regimeText}</span>
           <span class="e2-sess">${session}</span>
           ${verdictHtml}
+        </div>
+        <div class="e2-floors-row" title="Quality gate: bundles must hit this WR to deploy. RTH (NY hours) holds a high bar; ETH (overnight) uses a realistic bar.">
+          <span class="e2-floor-chip ${session==='RTH' ? 'active' : ''}">RTH&nbsp;<strong>${Math.round(floors.rth*100)}%</strong></span>
+          <span class="e2-floor-chip ${session==='ETH' ? 'active' : ''}">ETH&nbsp;<strong>${Math.round(floors.eth*100)}%</strong></span>
+          <span class="e2-floors-label">WR floor</span>
         </div>
         <div class="e2-spark-row">
           ${sparkSvg}
@@ -425,53 +435,86 @@
     } catch (e) {}
   }
 
+  // 8 symbols: 4 mini + 4 micro. Each gets its own card with RTH + ETH columns.
+  const EXITS_SYMBOLS = [
+    { sym: 'NQ=F',  label: 'NQ',  family: 'Nasdaq-100 E-mini',     tier: 'mini'  },
+    { sym: 'ES=F',  label: 'ES',  family: 'S&P 500 E-mini',         tier: 'mini'  },
+    { sym: 'CL=F',  label: 'CL',  family: 'Crude Oil',              tier: 'mini'  },
+    { sym: 'GC=F',  label: 'GC',  family: 'Gold',                   tier: 'mini'  },
+    { sym: 'MNQ=F', label: 'MNQ', family: 'Nasdaq-100 Micro',       tier: 'micro' },
+    { sym: 'MES=F', label: 'MES', family: 'S&P 500 Micro',          tier: 'micro' },
+    { sym: 'MCL=F', label: 'MCL', family: 'Crude Oil Micro',        tier: 'micro' },
+    { sym: 'MGC=F', label: 'MGC', family: 'Gold Micro',             tier: 'micro' }
+  ];
+
   function renderExitsTab(cfg, fixedActive) {
     const warn = document.getElementById('exits-warning');
     if (warn) warn.style.display = fixedActive ? '' : 'none';
     const wrap = document.getElementById('exits-cards');
     if (!wrap) return;
-    wrap.innerHTML = ['RTH', 'ETH'].map(s => buildExitsCard(s, cfg[s])).join('');
+    wrap.innerHTML = EXITS_SYMBOLS.map(meta => buildExitsCardForSymbol(meta, cfg[meta.sym] || {})).join('');
     wireExitsHandlers();
   }
 
-  function buildExitsCard(session, s) {
-    const sessLabel = session === 'RTH' ? '☀️ RTH (Regular Trading Hours)' : '🌙 ETH (Electronic Trading Hours)';
-    const accentColor = session === 'RTH' ? 'var(--neon-green)' : 'var(--neon-orange)';
-    const enabled = !!s.enabled;
+  function buildExitsCardForSymbol(meta, symCfg) {
+    const rth = symCfg.RTH || {};
+    const eth = symCfg.ETH || {};
+    const anyActive = !!(rth.enabled || eth.enabled);
+    const tierBadge = meta.tier === 'micro'
+      ? `<span style="font-size:9px; padding: 2px 6px; border-radius: 4px; background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.4); font-weight: 800; letter-spacing: 0.5px;">MICRO</span>`
+      : `<span style="font-size:9px; padding: 2px 6px; border-radius: 4px; background: rgba(0,240,255,0.12); color: var(--cyan-glow, #00F0FF); border: 1px solid rgba(0,240,255,0.4); font-weight: 800; letter-spacing: 0.5px;">MINI</span>`;
     return `
-      <div class="glass-card" style="padding: 20px 24px; border: 1px solid ${enabled ? accentColor : 'var(--border-light)'}; box-shadow: ${enabled ? `0 0 20px ${session === 'RTH' ? 'rgba(57,255,20,0.15)' : 'rgba(255,152,0,0.15)'}` : 'none'};">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <h3 style="margin:0; font-size: 15px; font-weight: 800; color: ${accentColor};">${sessLabel}</h3>
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none;">
-            <input type="checkbox" data-exits-session="${session}" data-exits-field="enabled" ${enabled ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer; accent-color:${accentColor};">
-            <span style="font-size:11px; font-weight: 800; letter-spacing: 0.5px; color: ${enabled ? accentColor : 'var(--text-secondary)'};">USE FIXED ${enabled ? '✓' : ''}</span>
-          </label>
+      <div class="exits-symbol-card glass-card" style="padding: 18px 20px; border: 1px solid ${anyActive ? 'rgba(255,152,0,0.4)' : 'var(--border-light)'}; box-shadow: ${anyActive ? '0 0 16px rgba(255,152,0,0.12)' : 'none'};">
+        <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+          <h3 style="margin:0; font-size: 18px; font-weight: 800; color: var(--text-primary); letter-spacing: 1px;">${meta.label}</h3>
+          ${tierBadge}
+          <span style="font-size: 11px; color: var(--text-secondary); margin-left: 4px;">${meta.family}</span>
+          ${anyActive ? `<span style="margin-left: auto; font-size: 10px; font-weight: 800; color: var(--neon-orange); letter-spacing: 0.5px;">● FIXED ACTIVE</span>` : ''}
         </div>
-        <p style="font-size:11px; color: var(--text-secondary); margin: 0 0 14px 0; line-height: 1.5;">
-          ${enabled
-            ? `<strong style="color: ${accentColor};">Fixed exits active.</strong> Values below override ATR-dynamic exits for ${session} entries.`
-            : `Currently using ATR-dynamic exits (1.5×ATR stop, 2.7×ATR target). Check the box to override.`}
-        </p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; ${enabled ? '' : 'opacity:0.5; pointer-events:none;'}">
-          ${exitsField('Profit Target',       session, 'profitPoints',     s.profitPoints,     'pts')}
-          ${exitsField('Stop Loss',           session, 'stopPoints',       s.stopPoints,       'pts')}
-          ${exitsField('Break-Even At',       session, 'breakevenAtPoints', s.breakevenAtPoints, 'pts profit')}
-          ${exitsField('Trail Start',         session, 'trailStartPoints', s.trailStartPoints, 'pts profit')}
-          ${exitsField('Trail Step',          session, 'trailStepPoints',  s.trailStepPoints,  'pts behind')}
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          ${buildSessionBlock(meta.sym, 'RTH', rth)}
+          ${buildSessionBlock(meta.sym, 'ETH', eth)}
         </div>
       </div>
     `;
   }
 
-  function exitsField(label, session, field, value, suffix) {
+  function buildSessionBlock(symbol, session, s) {
+    const sessLabel = session === 'RTH' ? '☀️ RTH' : '🌙 ETH';
+    const accentColor = session === 'RTH' ? 'var(--neon-green)' : 'var(--neon-orange)';
+    const accentGlow  = session === 'RTH' ? 'rgba(57,255,20,0.12)' : 'rgba(255,152,0,0.10)';
+    const enabled = !!s.enabled;
     return `
-      <div class="input-group" style="display:flex; flex-direction:column; gap:4px;">
-        <label style="font-size: 10px; color: var(--text-secondary); font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;">${label}</label>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <input type="number" min="0.1" step="0.1" value="${value}"
-                 data-exits-session="${session}" data-exits-field="${field}"
-                 style="flex:1; padding: 8px 10px; background: rgba(5,7,12,0.6); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-family: 'Consolas', monospace; font-size: 13px; font-weight: 600;">
-          <span style="font-size: 10px; color: var(--text-secondary);">${suffix}</span>
+      <div style="background: rgba(5,7,12,${enabled ? '0.45' : '0.25'}); border: 1px solid ${enabled ? accentColor : 'rgba(255,255,255,0.05)'}; border-radius: 8px; padding: 12px; ${enabled ? `box-shadow: inset 0 0 12px ${accentGlow};` : ''}">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+          <span style="font-size: 12px; font-weight: 800; color: ${accentColor}; letter-spacing: 0.5px;">${sessLabel}</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+            <input type="checkbox" data-exits-symbol="${symbol}" data-exits-session="${session}" data-exits-field="enabled" ${enabled ? 'checked' : ''} style="width:14px; height:14px; cursor:pointer; accent-color: ${accentColor};">
+            <span style="font-size:9.5px; font-weight: 800; letter-spacing: 0.4px; color: ${enabled ? accentColor : 'var(--text-secondary)'};">USE FIXED ${enabled ? '✓' : ''}</span>
+          </label>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; ${enabled ? '' : 'opacity:0.45; pointer-events:none;'}">
+          ${exitsField('Profit',     symbol, session, 'profitPoints',     s.profitPoints,     'pts')}
+          ${exitsField('Stop',       symbol, session, 'stopPoints',       s.stopPoints,       'pts')}
+          ${exitsField('Break-Even', symbol, session, 'breakevenAtPoints', s.breakevenAtPoints, 'pts')}
+          ${exitsField('Trail @',    symbol, session, 'trailStartPoints', s.trailStartPoints, 'pts')}
+          <div style="grid-column: 1 / -1;">
+            ${exitsField('Trail Step', symbol, session, 'trailStepPoints',  s.trailStepPoints,  'pts behind')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function exitsField(label, symbol, session, field, value, suffix) {
+    return `
+      <div class="input-group" style="display:flex; flex-direction:column; gap:3px;">
+        <label style="font-size: 9px; color: var(--text-secondary); font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;">${label}</label>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <input type="number" min="0.05" step="0.05" value="${value}"
+                 data-exits-symbol="${symbol}" data-exits-session="${session}" data-exits-field="${field}"
+                 style="flex:1; min-width: 0; padding: 6px 8px; background: rgba(5,7,12,0.6); border: 1px solid var(--border-light); border-radius: 5px; color: var(--text-primary); font-family: 'Consolas', monospace; font-size: 12px; font-weight: 600;">
+          <span style="font-size: 9px; color: var(--text-secondary); white-space: nowrap;">${suffix}</span>
         </div>
       </div>
     `;
@@ -479,18 +522,19 @@
 
   let _exitsHandlersWired = new WeakSet();
   function wireExitsHandlers() {
-    document.querySelectorAll('[data-exits-session]').forEach(el => {
+    document.querySelectorAll('[data-exits-symbol]').forEach(el => {
       if (_exitsHandlersWired.has(el)) return;
       _exitsHandlersWired.add(el);
       el.addEventListener('change', async () => {
+        const symbol  = el.dataset.exitsSymbol;
         const session = el.dataset.exitsSession;
-        const field = el.dataset.exitsField;
-        const val = el.type === 'checkbox' ? el.checked : parseFloat(el.value);
+        const field   = el.dataset.exitsField;
+        const val     = el.type === 'checkbox' ? el.checked : parseFloat(el.value);
         try {
           const res = await fetch('/api/exits', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session, values: { [field]: val } })
+            body: JSON.stringify({ symbol, session, values: { [field]: val } })
           });
           if (res.ok) pollExitsConfig();  // re-render with fresh state
         } catch (e) { console.warn('exits save failed', e); }

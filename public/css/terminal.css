@@ -345,11 +345,11 @@
 
 .event-row {
   display: grid;
-  grid-template-columns: 70px 56px 38px 1fr;
+  grid-template-columns: 70px 56px 38px minmax(0, 1fr);
   gap: 8px;
   padding: 3px 6px;
   border-radius: 4px;
-  align-items: baseline;
+  align-items: start;        /* lets wrapped message lines stack neatly */
   border-left: 2px solid transparent;
   transition: background 0.1s;
 }
@@ -366,7 +366,16 @@
 .event-time   { color: var(--text-secondary); font-size: 10px; }
 .event-symbol { font-weight: 800; color: var(--cyan-glow); font-size: 10px; text-align: center; }
 .event-type   { font-weight: 700; font-size: 9px; letter-spacing: 0.5px; color: var(--text-secondary); text-transform: uppercase; }
-.event-msg    { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wrap the message instead of truncating it with ellipsis — readable
+   even when the window is narrow or minimized. */
+.event-msg    {
+  color: var(--text-primary);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.4;
+  min-width: 0;
+}
 
 .event-stream-empty {
   text-align: center;

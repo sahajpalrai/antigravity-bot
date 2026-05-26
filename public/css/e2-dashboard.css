@@ -163,6 +163,43 @@
 .e2-regime-pill.vol  { background: rgba(0,240,255,0.12);  color: var(--cyan-glow, #00F0FF);  border: 1px solid rgba(0,240,255,0.3); }
 .e2-regime-pill.chop { background: rgba(154,160,166,0.1); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(154,160,166,0.25); }
 .e2-sess { font-size: 10px; color: var(--text-secondary, #9aa0a6); }
+
+/* Per-session WR floor chips — shows the user the quality bar at a glance.
+   The chip for the CURRENT session is highlighted; the other is dimmed. */
+.e2-floors-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
+}
+.e2-floor-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 0.2s ease;
+}
+.e2-floor-chip strong { font-weight: 800; }
+.e2-floor-chip.active {
+  color: var(--cyan-glow, #00F0FF);
+  background: rgba(0,240,255,0.08);
+  border-color: rgba(0,240,255,0.35);
+  box-shadow: 0 0 8px rgba(0,240,255,0.18);
+}
+.e2-floors-label {
+  margin-left: auto;
+  color: rgba(255,255,255,0.3);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.6px;
+}
 .e2-verdict {
   margin-left: auto;
   font-size: 10px;
@@ -266,7 +303,7 @@
 .e2-pos-pnl.pos { color: var(--neon-green, #39ff14); }
 .e2-pos-pnl.neg { color: var(--neon-red, #ff3838); }
 
-/* ── RIGHT pane: sticky event stream sidebar ──────────────────────────── */
+/* ── RIGHT pane: event stream — stretches full height of the ops column ── */
 .e2-stream-pane {
   background: rgba(11, 14, 30, 0.55);
   border: 1px solid var(--border-light, rgba(255,255,255,0.07));
@@ -276,11 +313,16 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: fit-content;
-  max-height: calc(100vh - 200px);
-  position: sticky;
-  top: 16px;
+  /* Force-match the left ops-pane's height. Grid's default align-items:
+     stretch should do this on its own, but some browser layout edge cases
+     (older Chrome + Edge in certain widths) collapse the pane to content
+     height. align-self + height:100% pins it explicitly. */
+  align-self: stretch;
+  height: 100%;
+  min-height: 100%;
 }
+/* Also pin the grid container so children grow together */
+.e2-split { align-items: stretch; }
 .e2-stream-head {
   display: flex;
   align-items: center;
@@ -336,23 +378,23 @@
   border-color: var(--cyan-glow, #00F0FF);
 }
 .e2-stream-body {
-  flex: 1;
-  overflow-y: auto;
+  flex: 1;            /* fills remaining vertical space in the (now full-height) pane */
+  overflow-y: auto;   /* internal scroll for the event list */
   padding: 8px 12px 14px 12px;
   font-family: 'Consolas', 'JetBrains Mono', monospace;
   font-size: 11px;
   line-height: 1.55;
-  min-height: 460px;
+  min-height: 0;      /* allow flex to shrink as needed; pane height already drives total size */
 }
 /* Event row styling matches terminal.css naming for compatibility */
 .e2-stream-body .event-row {
   display: grid;
-  grid-template-columns: 52px 32px 32px 1fr;
+  grid-template-columns: 52px 32px 32px minmax(0, 1fr);
   gap: 8px;
-  padding: 3px 6px;
+  padding: 4px 6px;
   border-radius: 4px;
   border-left: 2px solid transparent;
-  align-items: baseline;
+  align-items: start;          /* allow wrapped message to stack neatly */
 }
 .e2-stream-body .event-row.type-DECISION       { border-left-color: rgba(0,240,255,0.4); }
 .e2-stream-body .event-row.type-ENTRY          { border-left-color: var(--neon-green, #39ff14); background: rgba(57,255,20,0.04); }
@@ -365,7 +407,16 @@
 .e2-stream-body .event-time   { color: var(--text-secondary, #9aa0a6); font-size: 9px; }
 .e2-stream-body .event-symbol { font-weight: 800; color: var(--cyan-glow, #00F0FF); font-size: 9px; text-align: center; }
 .e2-stream-body .event-type   { font-weight: 700; font-size: 8px; letter-spacing: 0.5px; color: var(--text-secondary, #9aa0a6); text-transform: uppercase; }
-.e2-stream-body .event-msg    { color: var(--text-primary, #f0f6fc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wrap the message instead of truncating — readable even when window
+   is minimized or the right sidebar is narrow. */
+.e2-stream-body .event-msg    {
+  color: var(--text-primary, #f0f6fc);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.4;
+  min-width: 0;
+}
 
 /* Scrollbars */
 .e2-cards-stack::-webkit-scrollbar,

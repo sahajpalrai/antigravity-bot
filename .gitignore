@@ -35,3 +35,24 @@ dist/
 
 # Dynamic application state
 portfolio_state.json
+
+# ─── V2 RUNTIME STATE (don't track — regenerates every retrain/monitor cycle) ───
+# Training data: ~12 MB per symbol, grows daily via live auto-append.
+# The bot bootstraps these from disk at startup; if cloning fresh, regenerate
+# by attaching the NT8 strategies to each chart and waiting for live bars.
+data/*.csv
+
+# Auto-rollback safety backups (~3-6 MB each, retrained twice a day)
+models_baseline_*/
+models/*.json.backup
+
+# Per-cycle runtime state — monitor + alerts + retrain logs + per-symbol reports
+models/active_alerts.json
+models/daily_monitor_history.json
+models/monitor_logs/
+models/retrain_logs/
+models/reports/
+models/simulation_*.json
+models/paper_trades.json
+models/exit_overrides.legacy_backup.json
+models/highwr_train_log.txt

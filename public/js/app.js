@@ -11,16 +11,26 @@ async function updateDashboard() {
     const data = await res.json();
 
     apiState = data;
-    renderKPIs(data);
-    renderAccounts(data.accounts);
-    renderPositions(data.accounts);
-    renderNews(data.news);
-    renderYahooNews(data.yahooNews);
-    renderTradeHistory(data.history);
-    renderRegime(data.regime, data.schedule);
-    renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode);
+
+    // Isolate every renderer with its own try/catch so a single bad render
+    // (e.g. stale data missing a field) can't cascade and prevent later
+    // critical renders like renderE2Cards from running. Without this, one
+    // exception in an early renderer leaves the cards stuck on the
+    // "Waiting for first NT8 bar push…" placeholder forever.
+    const safe = (name, fn) => { try { fn(); } catch (e) { console.error('[Dashboard]', name, 'failed:', e.message); } };
+    safe('renderKPIs',         () => renderKPIs(data));
+    safe('renderAccounts',     () => renderAccounts(data.accounts));
+    safe('renderPositions',    () => renderPositions(data.accounts));
+    safe('renderNews',         () => renderNews(data.news));
+    safe('renderYahooNews',    () => renderYahooNews(data.yahooNews));
+    safe('renderTradeHistory', () => renderTradeHistory(data.history));
+    safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
+    safe('renderMarketClock',  () => renderMarketClock(data.schedule));
+    safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
     // v2 Trading Floor Terminal hook — populates KPI strip + ops cards.
-    if (typeof window.terminalOnState === 'function') window.terminalOnState(data);
+    safe('terminalOnState',    () => {
+      if (typeof window.terminalOnState === 'function') window.terminalOnState(data);
+    });
     
     // Update config inputs if values exist
     if (data.tastytradeId) {
@@ -466,66 +476,251 @@ function renderNews(news) {
   });
 }
 
-// Render Yahoo Finance news (Grid of holographic cards)
-function renderYahooNews(yahooNews) {
-  const container = document.getElementById('yahoo-news-container');
-  if (!yahooNews || yahooNews.length === 0) {
-    container.innerHTML = `<div class="text-muted text-center py-4">No live financial news available.</div>`;
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET NEWS — sentiment-filtered 2-column feed.
+//
+// Each article is server-tagged with `sentiment` ∈ {bullish, bearish,
+// high_impact, neutral}. The filter pills above the grid toggle which
+// sentiments are visible; the row's colored left bar + chip both reflect the
+// sentiment.
+// ─────────────────────────────────────────────────────────────────────────────
+const _marketNewsFilters = new Set(['bullish', 'bearish', 'high_impact', 'neutral']);
+let   _marketNewsCache   = [];
+
+const _MN_LABELS = {
+  bullish:     { text: 'BULLISH',     arrow: '▲' },
+  bearish:     { text: 'BEARISH',     arrow: '▼' },
+  high_impact: { text: 'HIGH IMPACT', arrow: '⚡' },
+  neutral:     { text: 'NEUTRAL',     arrow: '•' }
+};
+
+// Fallback: client-side sentiment heuristic for headlines from older server
+// builds that don't yet emit a `sentiment` field. Keeps the UI consistent.
+function _mnDeriveSentiment(item) {
+  if (item.sentiment) return item.sentiment;
+  const t = (item.title || '').toLowerCase();
+  if (/\b(cpi|ppi|inflation|fomc|fed|rate|opec|nfp|payrolls|tariff|war|crisis)\b/.test(t)) return 'high_impact';
+  if (/\b(fall|drop|decline|plunge|crash|slip|slump|loss|bearish|sell-?off|correction|fears?|panic|concerns?|tensions?|warning|halt|downgrade)\b/.test(t)) return 'bearish';
+  if (/\b(rally|surge|soar|jump|rise|climb|gain|advance|beat|profit|record|rebound|recover|bullish|breakout|hopes?|optimism|upgrade)\b/.test(t)) return 'bullish';
+  return 'neutral';
+}
+
+function _mnFormatAge(pubDate) {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(pubDate).getTime()) / 60000));
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24)  return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+function _mnEscape(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderMarketNews(yahooNews) {
+  const grid = document.getElementById('market-news-grid');
+  const timeEl = document.getElementById('market-news-time');
+  if (!grid) return;
+
+  // Cache + timestamp
+  _marketNewsCache = Array.isArray(yahooNews) ? yahooNews : [];
+  if (timeEl) {
+    timeEl.textContent = new Date().toLocaleTimeString('en-US',
+      { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  }
+
+  if (!_marketNewsCache.length) {
+    grid.innerHTML = '<div class="market-news-empty">No live financial news available.</div>';
     return;
   }
 
-  container.innerHTML = '';
-  
-  const impactWeights = { 'High': 3, 'Medium': 2, 'Low': 1 };
-  const sortedNews = [...yahooNews].sort((a, b) => {
-    const weightA = impactWeights[a.impact] || 1;
-    const weightB = impactWeights[b.impact] || 1;
-    if (weightA !== weightB) return weightB - weightA;
+  // Apply active filter set
+  const visible = _marketNewsCache
+    .map(item => ({ ...item, _sent: _mnDeriveSentiment(item) }))
+    .filter(item => _marketNewsFilters.has(item._sent));
+
+  if (!visible.length) {
+    grid.innerHTML = '<div class="market-news-empty">No headlines match the selected filters.</div>';
+    return;
+  }
+
+  // Sort: HIGH_IMPACT first, then by recency
+  const sentOrder = { high_impact: 0, bearish: 1, bullish: 2, neutral: 3 };
+  visible.sort((a, b) => {
+    const so = (sentOrder[a._sent] ?? 9) - (sentOrder[b._sent] ?? 9);
+    if (so !== 0) return so;
     return new Date(b.pubDate) - new Date(a.pubDate);
   });
 
-  // Limit to 4 cards to keep layout beautiful
-  sortedNews.slice(0, 4).forEach(item => {
-    const diffMins = Math.round((Date.now() - new Date(item.pubDate).getTime()) / (60 * 1000));
-    
-    let timeLabel = '';
-    let timeColorClass = 'color: var(--text-secondary);';
-    
-    if (diffMins <= 0) {
-      timeLabel = 'JUST NOW';
-      timeColorClass = 'color: var(--neon-green); font-weight: 800;';
-    } else if (diffMins < 60) {
-      timeLabel = `${diffMins}m ago`;
-      timeColorClass = diffMins <= 15 ? 'color: var(--neon-green); font-weight: 600;' : 'color: var(--neon-orange);';
-    } else {
-      timeLabel = `${Math.round(diffMins / 60)}h ago`;
-    }
-
-    const cleanTime = new Date(item.pubDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const impactClass = item.impact ? item.impact.toLowerCase() : 'low';
-    
-    const card = document.createElement('div');
-    card.className = 'holographic-news-card';
-    card.onclick = () => window.open(item.link || 'https://finance.yahoo.com', '_blank');
-    card.innerHTML = `
-      <div class="news-card-header">
-        <span class="news-impact-tag ${impactClass}" style="font-size: 8px; padding: 2px 6px;">${item.impact || 'Low'} Impact</span>
-        <span style="font-size: 11px; ${timeColorClass}">${timeLabel}</span>
-      </div>
-      <div class="news-card-title">${item.title}</div>
-      <div class="news-card-footer">
-        <span>Yahoo Finance • ${cleanTime}</span>
-        <div class="news-actions">
-          <!-- Graph Icon -->
-          <svg viewBox="0 0 24 24"><path d="M3 3v18h18M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <!-- Globe Icon -->
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  grid.innerHTML = visible.map(item => {
+    const sent  = item._sent;
+    const meta  = _MN_LABELS[sent] || _MN_LABELS.neutral;
+    const age   = _mnFormatAge(item.pubDate);
+    const src   = _mnEscape(item.source || 'Yahoo Finance');
+    const title = _mnEscape(item.title || '');
+    const href  = _mnEscape(item.link  || 'https://finance.yahoo.com');
+    return `
+      <div class="mn-row is-${sent}" onclick="window.open('${href}','_blank','noopener')">
+        <span class="mn-chip"><span>${meta.arrow}</span> ${meta.text}</span>
+        <div class="mn-body">
+          <div class="mn-title">${title}<span class="mn-link-arrow">↗</span></div>
+          <div class="mn-meta"><span class="mn-time">${age}</span><span class="mn-dot">·</span><span class="mn-source">${src}</span></div>
         </div>
       </div>
     `;
-    container.appendChild(card);
-  });
+  }).join('');
 }
+
+// Filter pill click → toggle sentiment in active set + re-render
+function _mnSetupFilters() {
+  const bar = document.getElementById('market-news-filters');
+  if (!bar) return;
+  bar.querySelectorAll('.mn-filter[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.filter;
+      if (_marketNewsFilters.has(key)) {
+        _marketNewsFilters.delete(key);
+        btn.classList.remove('active');
+      } else {
+        _marketNewsFilters.add(key);
+        btn.classList.add('active');
+      }
+      renderMarketNews(_marketNewsCache);
+    });
+  });
+  const refresh = document.getElementById('market-news-refresh');
+  if (refresh) {
+    refresh.addEventListener('click', async () => {
+      refresh.classList.add('is-spinning');
+      try {
+        const r = await fetch('/api/state', { cache: 'no-store' });
+        if (r.ok) {
+          const data = await r.json();
+          if (data && data.yahooNews) renderMarketNews(data.yahooNews);
+        }
+      } catch (e) { /* keep silent */ }
+      setTimeout(() => refresh.classList.remove('is-spinning'), 500);
+    });
+  }
+}
+
+// Bind filter pills once on first DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _mnSetupFilters);
+} else {
+  _mnSetupFilters();
+}
+
+// Back-compat alias — server still passes yahooNews via the existing renderer name.
+function renderYahooNews(yahooNews) {
+  renderMarketNews(yahooNews);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET CLOCK WIDGET
+//
+// Reads `data.schedule` from /api/state and renders a live ticker showing the
+// current session state (RTH/ETH/Maintenance/Holiday/Weekend) plus a
+// continuously-updating countdown to the next session change ("RTH opens in
+// 9h 23m", "Maintenance in 32m", etc.).
+//
+// The server pushes a fresh nextEvent on every /api/state poll (every 2s).
+// To keep the countdown smooth between polls, we tick locally every second.
+// ─────────────────────────────────────────────────────────────────────────────
+let _mcNextEventTs = 0;   // ms timestamp of the next session change
+let _mcState       = 'eth';
+let _mcLabel       = '';
+
+const _MC_DISPLAY = {
+  rth:         { label: 'RTH',         glyph: '☀️' },
+  eth:         { label: 'ETH',         glyph: '🌙' },
+  maintenance: { label: 'MAINTENANCE', glyph: '🛠️' },
+  holiday:     { label: 'HOLIDAY',     glyph: '🎉' },
+  weekend:     { label: 'WEEKEND',     glyph: '💤' }
+};
+
+function _mcFormatRemaining(ms) {
+  if (ms == null || ms <= 0) return '—';
+  const totalSec = Math.floor(ms / 1000);
+  const hrs  = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  if (hrs >= 24)  return `${Math.floor(hrs / 24)}d ${hrs % 24}h`;
+  if (hrs >= 1)   return `${hrs}h ${String(mins).padStart(2, '0')}m`;
+  if (mins >= 1)  return `${mins}m ${String(secs).padStart(2, '0')}s`;
+  return `${secs}s`;
+}
+
+function renderMarketClock(schedule) {
+  const root  = document.getElementById('market-clock');
+  if (!root) return;
+  const stateEl = document.getElementById('mc-state');
+  const timeEl  = document.getElementById('mc-time');
+  const labelEl = document.getElementById('mc-next-label');
+  const glyphEl = document.getElementById('mc-glyph');
+  if (!stateEl || !timeEl) return;
+
+  // Pull session state + next event from the enriched schedule object.
+  // If sessionState is missing (older server build), derive it from the
+  // schedule.reason string so the widget never falls back to a wrong "ETH".
+  if (schedule && schedule.sessionState) {
+    _mcState = schedule.sessionState;
+  } else if (schedule && schedule.isClosed) {
+    const r = (schedule.reason || '').toLowerCase();
+    if      (r.includes('holiday'))    _mcState = 'holiday';
+    else if (r.includes('weekend'))    _mcState = 'weekend';
+    else if (r.includes('maintenance')) _mcState = 'maintenance';
+    else _mcState = 'weekend';
+  } else if (schedule) {
+    _mcState = 'eth';   // schedule loaded, market open, default to ETH
+  }
+  // (else: schedule missing entirely → keep whatever state we had before)
+
+  const nextEvt  = schedule && schedule.nextEvent;
+  _mcNextEventTs = nextEvt ? nextEvt.atTs : 0;
+  _mcLabel       = nextEvt ? nextEvt.label : '';
+
+  // Swap state-class on the root element (drives CSS color theme)
+  ['is-rth', 'is-eth', 'is-maintenance', 'is-holiday', 'is-weekend'].forEach(c => root.classList.remove(c));
+  root.classList.add('is-' + _mcState);
+
+  // Glyph + state text
+  const disp = _MC_DISPLAY[_mcState] || _MC_DISPLAY.eth;
+  if (glyphEl) glyphEl.textContent = disp.glyph;
+  stateEl.textContent = disp.label;
+  if (labelEl) labelEl.textContent = _mcLabel ? `${_mcLabel} in` : 'Next:';
+
+  // Tooltip with full session info
+  if (schedule) {
+    root.title = `Current: ${disp.label}` +
+                 (schedule.reason ? ` (${schedule.reason})` : '') +
+                 (_mcLabel ? ` — Next: ${_mcLabel}` : '') +
+                 (schedule.currentTimePT ? `\nNow (PT): ${schedule.currentTimePT}` : '');
+  }
+
+  // Tick once immediately so the countdown shows the correct value
+  _mcTick();
+}
+
+function _mcTick() {
+  const timeEl = document.getElementById('mc-time');
+  if (!timeEl) return;
+  if (_mcNextEventTs > 0) {
+    const remaining = _mcNextEventTs - Date.now();
+    timeEl.textContent = _mcFormatRemaining(remaining);
+    // If we're past the event, clear so the next /api/state poll gives us a
+    // fresh nextEvent for the new session
+    if (remaining <= 0) _mcNextEventTs = 0;
+  } else {
+    timeEl.textContent = '—';
+  }
+}
+
+// Tick the countdown locally once per second between server polls
+setInterval(_mcTick, 1000);
 
 // Render Trade History
 function renderTradeHistory(history) {
@@ -606,6 +801,20 @@ function renderRegime(regime, schedule) {
 
   textElement.textContent = regime.name;
 
+  // Sidebar logo: sun for RTH, moon for ETH/closed
+  const sidebarLogo = document.getElementById('sidebar-logo');
+  if (sidebarLogo) {
+    if (regime.code === 'RTH') {
+      sidebarLogo.classList.add('is-rth');
+      sidebarLogo.classList.remove('is-eth');
+      sidebarLogo.title = 'RTH — Regular Trading Hours';
+    } else {
+      sidebarLogo.classList.add('is-eth');
+      sidebarLogo.classList.remove('is-rth');
+      sidebarLogo.title = 'ETH — Electronic Trading Hours';
+    }
+  }
+
   if (regime.code === 'RTH') {
     pulseElement.className = 'pulse-active';
     badgeElement.style.border = '1px solid rgba(57, 255, 20, 0.3)';
@@ -616,7 +825,7 @@ function renderRegime(regime, schedule) {
     badgeElement.style.background = 'rgba(255, 152, 0, 0.05)';
   }
 
-  scheduleText.textContent = `V1 ANTIGRAVITY // ${schedule.reason.toUpperCase()}`;
+  scheduleText.textContent = `V2 ANTIGRAVITY // ${schedule.reason.toUpperCase()}`;
   if (schedule.isClosed) {
     scheduleBadge.style.color = 'var(--neon-red)';
     scheduleBadge.style.border = '1px solid rgba(255, 56, 56, 0.3)';
@@ -631,6 +840,91 @@ function renderRegime(regime, schedule) {
 // Formats
 function formatCurrency(val) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Operator location globe — fetches the operator's geographic coordinates and
+// plots them as a glowing red dot on the small Earth icon in the header.
+// Primary source: ipapi.co (free, CORS-enabled). Fallback: a hand-tuned
+// timezone → city map so the dot still lights up offline.
+// ─────────────────────────────────────────────────────────────────────────────
+async function initOperatorGlobe() {
+  const group = document.getElementById('globe-dot-group');
+  const dot   = document.getElementById('globe-dot');
+  const pulse = document.getElementById('globe-dot-pulse');
+  const wrap  = document.getElementById('operator-globe');
+  if (!group || !dot || !pulse) return;
+
+  let lat = NaN, lng = NaN, label = '';
+
+  // Primary: IP-based geo
+  try {
+    const ctl = new AbortController();
+    const tmo = setTimeout(() => ctl.abort(), 4000);
+    const res = await fetch('https://ipapi.co/json/', { cache: 'no-store', signal: ctl.signal });
+    clearTimeout(tmo);
+    if (res.ok) {
+      const d = await res.json();
+      lat = parseFloat(d.latitude);
+      lng = parseFloat(d.longitude);
+      label = [d.city, d.region, d.country_name].filter(Boolean).join(', ');
+    }
+  } catch (e) { /* offline / blocked / rate-limited — fall through */ }
+
+  // Fallback: derive a rough lat/lng from the browser's timezone
+  if (!isFinite(lat) || !isFinite(lng)) {
+    const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || '').trim();
+    const TZ_MAP = {
+      'America/Los_Angeles': [37.77, -122.42, 'San Francisco, USA'],
+      'America/Vancouver':   [49.28, -123.12, 'Vancouver, Canada'],
+      'America/Denver':      [39.74, -104.99, 'Denver, USA'],
+      'America/Phoenix':     [33.45, -112.07, 'Phoenix, USA'],
+      'America/Chicago':     [41.88,  -87.63, 'Chicago, USA'],
+      'America/New_York':    [40.71,  -74.01, 'New York, USA'],
+      'America/Toronto':     [43.65,  -79.38, 'Toronto, Canada'],
+      'America/Sao_Paulo':   [-23.55, -46.63, 'São Paulo, Brazil'],
+      'Europe/London':       [51.51,   -0.13, 'London, UK'],
+      'Europe/Paris':        [48.86,    2.35, 'Paris, France'],
+      'Europe/Berlin':       [52.52,   13.40, 'Berlin, Germany'],
+      'Asia/Dubai':          [25.20,   55.27, 'Dubai, UAE'],
+      'Asia/Kolkata':        [28.61,   77.21, 'Delhi, India'],
+      'Asia/Singapore':      [ 1.35,  103.82, 'Singapore'],
+      'Asia/Tokyo':          [35.68,  139.69, 'Tokyo, Japan'],
+      'Asia/Shanghai':       [31.23,  121.47, 'Shanghai, China'],
+      'Australia/Sydney':    [-33.87, 151.21, 'Sydney, Australia'],
+    };
+    if (TZ_MAP[tz]) {
+      [lat, lng, label] = TZ_MAP[tz];
+    } else {
+      lat = 37; lng = -95; label = 'Unknown (US default)';
+    }
+  }
+
+  // Equirectangular projection onto the 100×100 SVG (Earth circle r=42, center 50,50)
+  // x = 50 + (lng / 180) × 42      (lng range −180…180)
+  // y = 50 − (lat / 90)  × 42      (lat range  −90… 90, screen-Y inverted)
+  const cx = Math.max(8, Math.min(92, 50 + (lng / 180) * 42));
+  const cy = Math.max(8, Math.min(92, 50 - (lat /  90) * 42));
+  dot.setAttribute('cx', cx.toFixed(2));
+  dot.setAttribute('cy', cy.toFixed(2));
+  pulse.setAttribute('cx', cx.toFixed(2));
+  pulse.setAttribute('cy', cy.toFixed(2));
+  // Also move the outer pulse ring if present
+  const pulseOuter = document.getElementById('globe-dot-pulse-outer');
+  if (pulseOuter) {
+    pulseOuter.setAttribute('cx', cx.toFixed(2));
+    pulseOuter.setAttribute('cy', cy.toFixed(2));
+  }
+  group.style.display = '';
+  if (wrap) wrap.title = label ? `Operator location: ${label}` : 'Operator location';
+}
+
+// Run once when the DOM is ready — location doesn't change while the dashboard
+// is open, so we don't refresh it.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initOperatorGlobe);
+} else {
+  initOperatorGlobe();
 }
 
 // Range Sliders Label Binders

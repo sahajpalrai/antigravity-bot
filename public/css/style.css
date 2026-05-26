@@ -927,13 +927,42 @@ body {
 }
 
 .sidebar-logo {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--cyan-glow), var(--magenta-glow));
-  box-shadow: 0 0 16px var(--cyan-glow);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(0, 240, 255, 0.2);
   margin-bottom: 20px;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.6s ease, border-color 0.6s ease;
+}
+
+.sidebar-logo svg {
+  width: 22px;
+  height: 22px;
+  display: none;
+  transition: opacity 0.4s ease, color 0.4s ease;
+}
+
+.sidebar-logo.is-rth .logo-sun {
+  display: block;
+  color: #ffd54f;          /* warm yellow */
+}
+.sidebar-logo.is-rth {
+  box-shadow: 0 0 16px rgba(255, 213, 79, 0.55);
+  border-color: rgba(255, 213, 79, 0.55);
+}
+
+.sidebar-logo.is-eth .logo-moon {
+  display: block;
+  color: #b3e5fc;          /* cool moonlight blue */
+}
+.sidebar-logo.is-eth {
+  box-shadow: 0 0 16px rgba(179, 229, 252, 0.5);
+  border-color: rgba(179, 229, 252, 0.45);
 }
 
 .sidebar-logo::before {
@@ -1060,14 +1089,111 @@ body {
 }
 
 .header-logo-orb {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--neon-purple) 0%, rgba(33, 150, 243, 0.1) 70%);
-  box-shadow: 0 0 12px var(--neon-purple);
-  position: relative;
-  animation: orbPulse 3s infinite ease-in-out;
+  /* Legacy class — retained for back-compat but new market-clock takes its slot. */
+  display: none;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Market clock widget (replaces the static purple orb in the header).
+   Shows session state + live countdown to the next session change.
+   Color reflects the current state: RTH=green, ETH=amber, MAINT=red,
+   HOLIDAY=purple, WEEKEND=grey.
+   ────────────────────────────────────────────────────────────────────────── */
+.market-clock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 30px;
+  background: rgba(11, 14, 30, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+  cursor: default;
+  min-width: 220px;
+}
+.market-clock .mc-dial {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.market-clock .mc-dial svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.market-clock .mc-ring {
+  stroke: rgba(255, 255, 255, 0.15);
+  transition: stroke 0.4s ease, stroke-dasharray 0.4s ease;
+}
+.market-clock .mc-glyph {
+  position: relative;
+  font-size: 18px;
+  line-height: 1;
+  z-index: 2;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.4));
+}
+
+/* State-driven colors */
+.market-clock.is-rth         { border-color: rgba(57, 255, 20, 0.45);  box-shadow: 0 0 14px rgba(57, 255, 20, 0.20); }
+.market-clock.is-rth .mc-ring         { stroke: #39ff14; }
+.market-clock.is-eth         { border-color: rgba(255, 152, 0, 0.45);  box-shadow: 0 0 14px rgba(255, 152, 0, 0.18); }
+.market-clock.is-eth .mc-ring         { stroke: #ffa726; }
+.market-clock.is-maintenance { border-color: rgba(255, 56, 56, 0.5);   box-shadow: 0 0 14px rgba(255, 56, 56, 0.22); }
+.market-clock.is-maintenance .mc-ring { stroke: #ff5252; }
+.market-clock.is-holiday     { border-color: rgba(167, 139, 250, 0.5); box-shadow: 0 0 14px rgba(167, 139, 250, 0.22); }
+.market-clock.is-holiday .mc-ring     { stroke: #a78bfa; }
+.market-clock.is-weekend     { border-color: rgba(154, 160, 166, 0.45); box-shadow: 0 0 12px rgba(154, 160, 166, 0.15); }
+.market-clock.is-weekend .mc-ring     { stroke: #9aa0a6; }
+
+/* Subtle ring pulse during active sessions */
+.market-clock.is-rth .mc-dial::after,
+.market-clock.is-eth .mc-dial::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0;
+  animation: mcPulseRing 2.6s ease-in-out infinite;
+}
+.market-clock.is-rth .mc-dial { color: #39ff14; }
+.market-clock.is-eth .mc-dial { color: #ffa726; }
+@keyframes mcPulseRing {
+  0%   { opacity: 0.6; transform: scale(0.85); }
+  100% { opacity: 0;   transform: scale(1.25); }
+}
+
+.market-clock .mc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+.market-clock .mc-state {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #f0f6fc;
+}
+.market-clock.is-rth         .mc-state { color: #39ff14; }
+.market-clock.is-eth         .mc-state { color: #ffa726; }
+.market-clock.is-maintenance .mc-state { color: #ff5252; }
+.market-clock.is-holiday     .mc-state { color: #a78bfa; }
+.market-clock.is-weekend     .mc-state { color: #9aa0a6; }
+
+.market-clock .mc-countdown {
+  font-size: 10.5px;
+  color: #9aa0a6;
+  font-family: 'Consolas', monospace;
+  white-space: nowrap;
+}
+.market-clock .mc-next-label { opacity: 0.7; margin-right: 4px; }
+.market-clock .mc-time { color: #f0f6fc; font-weight: 700; }
 
 @keyframes orbPulse {
   0% { transform: scale(0.95); box-shadow: 0 0 8px var(--neon-purple); }
@@ -1145,6 +1271,43 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: #fff;
+  letter-spacing: 0.5px;
+}
+
+/* Big Earth globe — replaces the old bell icon, sits between the regime
+   badge and the operator name. Higher detail at 56px with continent paths
+   and a glowing red pin at the operator's geo-coordinates. */
+.operator-globe-big {
+  width: 56px;
+  height: 56px;
+  position: relative;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.45));
+  margin: 0 4px;
+}
+.operator-globe-big svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.operator-globe-big #globe-dot {
+  filter: drop-shadow(0 0 4px #ff3838);
+}
+.operator-globe-big #globe-dot-pulse {
+  animation: globeDotPulse 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+.operator-globe-big #globe-dot-pulse-outer {
+  animation: globeDotPulseOuter 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes globeDotPulse {
+  0%, 100% { opacity: 0.30; }
+  50%      { opacity: 0.80; }
+}
+@keyframes globeDotPulseOuter {
+  0%, 100% { opacity: 0.12; }
+  50%      { opacity: 0.45; }
 }
 
 /* Custom Linear Sliders */
@@ -1335,6 +1498,195 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
   gap: 16px;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   MARKET NEWS — sentiment-filtered, 2-column, colored left-bar rows.
+   Replaces the old "holographic" Yahoo card grid.
+   ────────────────────────────────────────────────────────────────────────── */
+.market-news-card {
+  background: rgba(11, 14, 30, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  padding: 18px 18px 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.market-news-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.market-news-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #f0f6fc;
+}
+.market-news-icon { font-size: 16px; }
+
+.market-news-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.mn-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #9aa0a6;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.mn-filter:hover { background: rgba(255, 255, 255, 0.06); }
+.mn-filter .mn-arrow { font-size: 10px; }
+
+/* Active filter — full colored pill */
+.mn-filter.is-bullish.active     { background: rgba(57, 255, 20, 0.12);  color: #39ff14; border-color: rgba(57, 255, 20, 0.4); }
+.mn-filter.is-bearish.active     { background: rgba(255, 56, 56, 0.13);  color: #ff5252; border-color: rgba(255, 56, 56, 0.42); }
+.mn-filter.is-high-impact.active { background: rgba(255, 152, 0, 0.14);  color: #ffa726; border-color: rgba(255, 152, 0, 0.45); }
+.mn-filter.is-neutral.active     { background: rgba(0, 240, 255, 0.12);  color: #4fc3f7; border-color: rgba(0, 240, 255, 0.4);  }
+
+.mn-refresh {
+  width: 28px;
+  height: 24px;
+  border-radius: 5px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: #4fc3f7;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+.mn-refresh:hover { background: rgba(0, 240, 255, 0.18); }
+.mn-refresh svg   { width: 14px; height: 14px; }
+.mn-refresh.is-spinning svg { animation: mnSpin 0.8s linear infinite; }
+@keyframes mnSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+.market-news-updated {
+  font-size: 11px;
+  color: #9aa0a6;
+  white-space: nowrap;
+}
+
+/* Two-column grid of news rows */
+.market-news-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+@media (max-width: 900px) {
+  .market-news-grid { grid-template-columns: 1fr; }
+}
+
+/* Each news row */
+.mn-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 4px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+.mn-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Sentiment-specific borders + tint */
+.mn-row.is-bullish     { border-left-color: #39ff14; background: rgba(57, 255, 20, 0.04);  }
+.mn-row.is-bearish     { border-left-color: #ff5252; background: rgba(255, 56, 56, 0.04);  }
+.mn-row.is-high-impact { border-left-color: #ffa726; background: rgba(255, 152, 0, 0.045); }
+.mn-row.is-neutral     { border-left-color: #4fc3f7; background: rgba(0, 240, 255, 0.035); }
+
+/* Chip badge inside the row */
+.mn-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.mn-row.is-bullish     .mn-chip { background: rgba(57, 255, 20, 0.18);  color: #39ff14; }
+.mn-row.is-bearish     .mn-chip { background: rgba(255, 56, 56, 0.18);  color: #ff5252; }
+.mn-row.is-high-impact .mn-chip { background: rgba(255, 152, 0, 0.20);  color: #ffa726; }
+.mn-row.is-neutral     .mn-chip { background: rgba(0, 240, 255, 0.18);  color: #4fc3f7; }
+
+.mn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mn-title {
+  font-size: 13px;
+  line-height: 1.35;
+  color: #f0f6fc;
+  font-weight: 600;
+  display: inline;
+}
+.mn-title .mn-link-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  color: #4fc3f7;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.mn-row:hover .mn-title .mn-link-arrow { opacity: 1; }
+
+.mn-meta {
+  font-size: 11px;
+  color: #9aa0a6;
+}
+.mn-meta .mn-time   { color: #9aa0a6; }
+.mn-meta .mn-source { color: #9aa0a6; }
+.mn-meta .mn-dot    { margin: 0 6px; color: rgba(255,255,255,0.25); }
+
+.market-news-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px 12px;
+  color: #9aa0a6;
+  font-size: 12px;
+}
+
+/* Scrollbar */
+.market-news-grid::-webkit-scrollbar { width: 6px; }
+.market-news-grid::-webkit-scrollbar-track { background: transparent; }
+.market-news-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+.market-news-grid::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
 .holographic-news-card {
   background: var(--panel-deep);

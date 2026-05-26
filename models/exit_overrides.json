@@ -1,18 +1,146 @@
 {
-  "RTH": {
-    "enabled": false,
-    "profitPoints": 12,
-    "stopPoints": 6,
-    "breakevenAtPoints": 4,
-    "trailStartPoints": 6,
-    "trailStepPoints": 5
+  "NQ=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 12,
+      "stopPoints": 6,
+      "breakevenAtPoints": 4,
+      "trailStartPoints": 6,
+      "trailStepPoints": 5
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 6,
+      "stopPoints": 3.5,
+      "breakevenAtPoints": 3,
+      "trailStartPoints": 4,
+      "trailStepPoints": 3
+    }
   },
-  "ETH": {
-    "enabled": false,
-    "profitPoints": 6,
-    "stopPoints": 3.5,
-    "breakevenAtPoints": 3,
-    "trailStartPoints": 4,
-    "trailStepPoints": 3
+  "ES=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 6,
+      "stopPoints": 3,
+      "breakevenAtPoints": 2,
+      "trailStartPoints": 3,
+      "trailStepPoints": 2
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 3,
+      "stopPoints": 1.5,
+      "breakevenAtPoints": 1.5,
+      "trailStartPoints": 2,
+      "trailStepPoints": 1.5
+    }
+  },
+  "CL=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 0.8,
+      "stopPoints": 0.4,
+      "breakevenAtPoints": 0.3,
+      "trailStartPoints": 0.4,
+      "trailStepPoints": 0.3
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 0.4,
+      "stopPoints": 0.25,
+      "breakevenAtPoints": 0.2,
+      "trailStartPoints": 0.25,
+      "trailStepPoints": 0.2
+    }
+  },
+  "GC=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 12,
+      "stopPoints": 6,
+      "breakevenAtPoints": 5,
+      "trailStartPoints": 6,
+      "trailStepPoints": 5
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 6,
+      "stopPoints": 3,
+      "breakevenAtPoints": 2.5,
+      "trailStartPoints": 3,
+      "trailStepPoints": 2.5
+    }
+  },
+  "MNQ=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 12,
+      "stopPoints": 6,
+      "breakevenAtPoints": 4,
+      "trailStartPoints": 6,
+      "trailStepPoints": 5
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 6,
+      "stopPoints": 3.5,
+      "breakevenAtPoints": 3,
+      "trailStartPoints": 4,
+      "trailStepPoints": 3
+    }
+  },
+  "MES=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 6,
+      "stopPoints": 3,
+      "breakevenAtPoints": 2,
+      "trailStartPoints": 3,
+      "trailStepPoints": 2
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 3,
+      "stopPoints": 1.5,
+      "breakevenAtPoints": 1.5,
+      "trailStartPoints": 2,
+      "trailStepPoints": 1.5
+    }
+  },
+  "MCL=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 0.8,
+      "stopPoints": 0.4,
+      "breakevenAtPoints": 0.3,
+      "trailStartPoints": 0.4,
+      "trailStepPoints": 0.3
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 0.4,
+      "stopPoints": 0.25,
+      "breakevenAtPoints": 0.2,
+      "trailStartPoints": 0.25,
+      "trailStepPoints": 0.2
+    }
+  },
+  "MGC=F": {
+    "RTH": {
+      "enabled": false,
+      "profitPoints": 12,
+      "stopPoints": 6,
+      "breakevenAtPoints": 5,
+      "trailStartPoints": 6,
+      "trailStepPoints": 5
+    },
+    "ETH": {
+      "enabled": false,
+      "profitPoints": 6,
+      "stopPoints": 3,
+      "breakevenAtPoints": 2.5,
+      "trailStartPoints": 3,
+      "trailStepPoints": 2.5
+    }
   }
 }

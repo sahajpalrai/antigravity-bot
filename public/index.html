@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QUANTUM TRADE AI - V1 Antigravity Cockpit</title>
+  <title>ANTIGRAVITY V2 — Cognitive Trading Cockpit</title>
   <!-- Modern Outfit Typography from Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260525c">
-  <link rel="stylesheet" href="css/terminal.css?v=20260525c">
-  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260525c">
+  <link rel="stylesheet" href="css/style.css?v=20260525n">
+  <link rel="stylesheet" href="css/terminal.css?v=20260525n">
+  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260525n">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -21,7 +21,24 @@
   <div class="app-layout">
     <!-- Left Cybernetic Navigation Sidebar -->
     <aside class="sidebar-nav">
-      <div class="sidebar-logo" title="V1 Antigravity Cognitive Core"></div>
+      <div class="sidebar-logo is-eth" id="sidebar-logo" title="Antigravity V2 Cognitive Core">
+        <!-- Sun: shown during RTH -->
+        <svg class="logo-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>
+          <line x1="12" y1="2" x2="12" y2="4"/>
+          <line x1="12" y1="20" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="4" y2="12"/>
+          <line x1="20" y1="12" x2="22" y2="12"/>
+          <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+          <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+          <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
+          <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+        </svg>
+        <!-- Moon: shown during ETH -->
+        <svg class="logo-moon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </div>
       <button class="sidebar-tab-btn active" id="tab-dashboard" data-tooltip="Cockpit Monitor" onclick="switchTab('dashboard')">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
       </button>
@@ -47,11 +64,33 @@
       <!-- Top Widescreen Holographic Command Header -->
       <header class="widescreen-header">
         <div class="header-brand">
-          <h1>V1 ANTIGRAVITY</h1>
+          <h1>V2 ANTIGRAVITY</h1>
           <span class="subtitle" id="schedule-text">Holographic Cognitive Cockpit v2.0</span>
         </div>
         
-        <div class="header-logo-orb"></div>
+        <!-- Market clock — replaces the static purple orb. Shows current
+             session state (RTH/ETH/Maintenance/Holiday/Weekend) and a live
+             countdown to the next session change (opening bell, RTH close,
+             maintenance, etc.). Color-coded by state. -->
+        <div class="market-clock" id="market-clock" title="Market session clock">
+          <div class="mc-dial" id="mc-dial">
+            <svg viewBox="0 0 60 60">
+              <circle cx="30" cy="30" r="26" class="mc-ring" fill="none" stroke-width="2.5"/>
+              <circle cx="30" cy="30" r="20" class="mc-inner" fill="rgba(11,14,30,0.85)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <g id="mc-icon-group">
+                <!-- Glyph swapped by JS based on state: bell ⚡ moon ☀ -->
+              </g>
+            </svg>
+            <span class="mc-glyph" id="mc-glyph">⏳</span>
+          </div>
+          <div class="mc-info">
+            <div class="mc-state" id="mc-state">LOADING</div>
+            <div class="mc-countdown" id="mc-countdown">
+              <span class="mc-next-label" id="mc-next-label">Next:</span>
+              <span class="mc-time" id="mc-time">—</span>
+            </div>
+          </div>
+        </div>
 
         <div class="header-profile-badge">
           <!-- Active Regime Indicator Badge -->
@@ -59,13 +98,85 @@
             <span class="pulse-active" id="regime-pulse"></span>
             <span id="regime-text">Loading Session...</span>
           </div>
-          <!-- System Alert Bell -->
-          <div class="bell-alert active" title="High Impact Market Hour Warnings" id="schedule-badge">
-            <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <!-- Earth globe with operator location dot (replaces old bell icon) -->
+          <div class="operator-globe-big" id="operator-globe" title="Operator location (detecting…)">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <defs>
+                <clipPath id="globe-clip"><circle cx="50" cy="50" r="42"/></clipPath>
+                <radialGradient id="globe-fill" cx="35%" cy="32%" r="72%">
+                  <stop offset="0%"   stop-color="rgba(0,180,230,0.95)"/>
+                  <stop offset="55%"  stop-color="rgba(0,60,110,0.95)"/>
+                  <stop offset="100%" stop-color="rgba(0,12,28,0.98)"/>
+                </radialGradient>
+                <radialGradient id="globe-rim-glow" cx="50%" cy="50%" r="50%">
+                  <stop offset="84%" stop-color="rgba(0,240,255,0)"/>
+                  <stop offset="100%" stop-color="rgba(0,240,255,0.55)"/>
+                </radialGradient>
+              </defs>
+
+              <!-- Outer atmospheric glow ring -->
+              <circle cx="50" cy="50" r="48" fill="url(#globe-rim-glow)"/>
+
+              <!-- Earth body (ocean) -->
+              <circle cx="50" cy="50" r="42" fill="url(#globe-fill)" stroke="rgba(0,240,255,0.9)" stroke-width="1.2"/>
+
+              <!-- Latitude / longitude wireframe -->
+              <g clip-path="url(#globe-clip)" stroke="rgba(0,240,255,0.32)" stroke-width="0.45" fill="none">
+                <ellipse cx="50" cy="50" rx="42" ry="11"/>
+                <ellipse cx="50" cy="50" rx="42" ry="23"/>
+                <ellipse cx="50" cy="50" rx="42" ry="33"/>
+                <line x1="8" y1="50" x2="92" y2="50" stroke-width="0.7" stroke="rgba(0,240,255,0.45)"/>
+                <ellipse cx="50" cy="50" rx="11" ry="42"/>
+                <ellipse cx="50" cy="50" rx="23" ry="42"/>
+                <ellipse cx="50" cy="50" rx="33" ry="42"/>
+                <line x1="50" y1="8" x2="50" y2="92" stroke-width="0.7" stroke="rgba(0,240,255,0.45)"/>
+              </g>
+
+              <!-- Continents (clipped to globe) -->
+              <g clip-path="url(#globe-clip)" fill="rgba(57,200,100,0.62)" stroke="rgba(140,255,170,0.55)" stroke-width="0.35" stroke-linejoin="round">
+                <!-- North America -->
+                <path d="M14,28 Q17,22 23,23 L29,21 L34,24 L37,28 L36,33 L33,37 L29,40 L25,42 L20,40 L16,36 Q13,32 14,28 Z"/>
+                <!-- Central America bridge -->
+                <path d="M29,42 L33,43 L32,48 L28,47 Z"/>
+                <!-- South America -->
+                <path d="M32,52 L37,52 L39,57 L37,63 L34,69 L31,72 L29,67 L29,58 Z"/>
+                <!-- Greenland -->
+                <path d="M40,18 L46,18 L47,22 L43,25 L39,23 Z"/>
+                <!-- Europe -->
+                <path d="M48,24 L56,24 L58,28 L55,32 L50,32 L46,28 Z"/>
+                <!-- Africa -->
+                <path d="M48,36 L58,36 L59,42 L56,52 L53,60 L50,64 L47,60 L46,50 L46,42 Z"/>
+                <!-- Middle East / Arabia -->
+                <path d="M58,38 L63,39 L63,44 L58,44 Z"/>
+                <!-- Asia -->
+                <path d="M58,22 L80,22 L86,26 L88,30 L85,34 L80,36 L72,34 L66,36 L62,32 L58,28 Z"/>
+                <!-- India peninsula -->
+                <path d="M68,38 L73,38 L72,46 L69,46 Z"/>
+                <!-- SE Asia -->
+                <path d="M74,40 L80,40 L82,46 L78,46 Z"/>
+                <!-- Japan -->
+                <path d="M85,30 L87,30 L88,34 L86,35 Z"/>
+                <!-- Indonesia -->
+                <path d="M77,49 L84,49 L83,52 L77,52 Z"/>
+                <!-- Australia -->
+                <path d="M76,58 L86,58 L88,64 L84,68 L78,67 Z"/>
+              </g>
+
+              <!-- Subtle "atmosphere" highlight (3D feel) -->
+              <ellipse cx="38" cy="36" rx="16" ry="9" fill="rgba(255,255,255,0.10)"/>
+
+              <!-- Operator location pin (positioned by JS) -->
+              <g id="globe-dot-group" style="display:none">
+                <circle id="globe-dot-pulse-outer" cx="50" cy="50" r="6.5" fill="rgba(255,56,56,0.18)"/>
+                <circle id="globe-dot-pulse"       cx="50" cy="50" r="4"   fill="rgba(255,56,56,0.45)"/>
+                <circle id="globe-dot"             cx="50" cy="50" r="2.2" fill="#ff3838" stroke="#fff" stroke-width="0.6"/>
+              </g>
+            </svg>
           </div>
-          <!-- User Profile Avatar Badge -->
+
+          <!-- Operator name -->
           <div class="avatar-badge" title="Active Console Operator">
-            <span>OPERATOR</span>
+            <span>SAHAJPAL RAI TRADING</span>
           </div>
         </div>
       </header>
@@ -192,11 +303,26 @@
               </div>
             </div>
 
-            <!-- Yahoo Finance Live Market News -->
-            <div class="glass-card news-panel" style="background: transparent !important; box-shadow: none !important; border: none !important; padding: 0;">
-              <h2 class="panel-title" style="margin-bottom: 20px;">Yahoo Finance Live Market News</h2>
-              <div class="holographic-news-grid" id="yahoo-news-container">
-                <div class="text-muted text-center py-4">Streaming live financial news...</div>
+            <!-- Market News — sentiment-filtered 2-column feed -->
+            <div class="market-news-card" id="market-news-card">
+              <div class="market-news-head">
+                <div class="market-news-title">
+                  <span class="market-news-icon">📰</span>
+                  <span>MARKET NEWS</span>
+                </div>
+                <div class="market-news-filters" id="market-news-filters">
+                  <button class="mn-filter is-bullish     active" data-filter="bullish"     title="Show bullish headlines"><span class="mn-arrow">▲</span> BULLISH</button>
+                  <button class="mn-filter is-bearish     active" data-filter="bearish"     title="Show bearish headlines"><span class="mn-arrow">▼</span> BEARISH</button>
+                  <button class="mn-filter is-high-impact active" data-filter="high_impact" title="Show high-impact / macro headlines"><span class="mn-arrow">⚡</span> HIGH IMPACT</button>
+                  <button class="mn-filter is-neutral     active" data-filter="neutral"     title="Show neutral / informational headlines"><span class="mn-arrow">•</span> NEUTRAL</button>
+                  <button class="mn-refresh" id="market-news-refresh" title="Refresh now">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3.51-7.11"/><path d="M3 4v6h6"/></svg>
+                  </button>
+                </div>
+                <div class="market-news-updated">Updated <span id="market-news-time">—</span></div>
+              </div>
+              <div class="market-news-grid" id="market-news-grid">
+                <div class="market-news-empty">Streaming live financial news…</div>
               </div>
             </div>
           </main>
@@ -461,21 +587,22 @@
 
       <!-- View Tab 6: Exits — TP/SL/BE/Trail overrides (RTH vs ETH) -->
       <div id="view-exits" class="tab-view" style="display: none;">
-        <div style="max-width: 1100px; margin: 0 auto; display:flex; flex-direction:column; gap: 18px;">
+        <div style="max-width: 1400px; margin: 0 auto; display:flex; flex-direction:column; gap: 16px;">
           <div class="glass-card gradient-glow-card" style="padding: 22px 28px;">
             <h2 class="panel-title" style="font-size: 20px; font-weight: 800; color: var(--cyan-glow); margin: 0 0 6px 0;">📐 Exits Override</h2>
             <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.6;">
               Default behavior: <strong style="color:var(--text-primary);">ATR-based dynamic exits</strong> (SL=1.5×ATR, TP=2.7×ATR, BE@0.8×ATR, trail@1.2×ATR — same exits the walkforward backtest was measured against).
-              Turn on a session below to replace dynamic exits with fixed point values for that session.
+              Each of the 8 contracts has its own RTH and ETH override below. Check <strong style="color:var(--neon-green);">USE FIXED</strong> on a session to replace dynamic exits with fixed point values for that symbol+session.
             </p>
           </div>
 
           <div id="exits-warning" style="display:none; padding: 14px 18px; background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.4); border-radius: 10px; font-size: 13px; color: var(--neon-orange); line-height: 1.6;">
-            ⚠ <strong>Fixed exits are active for at least one session.</strong> The walkforward backtest metrics (58.6% weighted WR, PF 2-3) were measured with ATR-dynamic exits — they no longer apply to your live behavior. Run a fresh paper period before judging results.
+            ⚠ <strong>Fixed exits are active for at least one symbol+session.</strong> The walkforward backtest metrics (58.6% weighted WR, PF 2-3) were measured with ATR-dynamic exits — they no longer apply to any symbol with fixed mode on. Run a fresh paper period before judging results.
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;" id="exits-cards">
-            <!-- RTH and ETH cards populated by JS -->
+          <!-- 8 cards (4 mini + 4 micro), each with RTH + ETH sub-blocks -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;" id="exits-cards">
+            <!-- Per-symbol cards populated by JS -->
           </div>
         </div>
       </div>
@@ -510,7 +637,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260525c"></script>
-  <script src="js/terminal.js?v=20260525c"></script>
+  <script src="js/app.js?v=20260525n"></script>
+  <script src="js/terminal.js?v=20260525n"></script>
 </body>
 </html>

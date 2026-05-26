@@ -26,8 +26,10 @@ echo ======================================                         >> "%LOG_FIL
 
 cd /d "%PROJECT_DIR%"
 
-REM Run the trainer with auto-rollback enabled
-node scripts\train.js --auto-rollback                              >> "%LOG_FILE%" 2>&1
+REM Run the trainer with auto-rollback + hybrid per-session WR floors.
+REM RTH (NY hours): require ≥60% WR — balanced for full session coverage
+REM ETH (overnight): require ≥55% WR — realistic for low-volume sessions
+node scripts\train.js --auto-rollback --rth-floor=0.60 --eth-floor=0.55  >> "%LOG_FILE%" 2>&1
 set RETRAIN_RC=%ERRORLEVEL%
 
 echo.                                                               >> "%LOG_FILE%"

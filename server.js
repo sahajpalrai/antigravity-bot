@@ -32,7 +32,7 @@ const PORT = process.env.PORT || 3000;
 const TRADING_MODE = (process.env.TRADING_MODE || 'paper').toLowerCase(); // 'paper' | 'live'
 
 // ── Modules ─────────────────────────────────────────────────────────────────
-const { checkTradingStatus } = require('./lib/scheduleController');
+const { checkTradingStatus, getNextSessionChange, getCurrentSessionState } = require('./lib/scheduleController');
 const { getNewsTradingSuspension, fetchEconomicCalendar } = require('./lib/newsCalendar');
 const { getYahooFinanceNews } = require('./lib/yahooNews');
 const { getActiveSessionRegime } = require('./lib/sessionRegime');
@@ -49,7 +49,7 @@ const {
   startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
   broadcastBrainState, bootstrapBuffersFromCsv
 } = require('./lib/nt8Bridge');
-const { decide, modelStatus } = require('./lib/decisionEngine');
+const { decide, modelStatus, getQualityFloors } = require('./lib/decisionEngine');
 const { onBarDecision, getStats, getRecentTrades, getStatsByRegime } = require('./lib/paperHarness');
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
@@ -68,6 +68,10 @@ startNT8BridgeServer();
 const livePrices = {};
 const lastDecisions = {};
 const lastRegimes = {};
+// Consecutive-loss tracker per bucket (symbol_session_regime_direction).
+// Reset to 0 on any winning close. Triggers a WARNING event at 3+ in a row
+// so the user / monitor knows to investigate that specific specialist.
+const _lossStreak = {};
 for (const s of ALL_SYMBOLS) { livePrices[s] = 0; lastDecisions[s] = null; lastRegimes[s] = null; }
 const serverStartTime = Date.now();
 
@@ -76,7 +80,7 @@ const serverStartTime = Date.now();
 // the chart is showing the micro contract, the price is identical. We work
 // in "family" terms internally and route paper trades to the active contract
 // (mini vs micro) based on global contractMode.
-setOnBarCallback((rawSymbol, candles) => {
+function processBarUpdate(rawSymbol, candles) {
   if (!candles || candles.length < 220) return;
   const last = candles[candles.length - 1];
   const familySym = familyMiniSymbol(rawSymbol);   // NQ=F whether chart is NQ or MNQ
@@ -197,6 +201,41 @@ setOnBarCallback((rawSymbol, candles) => {
       pnlR: t.pnlR,
       exitReason: t.exitReason
     });
+
+    // ── Auto-audit on losing trade ──────────────────────────────────────
+    // Per user spec: "if we loss the trade do the assessment and audit and
+    // fix the issue without assumption". On every losing close, emit a
+    // diagnostic LOSS_AUDIT event with the trade's full context AND check
+    // if the bucket (symbol+session+regime+direction) has accumulated
+    // enough losses to flag the bundle for retrain. The loss auditor's
+    // bucket stats drive this — bundles with 50+ trades and WR < threshold
+    // get flagged for retrain via getRetrainFlags() on the next health check.
+    if (t.pnl < 0) {
+      const bucketKey = `${t.symbol}_${t.session}_${t.regime}_${t.direction === 'Long' ? 'long' : 'short'}`;
+      const featSnap = t.featureSnapshot || {};
+      const features = Object.keys(featSnap)
+        .filter(k => typeof featSnap[k] === 'number')
+        .slice(0, 5)
+        .map(k => `${k}=${featSnap[k].toFixed ? featSnap[k].toFixed(2) : featSnap[k]}`)
+        .join(' ');
+      eventBus.emit('LOSS_AUDIT', symbol,
+        `💸 ${bucketKey}  loss=$${Math.abs(t.pnl).toFixed(2)} R=${(t.pnlR || 0).toFixed(2)} ` +
+        `prob=${(t.probability || 0).toFixed(2)}/${(t.threshold || 0).toFixed(2)} ${features ? '· ' + features : ''}`,
+        { bucketKey, pnl: t.pnl, pnlR: t.pnlR, probability: t.probability,
+          threshold: t.threshold, exitReason: t.exitReason, features: featSnap });
+
+      // Tally consecutive losses for this bucket — alert if 3+ in a row
+      _lossStreak[bucketKey] = (_lossStreak[bucketKey] || 0) + 1;
+      if (_lossStreak[bucketKey] >= 3) {
+        eventBus.emit('WARNING', symbol,
+          `⚠️ ${bucketKey} has ${_lossStreak[bucketKey]} consecutive losses — review specialist quality`,
+          { bucketKey, streak: _lossStreak[bucketKey] });
+      }
+    } else {
+      // Win — reset the streak for this bucket
+      const bucketKey = `${t.symbol}_${t.session}_${t.regime}_${t.direction === 'Long' ? 'long' : 'short'}`;
+      _lossStreak[bucketKey] = 0;
+    }
   }
 
   // Live execution path (only when TRADING_MODE=live and the symbol is enabled)
@@ -227,7 +266,33 @@ setOnBarCallback((rawSymbol, candles) => {
       }
     }
   }
-});
+}
+
+// Register the bar processor with the NT8 bridge for live closed-bar callbacks
+setOnBarCallback(processBarUpdate);
+
+// ── Boot-time warmup ────────────────────────────────────────────────────────
+// Bootstrap loaded ~250 historical bars per family into the candle buffer,
+// but no decisions were computed. Without this warmup, livePrices and
+// lastDecisions stay empty until NT8 pushes the next live bar (up to 60s on
+// 1-min charts, longer on slower charts). That leaves the dashboard cards in
+// "Waiting for first NT8 bar push…" limbo after every server restart.
+//
+// Fix: synthesize one bar event per family using the latest seeded bar.
+// Cards now populate within ~100ms of boot, regardless of NT8 reconnect
+// timing. The paper harness sees this as a no-op (close = same close it
+// already saw in the CSV training set) so no spurious trades fire.
+for (const sym of ['NQ=F', 'ES=F', 'CL=F', 'GC=F']) {
+  try {
+    const candles = getCandles(sym);
+    if (candles && candles.length >= 220) {
+      processBarUpdate(sym, candles);
+    }
+  } catch (e) {
+    console.error(`[Server] Warmup failed for ${sym}:`, e.message);
+  }
+}
+console.log('[Server] Warmup complete — cards prepopulated from CSV buffer.');
 
 eventBus.emit('INFO', null, `Antigravity v2 cockpit boot — mode=${TRADING_MODE}`);
 
@@ -274,6 +339,10 @@ const server = http.createServer((req, res) => {
       // GET /api/state — main dashboard data
       if (pathname === '/api/state' && req.method === 'GET') {
         const schedule = checkTradingStatus();
+        // Enrich the schedule object with the live market clock fields the
+        // dashboard's center widget needs (state + next-event countdown).
+        schedule.sessionState = getCurrentSessionState();
+        schedule.nextEvent    = getNextSessionChange();
         const news = await getNewsTradingSuspension();
         const regime = getActiveSessionRegime();
         const portfolioState = getPortfolioState();
@@ -292,6 +361,7 @@ const server = http.createServer((req, res) => {
           contractSpecs: CONTRACT_SPECS,
           miniSymbols: MINI_SYMBOLS,
           microSymbols: MICRO_SYMBOLS,
+          qualityFloors: getQualityFloors(),
           tastytradeId: process.env.TASTYTRADE_CLIENT_ID
         }));
       }
@@ -302,18 +372,18 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ config: getExitsConfig(), fixedActive: isFixedActive() }));
       }
 
-      // POST /api/exits — update a single session's config
-      // body: { session: 'RTH'|'ETH', values: { enabled, profitPoints, stopPoints, breakevenAtPoints, trailStartPoints, trailStepPoints } }
+      // POST /api/exits — update a single SYMBOL+session config
+      // body: { symbol: 'NQ=F', session: 'RTH'|'ETH', values: { enabled, profitPoints, stopPoints, breakevenAtPoints, trailStartPoints, trailStepPoints } }
       if (pathname === '/api/exits' && req.method === 'POST') {
-        const { session, values } = reqBody;
-        const cfg = setExitsConfig(session, values || {});
+        const { symbol, session, values } = reqBody;
+        const cfg = setExitsConfig(symbol, session, values || {});
         if (cfg) {
-          eventBus.emit('INFO', null, `Exits config updated — ${session} fixed=${cfg[session].enabled}`);
+          eventBus.emit('INFO', symbol, `Exits config updated — ${symbol} ${session} fixed=${cfg[symbol][session].enabled}`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ status: 'success', config: cfg }));
         }
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ status: 'failed', error: 'invalid session' }));
+        return res.end(JSON.stringify({ status: 'failed', error: 'invalid symbol or session' }));
       }
 
       // POST /api/reset-accounts — wipes all 8 accounts + trade history back

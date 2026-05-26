@@ -68,15 +68,16 @@ function req(method, path, body) {
   const t2 = await req('POST', '/api/contract-mode', { mode: 'INVALID' });
   record('TOGGLE', 'invalid mode rejected', t2.status === 400);
 
-  // EXITS
+  // EXITS — per-symbol schema (4 mini + 4 micro, each with RTH + ETH)
   const ex = (await req('GET', '/api/exits')).body;
-  record('EXITS', '/api/exits returns config', !!ex.config && !!ex.config.RTH && !!ex.config.ETH);
+  record('EXITS', '/api/exits returns per-symbol config', !!ex.config && !!ex.config['NQ=F'] && !!ex.config['NQ=F'].RTH && !!ex.config['NQ=F'].ETH);
+  record('EXITS', 'all 8 symbols present', ['NQ=F','ES=F','CL=F','GC=F','MNQ=F','MES=F','MCL=F','MGC=F'].every((s) => !!ex.config[s]));
   record('EXITS', 'fixedActive defaults false', ex.fixedActive === false);
-  const exSet = await req('POST', '/api/exits', { session: 'RTH', values: { enabled: true, profitPoints: 12, stopPoints: 6 } });
-  record('EXITS', 'POST persists config', exSet.body.status === 'success' && exSet.body.config.RTH.enabled === true);
+  const exSet = await req('POST', '/api/exits', { symbol: 'NQ=F', session: 'RTH', values: { enabled: true, profitPoints: 12, stopPoints: 6 } });
+  record('EXITS', 'POST per-symbol persists', exSet.body.status === 'success' && exSet.body.config['NQ=F'].RTH.enabled === true);
   const exGet2 = (await req('GET', '/api/exits')).body;
   record('EXITS', 'fixedActive reflects toggle', exGet2.fixedActive === true);
-  await req('POST', '/api/exits', { session: 'RTH', values: { enabled: false } });
+  await req('POST', '/api/exits', { symbol: 'NQ=F', session: 'RTH', values: { enabled: false } });
 
   // EVENTS
   const ev = (await req('GET', '/api/events')).body;
