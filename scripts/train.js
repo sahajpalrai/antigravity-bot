@@ -13,6 +13,7 @@ const path = require('path');
 const { walkforward } = require('../lib/walkforward');
 const { serialize, deserialize } = require('../lib/gbdtModel');
 const { REGIMES, modelKey } = require('../lib/regimeClassifier');
+const { getActiveProfile } = require('../lib/aggressivenessProfile');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const MODELS_DIR = path.join(__dirname, '..', 'models');
@@ -29,12 +30,11 @@ const opts = {
   autoRollback: args.includes('--auto-rollback'),
   quick: args.includes('--quick'),       // fewer trees for fast iteration
   highWR: args.includes('--high-wr'),    // legacy flat 0.65 floor across both sessions
-  // ── HYBRID PER-SESSION FLOORS (default) ──
-  // RTH: 60% — balanced. Strict enough to filter noise, permissive enough
-  //   to deploy 4-8 RTH specialists per family during NY hours.
-  // ETH: 55% — realistic for overnight noise + low volume.
-  // Override via --rth-floor / --eth-floor or set to same value to disable hybrid.
-  rthFloor: 0.60,
+  // ── FLOORS FROM ACTIVE AGGRESSIVENESS PROFILE ──
+  // The active profile (set via dashboard or models/aggressiveness_profile.json)
+  // defines RTH/ETH floors. Trainer respects them unless overridden by CLI.
+  // CLI flags --rth-floor / --eth-floor still win for one-off experiments.
+  rthFloor: 0.60,    // overridden below from profile
   ethFloor: 0.55,
   // ── DATA WINDOW (optional) ──
   // By default we train on the full ~2y CSV. --recent=30 trims to last 30 days
@@ -44,6 +44,15 @@ const opts = {
 };
 const symArg = args.find(a => a.startsWith('--symbols='));
 if (symArg) opts.symbols = symArg.split('=')[1].split(',').map(s => s.includes('=F') ? s : s + '=F');
+// Load floors from the active profile FIRST (then CLI flags can still override)
+try {
+  const prof = getActiveProfile();
+  if (prof) {
+    opts.rthFloor = prof.rthFloor;
+    opts.ethFloor = prof.ethFloor;
+    opts.activeProfileKey = prof.key;
+  }
+} catch (e) { /* fall through to defaults */ }
 const rthArg = args.find(a => a.startsWith('--rth-floor='));
 if (rthArg) opts.rthFloor = parseFloat(rthArg.split('=')[1]);
 const ethArg = args.find(a => a.startsWith('--eth-floor='));

@@ -722,6 +722,181 @@ function _mcTick() {
 // Tick the countdown locally once per second between server polls
 setInterval(_mcTick, 1000);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AGGRESSIVENESS PROFILE PICKER
+//
+// Renders 4 preset cards on the Settings tab. The currently-active preset gets
+// a glowing border + "ACTIVE" badge. Clicking any other card POSTs to
+// /api/aggressiveness and re-renders. Switching is HOT — the runtime decision
+// engine reads R:R + ATR exits live from the active profile.
+// ─────────────────────────────────────────────────────────────────────────────
+const _AP_ACCENTS = {
+  SNIPER:    { ring: 'rgba(0,240,255,0.5)',  glow: 'rgba(0,240,255,0.2)',  color: '#4fc3f7' },   // cyan
+  BALANCED:  { ring: 'rgba(57,255,20,0.5)',  glow: 'rgba(57,255,20,0.2)',  color: '#39ff14' },   // neon green
+  ACTIVE:    { ring: 'rgba(255,152,0,0.55)', glow: 'rgba(255,152,0,0.22)', color: '#ffa726' },   // amber
+  SCALPER:   { ring: 'rgba(255,56,56,0.55)', glow: 'rgba(255,56,56,0.22)', color: '#ff5252' },   // red
+  AUTO:      { ring: 'rgba(167,139,250,0.55)', glow: 'rgba(167,139,250,0.22)', color: '#a78bfa' } // purple
+};
+
+async function loadAggressivenessPanel() {
+  const grid = document.getElementById('ap-presets-grid');
+  if (!grid) return;
+  try {
+    const res = await fetch('/api/aggressiveness', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { active, presets } = await res.json();
+    _renderAggressivenessGrid(active, presets);
+  } catch (e) { console.warn('aggressiveness load failed', e); }
+}
+
+function _renderAggressivenessGrid(active, presets) {
+  const grid = document.getElementById('ap-presets-grid');
+  const activeTag = document.getElementById('ap-active-tag');
+  // For AUTO, show the LIVE sub-preset alongside the AUTO label
+  const selectedKey = active.selectedKey || active.key;
+  if (activeTag) {
+    const acc = _AP_ACCENTS[selectedKey] || _AP_ACCENTS.BALANCED;
+    if (active.isAutoActive && active.autoSubKey) {
+      activeTag.innerHTML = `● ACTIVE: <span style="color:${_AP_ACCENTS.AUTO.color};">AUTO</span> → <span style="color:${_AP_ACCENTS[active.autoSubKey].color};">${active.autoSubKey}</span> right now${active.boostMode ? ` <span style="color:var(--neon-orange);">+ Boost</span>` : ''}`;
+    } else {
+      activeTag.innerHTML = `● ACTIVE: <span style="color:${acc.color};">${active.label}</span>${active.boostMode ? ` <span style="color:var(--neon-orange);">+ Boost</span>` : ''}`;
+    }
+  }
+  grid.innerHTML = presets.map(p => {
+    const acc = _AP_ACCENTS[p.key] || _AP_ACCENTS.BALANCED;
+    const isActive = p.key === selectedKey;
+    const isAutoSubActive = active.isAutoActive && p.key === active.autoSubKey;
+    return `
+      <div class="ap-card ${isActive ? 'is-active' : ''}"
+           data-ap-key="${p.key}"
+           style="
+             padding: 16px 18px;
+             border-radius: 12px;
+             border: 2px solid ${isActive ? acc.ring : 'rgba(255,255,255,0.06)'};
+             background: ${isActive ? `linear-gradient(135deg, ${acc.glow}, transparent)` : 'rgba(5,7,12,0.45)'};
+             box-shadow: ${isActive ? `0 0 18px ${acc.glow}` : 'none'};
+             cursor: ${isActive ? 'default' : 'pointer'};
+             transition: all 0.2s ease;
+           "
+           onclick="${isActive ? '' : `switchAggressivenessProfile('${p.key}')`}">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;">
+          <div style="font-size: 13px; font-weight: 800; color: ${acc.color}; letter-spacing: 0.5px;">${p.label}</div>
+          ${isActive ? `<span style="font-size: 9px; font-weight: 800; color: ${acc.color}; padding: 2px 8px; border-radius: 10px; background: ${acc.glow}; border: 1px solid ${acc.ring};">● ACTIVE</span>` : (isAutoSubActive ? `<span style="font-size: 9px; font-weight: 800; color: ${acc.color}; padding: 2px 8px; border-radius: 10px; background: ${acc.glow}; border: 1px dashed ${acc.ring};">○ AUTO PICK</span>` : '')}
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">${p.description}</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 10.5px;">
+          <div>
+            <div style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Trades/mo</div>
+            <div style="color: var(--text-primary); font-weight: 800; font-family: 'Consolas', monospace;">${p.expectedTradesPerMonth}</div>
+          </div>
+          <div>
+            <div style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Win rate</div>
+            <div style="color: var(--text-primary); font-weight: 800; font-family: 'Consolas', monospace;">${p.expectedWR}</div>
+          </div>
+          <div>
+            <div style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Profit factor</div>
+            <div style="color: var(--text-primary); font-weight: 800; font-family: 'Consolas', monospace;">${p.expectedPF}</div>
+          </div>
+        </div>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 10px;">
+          <div><span style="color: var(--text-secondary);">RTH floor:</span> <strong style="color: var(--text-primary);">${Math.round(p.rthFloor*100)}%</strong></div>
+          <div><span style="color: var(--text-secondary);">ETH floor:</span> <strong style="color: var(--text-primary);">${Math.round(p.ethFloor*100)}%</strong></div>
+          <div><span style="color: var(--text-secondary);">R:R:</span> <strong style="color: var(--text-primary);">${p.tpR.toFixed(1)} : ${p.slR.toFixed(1)}</strong></div>
+          <div><span style="color: var(--text-secondary);">SL/TP ATR:</span> <strong style="color: var(--text-primary);">${p.slAtrMult}× / ${p.tpAtrMult.toFixed(1)}×</strong></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.switchAggressivenessProfile = async function (key) {
+  const noteEl = document.getElementById('ap-impact-note');
+  const noteTextEl = document.getElementById('ap-impact-text');
+  try {
+    const res = await fetch('/api/aggressiveness', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const active = data.active;
+      if (noteEl && noteTextEl) {
+        noteTextEl.textContent =
+          `Switched to ${active.label}. R:R = ${active.tpR.toFixed(1)}:${active.slR.toFixed(1)} is live within 60s. ` +
+          `Floors are RTH ${Math.round(active.rthFloor*100)}% / ETH ${Math.round(active.ethFloor*100)}% — ` +
+          `bundles already-deployed stay deployed, but the next retrain (4:30 AM / 2:30 PM PT) will re-evaluate against these.`;
+        noteEl.style.display = '';
+      }
+      loadAggressivenessPanel();  // re-render
+    }
+  } catch (e) { console.warn('profile switch failed', e); }
+};
+
+// Load on first open of Settings tab + every state poll
+document.addEventListener('DOMContentLoaded', loadAggressivenessPanel);
+setInterval(loadAggressivenessPanel, 15000);  // refresh every 15s in case server-side changed
+
+// ─── Boost R:R checkbox ────────────────────────────────────────────────────
+// When checked, the runtime decision engine swaps TP from 1.6× SL distance to
+// 1.4× SL distance — smaller targets, faster closures, more trade turnover.
+// Pure runtime change. Toggle anytime; takes effect in ≤60 sec.
+function _wireBoostCheckbox() {
+  const cb = document.getElementById('ap-boost-checkbox');
+  const status = document.getElementById('ap-boost-status');
+  const row = document.getElementById('ap-boost-row');
+  if (!cb) return;
+  cb.addEventListener('change', async () => {
+    const enabled = cb.checked;
+    try {
+      const r = await fetch('/api/aggressiveness/boost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      if (r.ok) {
+        const data = await r.json();
+        _syncBoostUI(data.active.boostMode);
+        loadAggressivenessPanel();
+        const noteEl = document.getElementById('ap-impact-note');
+        const noteTextEl = document.getElementById('ap-impact-text');
+        if (noteEl && noteTextEl) {
+          noteTextEl.textContent = enabled
+            ? `Boost ENABLED — R:R now 1.4:1. Trades close faster. Expect roughly 2× more closures over the next 24h. Click again to revert.`
+            : `Boost DISABLED — R:R reverts to preset's native ratio. Standard exit profile resumes within 60 sec.`;
+          noteEl.style.display = '';
+        }
+      }
+    } catch (e) { console.warn('boost toggle failed', e); }
+  });
+}
+
+function _syncBoostUI(boostMode) {
+  const cb = document.getElementById('ap-boost-checkbox');
+  const status = document.getElementById('ap-boost-status');
+  const row = document.getElementById('ap-boost-row');
+  if (cb)     cb.checked = !!boostMode;
+  if (status) {
+    status.textContent = boostMode ? '● ON' : '○ OFF';
+    status.style.color = boostMode ? 'var(--neon-orange)' : 'var(--text-secondary)';
+  }
+  if (row)    row.style.borderColor = boostMode ? 'rgba(255,152,0,0.4)' : 'rgba(255,255,255,0.06)';
+}
+
+// Sync boost UI state on every aggressiveness panel refresh
+const _origLoadAP = loadAggressivenessPanel;
+loadAggressivenessPanel = async function () {
+  try {
+    const res = await fetch('/api/aggressiveness', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { active, presets } = await res.json();
+    _renderAggressivenessGrid(active, presets);
+    _syncBoostUI(active.boostMode);
+  } catch (e) { /* silent */ }
+};
+
+document.addEventListener('DOMContentLoaded', _wireBoostCheckbox);
+
 // Render Trade History
 function renderTradeHistory(history) {
   const container = document.getElementById('trade-history-container');

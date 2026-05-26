@@ -1,7 +1,8 @@
 {
-  "rthFloor": 0.6,
-  "ethFloor": 0.55,
+  "rthFloor": 0.55,
+  "ethFloor": 0.5,
   "minPF": 1.5,
   "minTrades": 30,
-  "lastTrainedAt": "2026-05-26T04:46:36.279Z"
+  "lastTrainedAt": "2026-05-26T06:23:39.860Z",
+  "activeProfile": "AUTO"
 }

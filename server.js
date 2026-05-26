@@ -54,6 +54,7 @@ const { onBarDecision, getStats, getRecentTrades, getStatsByRegime } = require('
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
 const { getExitsConfig, setExitsConfig, isFixedActive } = require('./lib/exitsConfig');
+const { getActiveProfile, setActiveProfile, setBoostMode, getAllPresets } = require('./lib/aggressivenessProfile');
 
 // ── Startup ─────────────────────────────────────────────────────────────────
 loadPortfolioState();
@@ -362,6 +363,7 @@ const server = http.createServer((req, res) => {
           miniSymbols: MINI_SYMBOLS,
           microSymbols: MICRO_SYMBOLS,
           qualityFloors: getQualityFloors(),
+          aggressivenessProfile: getActiveProfile(),
           tastytradeId: process.env.TASTYTRADE_CLIENT_ID
         }));
       }
@@ -370,6 +372,39 @@ const server = http.createServer((req, res) => {
       if (pathname === '/api/exits' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ config: getExitsConfig(), fixedActive: isFixedActive() }));
+      }
+
+      // GET /api/aggressiveness — list all presets + show active
+      if (pathname === '/api/aggressiveness' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          active: getActiveProfile(),
+          presets: getAllPresets()
+        }));
+      }
+
+      // POST /api/aggressiveness — switch the active profile
+      // body: { key: 'SNIPER' | 'BALANCED' | 'ACTIVE' | 'SCALPER' | 'AUTO' }
+      if (pathname === '/api/aggressiveness' && req.method === 'POST') {
+        const { key } = reqBody;
+        const result = setActiveProfile(key);
+        if (result) {
+          eventBus.emit('INFO', null, `Aggressiveness profile switched → ${key}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'success', active: result }));
+        }
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'failed', error: 'unknown profile key' }));
+      }
+
+      // POST /api/aggressiveness/boost — toggle the tighter R:R override
+      // body: { enabled: true | false }
+      if (pathname === '/api/aggressiveness/boost' && req.method === 'POST') {
+        const { enabled } = reqBody;
+        const result = setBoostMode(!!enabled);
+        eventBus.emit('INFO', null, `Boost R:R ${enabled ? 'ENABLED' : 'disabled'} — live within 60s`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'success', active: result }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config

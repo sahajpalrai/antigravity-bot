@@ -56,3 +56,5 @@ models/simulation_*.json
 models/paper_trades.json
 models/exit_overrides.legacy_backup.json
 models/highwr_train_log.txt
+# User UI state — flips whenever user clicks an Aggressiveness preset card
+models/aggressiveness_profile.json

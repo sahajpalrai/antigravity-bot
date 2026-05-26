@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260525n">
-  <link rel="stylesheet" href="css/terminal.css?v=20260525n">
-  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260525n">
+  <link rel="stylesheet" href="css/style.css?v=20260525p">
+  <link rel="stylesheet" href="css/terminal.css?v=20260525p">
+  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260525p">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -509,6 +509,57 @@
       <div id="view-settings" class="tab-view" style="display: none;">
         <div style="max-width: 1100px; margin: 0 auto; display:flex; flex-direction:column; gap: 18px;">
 
+        <!-- ───────────────────────────────────────────────────────────────
+             AGGRESSIVENESS PROFILE PICKER
+             4 presets controlling trade-frequency vs accuracy.
+             Switching is HOT — no restart needed; effective within 60 sec.
+             ─────────────────────────────────────────────────────────────── -->
+        <div class="glass-card gradient-glow-card" style="padding: 26px 30px;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 8px;">
+            <h2 class="panel-title" style="font-size: 18px; font-weight: 800; color: var(--cyan-glow); margin: 0;">🎚️ Trading Aggressiveness</h2>
+            <span id="ap-active-tag" style="font-size: 11px; font-weight: 800; color: var(--neon-green); letter-spacing: 0.5px;">— Loading active profile —</span>
+          </div>
+          <p style="font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin: 0 0 18px 0;">
+            Choose how the bot balances <strong style="color:var(--text-primary);">trade frequency vs accuracy</strong>. Switching is instant — within 60 seconds the live engine respects the new R:R and ATR exits. <strong style="color:var(--neon-orange);">Floors only fully apply after the next retrain</strong> (4:30 AM or 2:30 PM PT) — until then, currently-deployed bundles stay deployed.
+          </p>
+          <div id="ap-presets-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;">
+            <!-- 5 preset cards (incl. AUTO) populated by JS -->
+          </div>
+          <div id="ap-impact-note" style="margin-top: 14px; padding: 12px 14px; background: rgba(255,152,0,0.06); border: 1px solid rgba(255,152,0,0.25); border-radius: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; display: none;">
+            <strong style="color: var(--neon-orange);">Heads up:</strong> <span id="ap-impact-text"></span>
+          </div>
+
+          <!-- ─── BOOST + EXPERIMENTAL LAB ─── -->
+          <div style="margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.08);">
+            <div style="font-size: 14px; font-weight: 800; color: var(--cyan-glow); letter-spacing: 0.5px; margin-bottom: 12px;">🧪 BOOST + EXPERIMENTAL LAB</div>
+
+            <!-- Boost R:R checkbox -->
+            <label id="ap-boost-row" style="display: flex; align-items: flex-start; gap: 14px; padding: 14px; background: rgba(5,7,12,0.45); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; cursor: pointer; transition: all 0.2s ease;">
+              <input type="checkbox" id="ap-boost-checkbox" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer; accent-color: var(--neon-orange);">
+              <div style="flex: 1;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                  <div style="font-size: 13px; font-weight: 800; color: var(--text-primary);">Tighter R:R Boost <span style="font-weight: 600; color: var(--text-secondary);">(1.6:1 → <strong style="color: var(--neon-orange);">1.4:1</strong>)</span></div>
+                  <span id="ap-boost-status" style="font-size: 10px; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.5px;">○ OFF</span>
+                </div>
+                <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px;">
+                  Tightens take-profit so trades close faster. Expected: <strong style="color: var(--text-primary);">~2× more closures</strong>, ~5% lower WR. Pure runtime change — live within 60 sec. Reversible anytime.
+                </div>
+              </div>
+            </label>
+
+            <!-- Phase 1 button (placeholder — will be implemented after AUTO mode validates baseline) -->
+            <div style="margin-top: 12px; padding: 14px; background: rgba(5,7,12,0.25); border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; opacity: 0.6;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 13px; font-weight: 700; color: var(--text-secondary);">⏳ Phase 1 — CHOP Specialists + Multi-fire</div>
+                <span style="font-size: 10px; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.5px;">DEFERRED · 2026-06-08</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px;">
+                Validating AUTO mode baseline first (3-5 paper days). After that, this button ships in two split checkboxes: CHOP specialists + multi-specialist firing, so each can be measured independently.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- v2 Engine — what it is, how it works -->
         <div class="glass-card gradient-glow-card" style="padding: 26px 30px;">
           <h2 class="panel-title" style="font-size: 18px; font-weight: 800; color: var(--cyan-glow); margin: 0 0 12px 0;">🧠 v2 Engine — Strategies &amp; Models</h2>
@@ -637,7 +688,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260525n"></script>
-  <script src="js/terminal.js?v=20260525n"></script>
+  <script src="js/app.js?v=20260525p"></script>
+  <script src="js/terminal.js?v=20260525p"></script>
 </body>
 </html>
