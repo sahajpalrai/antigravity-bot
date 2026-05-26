@@ -46,7 +46,8 @@ const {
 } = require('./lib/paperEngine');
 const { sendTelegramMessage } = require('./lib/telegram');
 const {
-  startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback, broadcastBrainState
+  startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
+  broadcastBrainState, bootstrapBuffersFromCsv
 } = require('./lib/nt8Bridge');
 const { decide, modelStatus } = require('./lib/decisionEngine');
 const { onBarDecision, getStats, getRecentTrades, getStatsByRegime } = require('./lib/paperHarness');
@@ -56,6 +57,9 @@ const { getExitsConfig, setExitsConfig, isFixedActive } = require('./lib/exitsCo
 
 // ── Startup ─────────────────────────────────────────────────────────────────
 loadPortfolioState();
+// Pre-seed candle buffers from local CSVs so the decision engine can fire on
+// the FIRST live NT8 bar push instead of waiting ~18 hours for 220 bars.
+bootstrapBuffersFromCsv();
 startNT8BridgeServer();
 
 // Live state keyed by ALL 8 contracts (4 mini + 4 micro). Even when the bot
@@ -241,7 +245,17 @@ function serveStaticFile(pathname, res) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('404 Not Found');
   }
-  res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+  // Force no-cache for HTML/JS/CSS so the browser always gets the latest
+  // dashboard after code changes. Without this, a stale terminal.js could
+  // sit in the browser cache forever and the user never sees fixes (e.g.
+  // the MINI/MICRO toggle bug we just fixed).
+  const headers = { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' };
+  if (['.html', '.js', '.css'].includes(ext)) {
+    headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    headers['Pragma'] = 'no-cache';
+    headers['Expires'] = '0';
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 
