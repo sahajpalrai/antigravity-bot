@@ -77,8 +77,21 @@ const DIRECTIONS = ['long', 'short'];
 
 // ─── CSV loader ──────────────────────────────────────────────────────────────
 
+// Micro → mini CSV fallback table. Micros share price action with their mini
+// counterpart (same underlying), so training uses the mini CSV.
+// e.g. MCL=F → cl_5min_nt8.csv  (not a missing file — by design)
+const MICRO_TO_MINI_CSV = {
+  'MNQ': 'nq', 'MES': 'es', 'MCL': 'cl', 'MGC': 'gc'
+};
+
 function loadCsv(symbol) {
-  const baseName = symbol.replace('=F', '').toLowerCase();
+  const rawBase = symbol.replace('=F', '').toLowerCase();
+  // Resolve micro prefix → mini CSV (MNQ→nq, MCL→cl, etc.)
+  const miniKey = MICRO_TO_MINI_CSV[rawBase.toUpperCase()];
+  const baseName = miniKey || rawBase;
+  if (miniKey) {
+    console.log(`[Trainer] Micro symbol ${symbol} → using mini CSV: ${baseName}_5min_nt8.csv`);
+  }
   const file = path.join(DATA_DIR, `${baseName}_5min_nt8.csv`);
   if (!fs.existsSync(file)) {
     console.error(`[Trainer] Missing data file: ${file}`);
@@ -248,6 +261,7 @@ function trainBundle(symbol, candles) {
           session,
           regime,
           direction,
+          symbol,          // thread symbol for correct session boundaries + instrument features
           folds: 5,
           params: TRAIN_PARAMS,
           log: (msg) => console.log(`  ${msg}`)
@@ -298,6 +312,7 @@ function trainBundle(symbol, candles) {
                 session:   wfOpts.session,
                 regime:    wfOpts.regime,
                 direction: wfOpts.direction,
+                symbol:    wfOpts.symbol,   // instrument-aware features in recent calibration too
                 stride: 1
               });
 
@@ -308,8 +323,11 @@ function trainBundle(symbol, candles) {
                   label: r.label
                 }));
 
-                // Sweep thresholds: find highest WR that still has ≥15 trades on
-                // recent data and clears the session floor
+                // Sweep thresholds: find the threshold that maximizes a
+                // balanced score = WR × log(trades). Pure WR-maximization
+                // picks 100% WR at n=3 (overfitting small samples); log(n)
+                // penalty ensures the winner needs meaningful sample size.
+                // Must clear the session floor AND have ≥15 trades.
                 const CAND = [0.45, 0.48, 0.50, 0.52, 0.54, 0.55, 0.58, 0.60, 0.62, 0.65, 0.68, 0.72, 0.75];
                 let bestRecent = null;
                 for (const th of CAND) {
@@ -317,9 +335,11 @@ function trainBundle(symbol, candles) {
                   if (hits.length < 15) continue;
                   const wr = hits.filter(s => s.label === 1).length / hits.length;
                   if (wr < sessionFloor) continue;
-                  // Pick the threshold with best win rate (ties → lower threshold = more trades)
-                  if (!bestRecent || wr > bestRecent.wr || (wr === bestRecent.wr && th < bestRecent.threshold)) {
-                    bestRecent = { threshold: th, wr, trades: hits.length };
+                  // Balanced score: WR × log(n) — rewards reliable WR with sufficient data
+                  const score = wr * Math.log(hits.length);
+                  if (!bestRecent || score > bestRecent.score ||
+                      (Math.abs(score - bestRecent.score) < 0.001 && th < bestRecent.threshold)) {
+                    bestRecent = { threshold: th, wr, trades: hits.length, score };
                   }
                 }
 
