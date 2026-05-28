@@ -638,12 +638,28 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
       }
 
-      // POST /api/mode — change account mode
+      // POST /api/mode — change account mode (+ optional firmType + drawdownAmount)
       if (pathname === '/api/mode' && req.method === 'POST') {
         const { changeAccountMode } = require('./lib/paperEngine');
-        const success = changeAccountMode(reqBody.symbol, reqBody.mode);
+        const success = changeAccountMode(reqBody.symbol, reqBody.mode, reqBody.firmType, reqBody.drawdownAmount);
         res.writeHead(success ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: success ? 'success' : 'failed' }));
+      }
+
+      // POST /api/firm-type — switch APEX ↔ EOD without resetting balances
+      if (pathname === '/api/firm-type' && req.method === 'POST') {
+        const { setFirmType } = require('./lib/paperEngine');
+        const result = setFirmType(reqBody.symbol, reqBody.firmType);
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      }
+
+      // POST /api/drawdown-amount — update per-account trailing DD limit
+      if (pathname === '/api/drawdown-amount' && req.method === 'POST') {
+        const { setDrawdownAmount } = require('./lib/paperEngine');
+        const result = setDrawdownAmount(reqBody.symbol, reqBody.amount);
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
       }
 
       // POST /api/account-number — update account label

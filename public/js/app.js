@@ -234,20 +234,34 @@ function renderAccounts(accounts) {
     if (acc.mode !== 'Standard') {
       const drawdownFloorText = formatCurrency(acc.drawdownFloor);
       const drawdownStyle = 'color: var(--neon-red);';
-      drawdownHTML = `<p>Drawdown Floor: <strong style="${drawdownStyle}">${drawdownFloorText}</strong></p>`;
-      
-      // APX Trailing drawdown buffer calculations
-      const totalRiskWindow = 2500; // DRAWDOWN_LIMIT is $2500
+      const firmType = acc.firmType || 'APEX';
+      const firmLabel = firmType === 'EOD' ? 'TopStep/EOD' : 'APEX';
+      const firmBadgeColor = firmType === 'EOD'
+        ? 'background:rgba(100,181,246,0.15); color:#64b5f6; border:1px solid rgba(100,181,246,0.3);'
+        : 'background:rgba(255,152,0,0.12); color:var(--neon-orange); border:1px solid rgba(255,152,0,0.25);';
+      const ddTrailingNote = firmType === 'EOD'
+        ? '<span style="font-size:9px; color:var(--text-secondary); margin-left:4px;" title="Floor only moves when flat and realized balance sets new high">EOD trailing</span>'
+        : '<span style="font-size:9px; color:var(--text-secondary); margin-left:4px;" title="Floor moves with intraday unrealized equity — APEX rule">intraday trailing</span>';
+
+      drawdownHTML = `
+        <p style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          Drawdown Floor: <strong style="${drawdownStyle}">${drawdownFloorText}</strong>
+          <span style="font-size:9px; font-weight:800; padding:1px 6px; border-radius:10px; ${firmBadgeColor}">${firmLabel}</span>
+          ${ddTrailingNote}
+        </p>`;
+
+      // Trailing drawdown buffer calculations — use per-account amount
+      const totalRiskWindow = acc.drawdownAmount || 2500;
       const currentRiskRoom = Math.max(0, acc.balance - acc.drawdownFloor);
       const safetyPercent = Math.min(100, (currentRiskRoom / totalRiskWindow) * 100);
       const barColor = safetyPercent > 60 ? 'linear-gradient(to right, var(--neon-orange), var(--neon-green))' : 'linear-gradient(to right, var(--neon-red), var(--neon-orange))';
       const safetyText = safetyPercent > 60 ? 'Healthy' : (safetyPercent > 20 ? 'Warning' : 'CRITICAL');
       const safetyTextColor = safetyPercent > 60 ? 'var(--neon-green)' : (safetyPercent > 20 ? 'var(--neon-orange)' : 'var(--neon-red)');
-      
+
       visualMeterHTML = `
         <div style="margin-top: 14px; margin-bottom: 14px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.08);">
           <div style="display:flex; justify-content:space-between; font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">
-            <span>Drawdown safety buffer:</span>
+            <span>Drawdown safety buffer (of $${totalRiskWindow.toLocaleString()}):</span>
             <span style="color: ${safetyTextColor}; font-weight:800;">${safetyPercent.toFixed(0)}% (${safetyText})</span>
           </div>
           <div class="progress-container" style="background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden;">
@@ -371,13 +385,27 @@ function renderAccounts(accounts) {
         ${strategiesHTML}
         ${scannerHTML}
         
-        <!-- Premium Custom Segmented Control for Broker Account Mode -->
+        <!-- Prop Firm Mode Selector — APEX (intraday trailing DD) vs TopStep/EOD (EOD trailing) -->
         <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-light);">
-          <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Broker Mode Selection:</label>
+          <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Broker / Prop Firm Mode:</label>
           <div class="broker-mode-segmented">
-            <button class="mode-pill-btn ${acc.mode === 'Standard' ? 'active-standard' : ''}" onclick="setAccountMode('${sym}', 'Standard')">Personal</button>
-            <button class="mode-pill-btn ${acc.mode === 'Evaluation' ? 'active-evaluation' : ''}" onclick="setAccountMode('${sym}', 'Evaluation')">APX Eval</button>
-            <button class="mode-pill-btn ${acc.mode === 'PA' ? 'active-pa' : ''}" onclick="setAccountMode('${sym}', 'PA')">APX PA</button>
+            <button class="mode-pill-btn ${acc.mode === 'Standard' ? 'active-standard' : ''}"
+                    onclick="setAccountMode('${sym}', 'Standard')"
+                    title="Personal broker — no trailing drawdown floor">Personal</button>
+            <button class="mode-pill-btn ${acc.mode === 'Evaluation' && (acc.firmType||'APEX') === 'APEX' ? 'active-evaluation' : ''}"
+                    onclick="setAccountMode('${sym}', 'Evaluation', 'APEX')"
+                    title="APEX evaluation — intraday trailing drawdown (unrealized P&L moves floor)">APX Eval</button>
+            <button class="mode-pill-btn ${acc.mode === 'PA' && (acc.firmType||'APEX') === 'APEX' ? 'active-pa' : ''}"
+                    onclick="setAccountMode('${sym}', 'PA', 'APEX')"
+                    title="APEX Performance Account — intraday trailing, floor locks at $50,100">APX PA</button>
+            <button class="mode-pill-btn ${acc.mode === 'Evaluation' && acc.firmType === 'EOD' ? 'active-evaluation' : ''}"
+                    style="${acc.mode === 'Evaluation' && acc.firmType === 'EOD' ? '' : 'border-color: rgba(100,181,246,0.25);'}"
+                    onclick="setAccountMode('${sym}', 'Evaluation', 'EOD')"
+                    title="TopStep-style evaluation — EOD trailing drawdown (only flat realized gains move floor)">TST Eval</button>
+            <button class="mode-pill-btn ${acc.mode === 'PA' && acc.firmType === 'EOD' ? 'active-pa' : ''}"
+                    style="${acc.mode === 'PA' && acc.firmType === 'EOD' ? '' : 'border-color: rgba(100,181,246,0.25);'}"
+                    onclick="setAccountMode('${sym}', 'PA', 'EOD')"
+                    title="TopStep funded — EOD trailing, floor never retreats once set">TST Funded</button>
           </div>
         </div>
       </div>
@@ -1407,7 +1435,7 @@ function drawNeonPerformanceChart(canvasId, dataPoints) {
 
 // Actions & API posts
 async function transitionToPA(symbol) {
-  if (confirm(`Are you sure you want to transition ${symbol} to PA Account? This will reset the PA balance to $50,000 and lock the risk drawdown floor forever at $50,100.`)) {
+  if (confirm(`Are you sure you want to transition ${symbol} to PA / Funded Account?\n\nThis resets the balance to $50,000 and transitions to PA rules.\n• APEX PA: floor locks at $50,100 (intraday trailing)\n• TopStep Funded: floor stays at starting level (EOD trailing)\n\nFirm type follows your current setting on this account.`)) {
     try {
       const res = await fetch(`/api/transition`, {
         method: 'POST',
@@ -1424,15 +1452,24 @@ async function transitionToPA(symbol) {
   }
 }
 
-async function setAccountMode(symbol, mode) {
+// firmType: 'APEX' (intraday trailing) | 'EOD' (TopStep end-of-day trailing)
+// Passing firmType is optional — omitting it keeps the account's current firmType.
+async function setAccountMode(symbol, mode, firmType) {
+  const firmLabel = firmType === 'EOD' ? 'TopStep/EOD' : (firmType === 'APEX' ? 'APEX' : '');
+  const confirmMsg = mode === 'Standard'
+    ? `Switch ${symbol.replace('=F','')} to Personal mode?\n\nThis clears the drawdown floor (no prop firm rules).`
+    : `Switch ${symbol.replace('=F','')} to ${mode}${firmLabel ? ' · ' + firmLabel : ''}?\n\nThis resets the balance to $50,000 and recalculates the drawdown floor.\n\n${firmType === 'EOD' ? 'EOD mode: floor only moves when flat and balance sets a new high.' : 'APEX mode: floor moves with intraday unrealized equity.'}`;
+  if (!confirm(confirmMsg)) return;
   try {
+    const body = { symbol, mode };
+    if (firmType) body.firmType = firmType;
     const res = await fetch(`/api/mode`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol, mode })
+      body: JSON.stringify(body)
     });
     if (res.ok) {
-      console.log(`[Dashboard] Account ${symbol} mode changed to ${mode}`);
+      console.log(`[Dashboard] Account ${symbol} → mode=${mode} firmType=${firmType || 'unchanged'}`);
       updateDashboard();
     } else {
       alert('Failed to update broker mode.');
@@ -1890,12 +1927,15 @@ function switchTab(tabName) {
 }
 
 // Universal Sliding Switch Global Toggles
-async function setAccountModeSilent(symbol, mode) {
+// firmType optional — omitted keeps each account's existing firmType
+async function setAccountModeSilent(symbol, mode, firmType) {
   try {
+    const body = { symbol, mode };
+    if (firmType) body.firmType = firmType;
     await fetch(`/api/mode`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol, mode })
+      body: JSON.stringify(body)
     });
   } catch (e) {
     console.error('[Dashboard] Error changing account mode:', e.message);
