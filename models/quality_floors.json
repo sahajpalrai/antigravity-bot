@@ -1,6 +1,6 @@
 {
-  "rthFloor": 0.62,
-  "ethFloor": 0.6,
+  "rthFloor": 0.55,
+  "ethFloor": 0.52,
   "minPF": 1.25,
   "minTrades": 40,
   "minSharpe": 0.5,

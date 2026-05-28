@@ -52,6 +52,7 @@ const {
   broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols
 } = require('./lib/nt8Bridge');
 const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8, getDecisionMode, setDecisionMode } = require('./lib/decisionEngine');
+const llmAnalyst = require('./lib/llmAnalyst');
 // paperHarness removed — all symbols run LIVE via NT8
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
@@ -105,6 +106,23 @@ function processBarUpdate(rawSymbol, candles) {
   // regardless of which contract mode is currently selected
   lastDecisions[familySym] = decision;
   if (microSym) lastDecisions[microSym] = decision;
+
+  // LLM prefetch — fire async analysis NOW so the result is cached and ready
+  // for decide() on the NEXT bar close. Non-blocking: returns immediately.
+  // Must run AFTER decide() so we have the fresh featureSnapshot + probabilities.
+  try {
+    const _fv = (decision && decision.featureSnapshot)
+      ? decision.featureSnapshot
+      : (decision && decision.liveFeatures ? decision.liveFeatures : null);
+    if (_fv) {
+      const _gSig = decision.probabilities
+        ? { longProb: decision.probabilities.long, shortProb: decision.probabilities.short,
+            longTh: decision.probabilities.longTh, shortTh: decision.probabilities.shortTh }
+        : null;
+      const _regime = decision.regime || lastRegimes[familySym] || 'UNKNOWN';
+      llmAnalyst.prefetch(familySym, decision.session || 'ETH', last.time, _fv, candles, _gSig, _regime);
+    }
+  } catch (_e) { /* LLM prefetch errors must never crash the bar handler */ }
 
   // Regime change tracked at the family level (avoids double-emit)
   if (decision.regime && decision.regime !== lastRegimes[familySym]) {
@@ -427,7 +445,8 @@ const server = http.createServer((req, res) => {
           nt8LinkedSymbols: (typeof getLinkedSymbols === 'function') ? getLinkedSymbols() : {},
           decisionMode: (typeof getDecisionMode === 'function') ? getDecisionMode() : 'HYBRID',
           familyContracts: (typeof getFamilyContracts === 'function') ? getFamilyContracts() : {},
-          tastytradeId: process.env.TASTYTRADE_CLIENT_ID
+          tastytradeId: process.env.TASTYTRADE_CLIENT_ID,
+          llmAnalyst: llmAnalyst.getStatus()
         }));
       }
 
@@ -453,7 +472,13 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify(result));
       }
 
-      // GET /api/exits — current exits override config
+      // GET /api/llm-status — LLM analyst state (per-symbol cached signals)
+      if (pathname === '/api/llm-status' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(llmAnalyst.getStatus()));
+      }
+
+            // GET /api/exits — current exits override config
       if (pathname === '/api/exits' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ config: getExitsConfig(), fixedActive: isFixedActive() }));
