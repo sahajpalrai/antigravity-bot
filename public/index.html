@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260525p">
-  <link rel="stylesheet" href="css/terminal.css?v=20260525p">
-  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260525p">
+  <link rel="stylesheet" href="css/style.css?v=20260526j">
+  <link rel="stylesheet" href="css/terminal.css?v=20260526j">
+  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260526j">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -199,11 +199,11 @@
             <span class="tk-value" id="kpi-active-trades">0</span>
           </div>
           <div class="tk-cell">
-            <span class="tk-label">Paper WR (v2)</span>
+            <span class="tk-label" id="kpi-wr-label">Today WR</span>
             <span class="tk-value" id="kpi-paper-wr">—</span>
           </div>
           <div class="tk-cell">
-            <span class="tk-label">Paper PF (v2)</span>
+            <span class="tk-label" id="kpi-pf-label">Today PF</span>
             <span class="tk-value" id="kpi-paper-pf">—</span>
           </div>
           <div class="tk-cell">
@@ -223,10 +223,20 @@
           <!-- LEFT: 4 stacked D-style cards (sparkline + gauge rings) -->
           <div class="e2-ops-pane">
             <div class="e2-ops-head">
-              <span class="e2-ops-title" id="opsContractTitle">⚙️ OPERATIONS · MINI</span>
-              <div class="e2-contract-toggle" id="contractToggle">
-                <button class="active" data-c="MINI">MINI</button>
-                <button data-c="MICRO">MICRO</button>
+              <span class="e2-ops-title" id="opsContractTitle">⚙️ OPERATIONS</span>
+              <div style="display:flex; gap: 10px; align-items: center;">
+                <div class="e2-contract-toggle" id="decisionModeToggle"
+                     title="HYBRID = bundle + V5 committee with veto. V2 = bundle path only (V5 display-only).">
+                  <button data-m="V2">V2</button>
+                  <button class="active" data-m="HYBRID">HYBRID</button>
+                </div>
+                <!-- Global MINI/MICRO toggle removed — each family card on the
+                     Properties tab now has its own toggle so user can mix
+                     mini + micro per family. (2026-05-26) -->
+                <div class="e2-contract-toggle" id="contractToggle" style="display:none;">
+                  <button class="active" data-c="MINI">MINI</button>
+                  <button data-c="MICRO">MICRO</button>
+                </div>
               </div>
             </div>
             <div id="e2-cards" class="e2-cards-stack">
@@ -333,6 +343,14 @@
               <h2 class="panel-title">Forex Factory Economic Calendar</h2>
               <div class="news-list" id="news-events-container">
                 <div class="text-muted text-center py-4">Fetching economic news calendar...</div>
+              </div>
+            </div>
+
+            <!-- Daily Performance Stats Card -->
+            <div class="glass-card" id="daily-stats-card" style="padding: 18px 20px;">
+              <h2 class="panel-title" style="margin-bottom: 14px;">📊 Today's Performance</h2>
+              <div id="daily-stats-body">
+                <div class="text-muted text-center" style="padding: 12px 0; font-size: 12px;">No trades today yet.</div>
               </div>
             </div>
 
@@ -688,7 +706,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260525p"></script>
-  <script src="js/terminal.js?v=20260525p"></script>
+  <script src="js/app.js?v=20260528a"></script>
+  <script src="js/terminal.js?v=20260526j"></script>
 </body>
 </html>

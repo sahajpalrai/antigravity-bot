@@ -24,6 +24,7 @@ async function updateDashboard() {
     safe('renderNews',         () => renderNews(data.news));
     safe('renderYahooNews',    () => renderYahooNews(data.yahooNews));
     safe('renderTradeHistory', () => renderTradeHistory(data.history));
+    safe('renderDailyStats',   () => renderDailyStats(data.history));
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -100,21 +101,39 @@ function renderAccounts(accounts) {
   const container = document.getElementById('accounts-container');
   container.innerHTML = '';
 
-  const symbols = ['NQ=F', 'ES=F', 'CL=F', 'GC=F'];
-  
+  // ─── PER-FAMILY MINI/MICRO selection ──────────────────────────────────
+  // Each family (NQ/ES/CL/GC) independently set to MINI or MICRO via the
+  // toggle on its card. So user can have NQ as MINI, ES as MICRO, etc.
+  // Falls back to global contractMode if a family hasn't been set yet.
+  const globalMode = (apiState && apiState.contractMode) || 'MINI';
+  const familyContracts = (apiState && apiState.familyContracts) || {};
+  const families = ['NQ', 'ES', 'CL', 'GC'];
+  const symbols = families.map(fam => {
+    const t = familyContracts[fam] || globalMode;
+    return (t === 'MICRO' ? 'M' : '') + fam + '=F';
+  });
+  const linked = (apiState && apiState.nt8LinkedSymbols) || {};
+
   symbols.forEach(sym => {
     const acc = accounts[sym];
     if (!acc) return;
 
     const cleanSymbol = sym.replace('=F', '');
+    const family = cleanSymbol.replace(/^M(NQ|ES|CL|GC)$/, '$1');
+    const chartSym = linked[family];
+    const chartClean = chartSym ? chartSym.replace('=F', '') : null;
+    const isMismatch = chartSym && chartSym !== sym;
     const activePosText = acc.activePosition ? `${acc.activePosition.direction} @ ${acc.activePosition.entryPrice.toFixed(2)} (${acc.activePosition.strategyUsed})` : 'None';
     
     // v2 deployed specialists for THIS symbol family. Pulled from the
     // window._v2ModelStatus cache that terminal.js populates from /api/models.
     // Replaces V1's "ORB Breakout / VWAP Pullback / FVG..." hardcoded list.
+    // Note: `family` already declared above (mini-family code: NQ/ES/CL/GC).
     const isRTH = apiState && apiState.regime && apiState.regime.code === 'RTH';
-    const family = sym.replace('=F', '');
-    const models = (window._v2ModelStatus || []).filter(m => m.symbol === sym);
+    // Match models by family (mini sym), even when card is MICRO — bundles
+    // are keyed by mini symbol in the file system.
+    const miniSym = family + '=F';
+    const models = (window._v2ModelStatus || []).filter(m => m.symbol === sym || m.symbol === miniSym);
     const deployed = models.filter(m => m.enabled);
     const rthDeployed = deployed.filter(m => m.session === 'RTH');
     const ethDeployed = deployed.filter(m => m.session === 'ETH');
@@ -272,11 +291,27 @@ function renderAccounts(accounts) {
         <div style="display:flex; justify-content:space-between; width: 100%; align-items:center;">
           <div style="display:flex; align-items:center; gap: 8px;">
             <h4 style="margin: 0; font-size: 15px; font-weight:800;">${cleanSymbol} Account</h4>
-            <span class="symbol-toggle-pill ${acc.enabled !== false ? 'active' : 'inactive'}" 
+            <!-- Per-family MINI/MICRO toggle — independent per card -->
+            <div style="display:flex; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 2px;"
+                 title="Switch this family between mini (NQ/ES/CL/GC) and micro (MNQ/MES/MCL/MGC) contracts">
+              <button onclick="setFamilyContractType('${family}','MINI')"
+                      style="border: none; font-family: inherit; font-size: 9px; font-weight: 800;
+                             padding: 3px 8px; border-radius: 6px; cursor: pointer; letter-spacing: 0.5px;
+                             ${(familyContracts[family] || globalMode) === 'MINI'
+                                ? 'background: rgba(0,240,255,0.2); color: var(--cyan-glow); box-shadow: 0 0 8px rgba(0,240,255,0.2);'
+                                : 'background: transparent; color: var(--text-secondary);'}">MINI</button>
+              <button onclick="setFamilyContractType('${family}','MICRO')"
+                      style="border: none; font-family: inherit; font-size: 9px; font-weight: 800;
+                             padding: 3px 8px; border-radius: 6px; cursor: pointer; letter-spacing: 0.5px;
+                             ${(familyContracts[family] || globalMode) === 'MICRO'
+                                ? 'background: rgba(0,240,255,0.2); color: var(--cyan-glow); box-shadow: 0 0 8px rgba(0,240,255,0.2);'
+                                : 'background: transparent; color: var(--text-secondary);'}">MICRO</button>
+            </div>
+            <span class="symbol-toggle-pill ${acc.enabled !== false ? 'active' : 'inactive'}"
                   onclick="toggleSymbolState('${sym}', ${acc.enabled !== false ? 'false' : 'true'})"
-                  style="cursor: pointer; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; transition: all 0.3s; 
-                         ${acc.enabled !== false 
-                           ? 'background: rgba(57, 255, 20, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); box-shadow: 0 0 8px rgba(57, 255, 20, 0.3);' 
+                  style="cursor: pointer; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; transition: all 0.3s;
+                         ${acc.enabled !== false
+                           ? 'background: rgba(57, 255, 20, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); box-shadow: 0 0 8px rgba(57, 255, 20, 0.3);'
                            : 'background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid rgba(255, 255, 255, 0.15); opacity: 0.6;'
                          }">
               ${acc.enabled !== false ? '● ON' : '○ OFF'}
@@ -284,13 +319,41 @@ function renderAccounts(accounts) {
           </div>
           <span class="${statusClass}">${statusText}</span>
         </div>
-        <div style="font-size: 11px; color: var(--text-secondary); display:flex; align-items:center; gap: 6px; margin-top: 4px;">
+        <div style="font-size: 11px; color: var(--text-secondary); display:flex; align-items:center; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
           <span style="display: inline-flex; align-items: center; gap: 4px;">🔗 Attached Account:</span>
-          <span contenteditable="true" 
-                class="editable-account-id" 
-                style="color: var(--secondary-glow); font-weight:800; border-bottom: 1px dashed rgba(33, 150, 243, 0.4); cursor: pointer; outline: none; padding: 0 4px; border-radius: 3px; transition: all 0.2s;" 
+          <span contenteditable="true"
+                class="editable-account-id"
+                style="color: var(--secondary-glow); font-weight:800; border-bottom: 1px dashed rgba(33, 150, 243, 0.4); cursor: pointer; outline: none; padding: 0 4px; border-radius: 3px; transition: all 0.2s;"
                 onblur="submitAccountNumberChange('${sym}', this.textContent)"
                 onkeydown="handleAccountIdKey(event, this)">${acc.accountNumber || 'APX-NQ-50K-01'}</span>
+        </div>
+        <div style="font-size: 10px; display:flex; align-items:center; gap: 6px; margin-top: 2px; flex-wrap: wrap;">
+          ${chartSym
+            ? (isMismatch
+                ? `<span style="color: var(--neon-orange); font-weight: 800;">⚠ NT8 chart on <strong>${chartClean}</strong> — qty will auto-scale ${chartClean.startsWith('M') ? '×10' : '÷10'} on fire</span>`
+                : `<span style="color: var(--neon-green);">✓ NT8 chart linked: <strong>${chartClean}</strong></span>`)
+            : `<span style="color: var(--text-secondary); opacity:0.7;">○ NT8 chart not connected for ${family}</span>`}
+        </div>
+        <!-- Per-account LIVE/PAPER toggle + RESET — built per user request -->
+        <div style="display:flex; align-items:center; gap: 10px; margin-top: 8px; flex-wrap: wrap;">
+          <div style="display:flex; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 2px;">
+            <button onclick="setAccountTradingMode('${sym}','paper')"
+                    style="border: none; background: ${(acc.tradingMode||'paper') === 'paper' ? 'rgba(154,160,166,0.25); color: var(--text-primary)' : 'transparent; color: var(--text-secondary)'};
+                           font-family: inherit; font-size: 9px; font-weight: 800;
+                           padding: 4px 10px; border-radius: 6px; cursor: pointer; letter-spacing: 0.5px;">PAPER</button>
+            <button onclick="setAccountTradingMode('${sym}','live')"
+                    style="border: none; background: ${(acc.tradingMode||'paper') === 'live' ? 'rgba(255,152,0,0.25); color: var(--neon-orange); box-shadow: 0 0 10px rgba(255,152,0,0.2)' : 'transparent; color: var(--text-secondary)'};
+                           font-family: inherit; font-size: 9px; font-weight: 800;
+                           padding: 4px 10px; border-radius: 6px; cursor: pointer; letter-spacing: 0.5px;">LIVE</button>
+          </div>
+          <button onclick="resetSingleAccount('${sym}')"
+                  style="border: 1px solid rgba(255,56,56,0.3); background: rgba(255,56,56,0.06); color: var(--neon-red);
+                         font-family: inherit; font-size: 9px; font-weight: 800;
+                         padding: 4px 10px; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;"
+                  title="Wipe this account back to $50K + clear paper trades for ${cleanSymbol}">↻ RESET</button>
+          ${(acc.tradingMode||'paper') === 'live'
+            ? '<span style="font-size:9px; color:var(--neon-orange); font-weight:800;">⚡ orders to NT8</span>'
+            : '<span style="font-size:9px; color:var(--text-secondary); opacity:0.7;">internal only</span>'}
         </div>
       </div>
       <div class="account-details">
@@ -897,6 +960,85 @@ loadAggressivenessPanel = async function () {
 
 document.addEventListener('DOMContentLoaded', _wireBoostCheckbox);
 
+// Render Daily Stats Card — shows today's trade count, win rate, and P&L
+// with per-symbol breakdown when more than one symbol traded.
+function renderDailyStats(history) {
+  const body = document.getElementById('daily-stats-body');
+  if (!body) return;
+
+  // Normalize to today in ET (trades can run past midnight PT but same ET day)
+  const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const all = Array.isArray(history) ? history : [];
+  const today = all.filter(t => {
+    if (!t.exitTime) return false;
+    return new Date(t.exitTime).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === todayET;
+  });
+
+  if (today.length === 0) {
+    body.innerHTML = `<div class="text-muted text-center" style="padding: 12px 0; font-size: 12px;">No trades today yet.</div>`;
+    return;
+  }
+
+  const wins   = today.filter(t => (t.profit || t.pnl || 0) > 0);
+  const losses = today.filter(t => (t.profit || t.pnl || 0) <= 0);
+  const wr     = wins.length / today.length;
+  const netPnL = today.reduce((s, t) => s + (t.profit || t.pnl || 0), 0);
+
+  const wrColor  = wr >= 0.60 ? 'var(--neon-green)' : wr >= 0.45 ? 'var(--neon-orange)' : '#ff4444';
+  const pnlColor = netPnL >= 0 ? 'var(--neon-green)' : '#ff4444';
+  const pnlStr   = (netPnL >= 0 ? '+' : '') + '$' + Math.abs(netPnL).toFixed(2);
+
+  // Per-symbol breakdown (only rendered when >1 symbol traded today)
+  const bySymbol = {};
+  for (const t of today) {
+    const sym = (t.symbol || '?').replace('=F', '');
+    if (!bySymbol[sym]) bySymbol[sym] = { wins: 0, total: 0, pnl: 0 };
+    bySymbol[sym].total++;
+    const p = t.profit || t.pnl || 0;
+    bySymbol[sym].pnl += p;
+    if (p > 0) bySymbol[sym].wins++;
+  }
+
+  const symRows = Object.entries(bySymbol).map(([sym, s]) => {
+    const sWR    = s.wins / s.total;
+    const sColor = sWR >= 0.60 ? 'var(--neon-green)' : sWR >= 0.45 ? 'var(--neon-orange)' : '#ff4444';
+    const sPnL   = (s.pnl >= 0 ? '+' : '') + '$' + Math.abs(s.pnl).toFixed(2);
+    const sPnLC  = s.pnl >= 0 ? 'var(--neon-green)' : '#ff4444';
+    return `
+      <div style="display:flex; justify-content:space-between; align-items:center;
+                  padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.05);">
+        <span style="font-size:11px; font-weight:700; color:var(--cyan-glow); min-width:36px;">${sym}</span>
+        <span style="font-size:11px; color:var(--text-secondary);">${s.wins}W&nbsp;/&nbsp;${s.total - s.wins}L</span>
+        <span style="font-size:12px; font-weight:800; color:${sColor}; min-width:38px; text-align:right;">${(sWR * 100).toFixed(0)}%</span>
+        <span style="font-size:12px; font-weight:800; color:${sPnLC}; min-width:68px; text-align:right;">${sPnL}</span>
+      </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+      <div style="text-align:center; background:rgba(0,240,255,0.07); border:1px solid rgba(0,240,255,0.12);
+                  border-radius:8px; padding:12px 8px;">
+        <div style="font-size:30px; font-weight:900; color:var(--cyan-glow); line-height:1;">${today.length}</div>
+        <div style="font-size:9px; color:var(--text-secondary); margin-top:5px;
+                    text-transform:uppercase; letter-spacing:1.2px;">Trades Today</div>
+      </div>
+      <div style="text-align:center; background:rgba(0,240,255,0.07); border:1px solid rgba(0,240,255,0.12);
+                  border-radius:8px; padding:12px 8px;">
+        <div style="font-size:30px; font-weight:900; color:${wrColor}; line-height:1;">${(wr * 100).toFixed(0)}%</div>
+        <div style="font-size:9px; color:var(--text-secondary); margin-top:5px;
+                    text-transform:uppercase; letter-spacing:1.2px;">Win Rate</div>
+      </div>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center;
+                background:rgba(255,255,255,0.03); border-radius:6px; padding:9px 14px; margin-bottom:10px;">
+      <span style="font-size:12px; color:var(--neon-green); font-weight:600;">✅ ${wins.length}&nbsp;Win${wins.length !== 1 ? 's' : ''}</span>
+      <span style="font-size:12px; color:#ff4444; font-weight:600;">❌ ${losses.length}&nbsp;Loss${losses.length !== 1 ? 'es' : ''}</span>
+      <span style="font-size:13px; font-weight:900; color:${pnlColor};">${pnlStr}</span>
+    </div>
+    ${Object.keys(bySymbol).length > 1 ? `<div style="padding-top:4px;">${symRows}</div>` : ''}
+  `;
+}
+
 // Render Trade History
 function renderTradeHistory(history) {
   const container = document.getElementById('trade-history-container');
@@ -1332,6 +1474,74 @@ async function toggleSymbolState(symbol, enabled) {
     }
   } catch (e) {
     console.error('[Dashboard] Error toggling symbol trading state:', e.message);
+  }
+}
+
+// Per-family MINI/MICRO contract toggle. Each family (NQ/ES/CL/GC) can be
+// independently mini or micro — user can mix and match per APX account.
+async function setFamilyContractType(family, type) {
+  try {
+    const r = await fetch('/api/family-contract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ family, type })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      console.log(`[Dashboard] ${family} → ${type}`);
+      updateDashboard();
+    } else {
+      alert('Failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+}
+
+// Per-account LIVE/PAPER mode toggle — flips one symbol independently
+// of the global TRADING_MODE env var.
+async function setAccountTradingMode(symbol, mode) {
+  // Confirm LIVE switch (paper → live is the dangerous direction)
+  if (mode === 'live') {
+    if (!confirm(`Switch ${symbol.replace('=F','')} to LIVE mode?\n\nLIVE means orders fire to NT8 on every signal. Make sure:\n  • NT8 chart is on this symbol (or family)\n  • Strategy is enabled on the chart\n  • Account is correct\n\nClick OK to confirm.`)) return;
+  }
+  try {
+    const r = await fetch('/api/account-trading-mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, mode })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      console.log(`[Dashboard] ${symbol} → ${mode.toUpperCase()}`);
+      updateDashboard();
+    } else {
+      alert('Failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+}
+
+// Reset one account back to clean $50K + wipe its paper trade history
+async function resetSingleAccount(symbol) {
+  const clean = symbol.replace('=F','');
+  if (!confirm(`Reset ${clean} account?\n\nThis wipes the balance back to $50,000, clears any open position, and removes all paper trades for ${clean}.\n\nOther accounts are untouched.`)) return;
+  try {
+    const r = await fetch('/api/reset-accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'symbol', symbol })
+    });
+    const j = await r.json();
+    if (r.ok) {
+      console.log(`[Dashboard] ${symbol} reset`);
+      updateDashboard();
+    } else {
+      alert('Failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
   }
 }
 
