@@ -78,11 +78,6 @@ const _lossStreak = {};
 for (const s of ALL_SYMBOLS) { livePrices[s] = 0; lastDecisions[s] = null; lastRegimes[s] = null; }
 const serverStartTime = Date.now();
 
-// Per-symbol cooldown after a signal fires — prevents re-entry within 5 bars
-// (5 minutes on 1-min charts) even if the position closes and probability
-// stays elevated. Reduces loss amplification on quick reversals.
-const _lastSignalTime = new Map();
-const SIGNAL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 // ── Bar-push hook: NT8 closed a 5m bar → run decision engine ────────────────
 // NT8 charts always send mini symbols (NQ=F, ES=F, CL=F, GC=F) — even when
@@ -212,27 +207,21 @@ function processBarUpdate(rawSymbol, candles) {
       eventBus.emit('BLOCKED', symbol,
         `signal blocked — ${!acc ? 'no account' : acc.enabled === false ? 'symbol OFF' : acc.activePosition ? 'already in position' : 'account FAILED'}`);
     } else {
-      // 5-minute signal cooldown — prevents re-entry on the same bar after a quick
-      // position close (reversal chasing). The acc.activePosition check above blocks
-      // concurrent entries; this blocks SEQUENTIAL entries that happen < 5 min apart.
-      const _familyKey = symbol.replace(/^M(NQ|ES|CL|GC)=F$/, '$1=F'); // collapse micro → mini
-      const _cooldownRemaining = SIGNAL_COOLDOWN_MS - (Date.now() - (_lastSignalTime.get(_familyKey) || 0));
-      if (_cooldownRemaining > 0) {
-        eventBus.emit('BLOCKED', symbol,
-          `signal cooldown — ${Math.ceil(_cooldownRemaining / 1000)}s remaining (5-min anti-churn)`);
-      } else {
+      {
         const direction = decision.action === 'BUY' ? 'Long' : 'Short';
+        // Use aggressiveness profile's ATR multipliers so SL/TP adapt to the
+        // active preset (SNIPER, BALANCED, ACTIVE, SCALPER, or AUTO sub-preset).
+        const _prof = getActiveProfile();
         const sessionRegime = {
           ...getActiveSessionRegime(),
-          atrStopMultiplier: 1.5,
-          atrTargetMultiplier: 2.7,
+          atrStopMultiplier:      _prof.slAtrMult    || 1.5,
+          atrTargetMultiplier:    _prof.tpAtrMult    || 2.7,
           atrBreakevenMultiplier: 0.8,
-          atrTrailingMultiplier: 1.0
+          atrTrailingMultiplier:  1.0
         };
         const strategy = `${decision.regime} ${direction} (p=${decision.probability.toFixed(2)})`;
         const pos = enterTrade(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
         if (pos) {
-          _lastSignalTime.set(_familyKey, Date.now());  // arm cooldown on successful entry
           eventBus.emit('ENTRY', symbol,
             `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
             { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
@@ -598,10 +587,11 @@ const server = http.createServer((req, res) => {
         // Get ATR from last decision, fall back to 10 ticks
         const lastDec = lastDecisions[symbol] || lastDecisions[familyMiniSymbol(symbol)];
         const atr = (lastDec && lastDec.atr) || 10;
+        const _profM = getActiveProfile();
         const sessionRegime = {
           ...getActiveSessionRegime(),
-          atrStopMultiplier:     1.5,
-          atrTargetMultiplier:   2.7,
+          atrStopMultiplier:      _profM.slAtrMult    || 1.5,
+          atrTargetMultiplier:    _profM.tpAtrMult    || 2.7,
           atrBreakevenMultiplier: 0.8,
           atrTrailingMultiplier:  1.0
         };
