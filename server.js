@@ -42,15 +42,17 @@ const {
   setContractMode, getContractMode, activeSymbols,
   ALL_SYMBOLS, MINI_SYMBOLS, MICRO_SYMBOLS, CONTRACT_SPECS,
   familyMiniSymbol, familyMicroSymbol, activeContractFor,
-  resetAllAccounts, resetSymbolAccount
+  resetAllAccounts, resetSymbolAccount, setAccountTradingMode,
+  setFamilyContract, getFamilyContracts,
+  setOnPositionClose
 } = require('./lib/paperEngine');
 const { sendTelegramMessage } = require('./lib/telegram');
 const {
   startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
-  broadcastBrainState, bootstrapBuffersFromCsv
+  broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols
 } = require('./lib/nt8Bridge');
-const { decide, modelStatus, getQualityFloors } = require('./lib/decisionEngine');
-const { onBarDecision, getStats, getRecentTrades, getStatsByRegime } = require('./lib/paperHarness');
+const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8, getDecisionMode, setDecisionMode } = require('./lib/decisionEngine');
+// paperHarness removed — all symbols run LIVE via NT8
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
 const { getExitsConfig, setExitsConfig, isFixedActive } = require('./lib/exitsConfig');
@@ -75,6 +77,12 @@ const lastRegimes = {};
 const _lossStreak = {};
 for (const s of ALL_SYMBOLS) { livePrices[s] = 0; lastDecisions[s] = null; lastRegimes[s] = null; }
 const serverStartTime = Date.now();
+
+// Per-symbol cooldown after a signal fires — prevents re-entry within 5 bars
+// (5 minutes on 1-min charts) even if the position closes and probability
+// stays elevated. Reduces loss amplification on quick reversals.
+const _lastSignalTime = new Map();
+const SIGNAL_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 
 // ── Bar-push hook: NT8 closed a 5m bar → run decision engine ────────────────
 // NT8 charts always send mini symbols (NQ=F, ES=F, CL=F, GC=F) — even when
@@ -137,6 +145,12 @@ function processBarUpdate(rawSymbol, candles) {
       bb_z: fv.bb_z,
       atr_pct: fv.atr_pct
     };
+    // Per-family / per-account context — fixes brain panel showing wrong
+    // mode for micros + LIVE accounts (bug found 2026-05-26).
+    const _fam = familySym.replace('=F','');
+    const _famContracts = (typeof getFamilyContracts === 'function') ? getFamilyContracts() : {};
+    const _perFamContract = _famContracts[_fam] || getContractMode();
+    const _perAcctMode = (acc && acc.tradingMode) || TRADING_MODE;
     broadcastBrainState({
       symbol: targetSym,
       family: familySym,
@@ -158,8 +172,8 @@ function processBarUpdate(rawSymbol, candles) {
       positionPnl: acc.activePosition ? (acc.activePosition.unrealizedPnL || 0) : 0,
       sl: acc.activePosition ? acc.activePosition.stopLoss : null,
       tp: acc.activePosition ? acc.activePosition.takeProfit : null,
-      contractMode: getContractMode(),
-      tradingMode: TRADING_MODE,
+      contractMode: _perFamContract,   // per-family (was global)
+      tradingMode: _perAcctMode,       // per-account (was global env)
       exitMode: decision ? decision.exitMode : null,
       features: topFeatures,
       ts: Date.now()
@@ -168,102 +182,79 @@ function processBarUpdate(rawSymbol, candles) {
     console.error('[Server] BRAIN_STATE broadcast failed:', e.message);
   }
 
-  // Paper harness records the bar against the ACTIVE contract (mini OR micro)
-  // so position size + P&L math uses the correct point value.
+  // All symbols are LIVE — decisions go straight to NT8 via the bridge.
   const symbol = targetSym;
-  const paperEvent = onBarDecision(symbol, decision, last);
-  if (paperEvent && paperEvent.event === 'open') {
-    const p = paperEvent.position;
-    eventBus.emit('ENTRY', symbol,
-      `📍 PAPER ${p.direction} @${p.entryPrice.toFixed(2)} SL=${p.stopLoss.toFixed(2)} TP=${p.takeProfit.toFixed(2)} (${p.regime})`,
-      { direction: p.direction, entry: p.entryPrice, sl: p.stopLoss, tp: p.takeProfit, regime: p.regime });
-  }
-  if (paperEvent && paperEvent.event === 'close') {
-    const t = paperEvent.trade;
-    const pnlStr = t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`;
-    eventBus.emit('EXIT', symbol,
-      `🏁 PAPER ${t.direction} closed @${t.exitPrice.toFixed(2)} ${pnlStr} (${t.exitReason})`,
-      { pnl: t.pnl, pnlR: t.pnlR, exitReason: t.exitReason });
-
-    // Feed closed paper trade into the loss auditor for attribution
-    recordTrade({
-      symbol: t.symbol,
-      session: t.session,
-      regime: t.regime,
-      direction: t.direction === 'Long' ? 'long' : 'short',
-      entryTime: t.entryTime,
-      exitTime: t.exitTime,
-      entryPrice: t.entryPrice,
-      exitPrice: t.exitPrice,
-      featureSnapshot: t.featureSnapshot || {},
-      modelProbability: t.probability,
-      threshold: t.threshold,
-      pnl: t.pnl,
-      pnlR: t.pnlR,
-      exitReason: t.exitReason
-    });
-
-    // ── Auto-audit on losing trade ──────────────────────────────────────
-    // Per user spec: "if we loss the trade do the assessment and audit and
-    // fix the issue without assumption". On every losing close, emit a
-    // diagnostic LOSS_AUDIT event with the trade's full context AND check
-    // if the bucket (symbol+session+regime+direction) has accumulated
-    // enough losses to flag the bundle for retrain. The loss auditor's
-    // bucket stats drive this — bundles with 50+ trades and WR < threshold
-    // get flagged for retrain via getRetrainFlags() on the next health check.
-    if (t.pnl < 0) {
-      const bucketKey = `${t.symbol}_${t.session}_${t.regime}_${t.direction === 'Long' ? 'long' : 'short'}`;
-      const featSnap = t.featureSnapshot || {};
-      const features = Object.keys(featSnap)
-        .filter(k => typeof featSnap[k] === 'number')
-        .slice(0, 5)
-        .map(k => `${k}=${featSnap[k].toFixed ? featSnap[k].toFixed(2) : featSnap[k]}`)
-        .join(' ');
-      eventBus.emit('LOSS_AUDIT', symbol,
-        `💸 ${bucketKey}  loss=$${Math.abs(t.pnl).toFixed(2)} R=${(t.pnlR || 0).toFixed(2)} ` +
-        `prob=${(t.probability || 0).toFixed(2)}/${(t.threshold || 0).toFixed(2)} ${features ? '· ' + features : ''}`,
-        { bucketKey, pnl: t.pnl, pnlR: t.pnlR, probability: t.probability,
-          threshold: t.threshold, exitReason: t.exitReason, features: featSnap });
-
-      // Tally consecutive losses for this bucket — alert if 3+ in a row
-      _lossStreak[bucketKey] = (_lossStreak[bucketKey] || 0) + 1;
-      if (_lossStreak[bucketKey] >= 3) {
-        eventBus.emit('WARNING', symbol,
-          `⚠️ ${bucketKey} has ${_lossStreak[bucketKey]} consecutive losses — review specialist quality`,
-          { bucketKey, streak: _lossStreak[bucketKey] });
-      }
-    } else {
-      // Win — reset the streak for this bucket
-      const bucketKey = `${t.symbol}_${t.session}_${t.regime}_${t.direction === 'Long' ? 'long' : 'short'}`;
-      _lossStreak[bucketKey] = 0;
-    }
-  }
-
-  // Live execution path (only when TRADING_MODE=live and the symbol is enabled)
-  if (TRADING_MODE === 'live' && (decision.action === 'BUY' || decision.action === 'SELL')) {
+  if (decision.action === 'BUY' || decision.action === 'SELL') {
     const acc = getPortfolioState().accounts[symbol];
-    if (!acc || acc.enabled === false || acc.activePosition || acc.status === 'FAILED') {
+
+    // SYMBOL-MISMATCH + NT8-NOT-CONNECTED GUARD
+    // (a) If bot wants MNQ=F but NT8 chart is on NQ=F → silent NT8 rejection
+    //     (the new .cs auto-scales qty, but if not recompiled yet, fails).
+    // (b) If no NT8 chart connected for this family AT ALL, the live signal
+    //     would fire into the void. Block + warn clearly.
+    const linked = (typeof getLinkedSymbols === 'function') ? getLinkedSymbols() : {};
+    const family = symbol.replace('=F', '').replace(/^M(NQ|ES|CL|GC)$/, '$1');
+    const chartSym = linked[family];
+    const mismatch = chartSym && chartSym !== symbol;
+    const noChart = !chartSym;
+
+    if (noChart) {
+      eventBus.emit('BLOCKED', symbol,
+        `🚫 LIVE blocked — no NT8 chart connected for ${family}. ` +
+        `Open a NinjaTrader chart on ${family} (or M${family}) with AntigravityBotBridge attached, ` +
+        `OR switch this symbol back to PAPER mode.`);
+    } else if (mismatch) {
+      eventBus.emit('BLOCKED', symbol,
+        `🚫 symbol mismatch — bot wants ${symbol} but NT8 chart is on ${chartSym}. ` +
+        `Recompile AntigravityBotBridge.cs (F5 in NT8) so the new auto-qty-scaler handles it, ` +
+        `or switch bot mode to match the chart.`);
+    } else if (!acc || acc.enabled === false || acc.activePosition || acc.status === 'FAILED') {
       eventBus.emit('BLOCKED', symbol,
         `signal blocked — ${!acc ? 'no account' : acc.enabled === false ? 'symbol OFF' : acc.activePosition ? 'already in position' : 'account FAILED'}`);
     } else {
-      const direction = decision.action === 'BUY' ? 'Long' : 'Short';
-      const sessionRegime = {
-        ...getActiveSessionRegime(),
-        atrStopMultiplier: 1.5,
-        atrTargetMultiplier: 2.7,
-        atrBreakevenMultiplier: 0.8,
-        atrTrailingMultiplier: 1.0
-      };
-      const strategy = `${decision.regime} ${direction} (p=${decision.probability.toFixed(2)})`;
-      const pos = enterTrade(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
-      if (pos) {
-        eventBus.emit('ENTRY', symbol,
-          `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
-          { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
-        sendSignalToNT8(decision.action, symbol, pos.qty, pos.entryPrice,
-          pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+      // 5-minute signal cooldown — prevents re-entry on the same bar after a quick
+      // position close (reversal chasing). The acc.activePosition check above blocks
+      // concurrent entries; this blocks SEQUENTIAL entries that happen < 5 min apart.
+      const _familyKey = symbol.replace(/^M(NQ|ES|CL|GC)=F$/, '$1=F'); // collapse micro → mini
+      const _cooldownRemaining = SIGNAL_COOLDOWN_MS - (Date.now() - (_lastSignalTime.get(_familyKey) || 0));
+      if (_cooldownRemaining > 0) {
+        eventBus.emit('BLOCKED', symbol,
+          `signal cooldown — ${Math.ceil(_cooldownRemaining / 1000)}s remaining (5-min anti-churn)`);
       } else {
-        eventBus.emit('BLOCKED', symbol, 'enterTrade refused (sizer returned 0)');
+        const direction = decision.action === 'BUY' ? 'Long' : 'Short';
+        const sessionRegime = {
+          ...getActiveSessionRegime(),
+          atrStopMultiplier: 1.5,
+          atrTargetMultiplier: 2.7,
+          atrBreakevenMultiplier: 0.8,
+          atrTrailingMultiplier: 1.0
+        };
+        const strategy = `${decision.regime} ${direction} (p=${decision.probability.toFixed(2)})`;
+        const pos = enterTrade(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
+        if (pos) {
+          _lastSignalTime.set(_familyKey, Date.now());  // arm cooldown on successful entry
+          eventBus.emit('ENTRY', symbol,
+            `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
+            { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
+          sendSignalToNT8(decision.action, symbol, pos.qty, pos.entryPrice,
+            pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+          // Telegram entry alert — fires for every new trade while user is away
+          try {
+            const dirEmoji = decision.action === 'BUY' ? '🟢' : '🔴';
+            const slPts  = Math.abs(pos.entryPrice - pos.stopLoss).toFixed(1);
+            const tpPts  = Math.abs(pos.takeProfit - pos.entryPrice).toFixed(1);
+            sendTelegramMessage(
+              `${dirEmoji} *${decision.action === 'BUY' ? 'LONG' : 'SHORT'}* ${symbol.replace('=F','')} ×${pos.qty}\n` +
+              `📍 Entry: \`${pos.entryPrice.toFixed(2)}\`\n` +
+              `🛑 SL: \`${pos.stopLoss.toFixed(2)}\` (−${slPts} pts)\n` +
+              `🎯 TP: \`${pos.takeProfit.toFixed(2)}\` (+${tpPts} pts)\n` +
+              `📊 ${decision.regime} | ${decision.session} | p=${(decision.probability*100).toFixed(1)}% ≥ ${(decision.threshold*100).toFixed(1)}%`,
+              { kind: 'open', header: '⚡ *Antigravity — Entry*' }
+            );
+          } catch (e) { /* non-fatal */ }
+        } else {
+          eventBus.emit('BLOCKED', symbol, 'enterTrade refused (sizer returned 0)');
+        }
       }
     }
   }
@@ -271,6 +262,50 @@ function processBarUpdate(rawSymbol, candles) {
 
 // Register the bar processor with the NT8 bridge for live closed-bar callbacks
 setOnBarCallback(processBarUpdate);
+
+// Register position-close callback — fires when NT8 METRICS transitions to Flat.
+// Sends a Telegram trade-close alert so user sees result while away from desk.
+setOnPositionClose((symbol, closedPos, tradePnL, cumulativeRealized) => {
+  try {
+    const sign = tradePnL >= 0 ? '+' : '';
+    const emoji = tradePnL >= 0 ? '✅' : '❌';
+    const pnlStr = `${sign}$${tradePnL.toFixed(2)}`;
+    const dir = closedPos.direction || '?';
+    const entry = closedPos.entryPrice ? closedPos.entryPrice.toFixed(2) : '?';
+    const strategy = closedPos.strategyUsed || '?';
+
+    // ── Update safety state (daily P&L cap + adaptive thresholds + loss streaks) ──
+    // Extract session and regime from the strategy string (e.g. "CHOP Long (p=0.54)")
+    // Fall back to current bar session/regime if parse fails.
+    try {
+      const { sessionFromTimestamp } = require('./lib/featureEngineer');
+      const session = sessionFromTimestamp(new Date()) || 'ETH';
+      // Strategy string format: "<REGIME> <Direction> (p=<prob>)"
+      const regimeMatch = strategy.match(/^(TREND_UP|TREND_DOWN|CHOP|VOL_EXPANSION)/);
+      const regime = regimeMatch ? regimeMatch[1] : 'CHOP';
+      recordTradeResult({
+        symbol,
+        session,
+        regime,
+        direction: dir,
+        pnl: tradePnL,
+        exitTime: Date.now(),
+        entryPrice: closedPos.entryPrice || 0
+      });
+      console.log(`[Server] recordTradeResult: ${symbol} ${dir} ${regime}/${session} P&L=${pnlStr}`);
+    } catch (e) { console.warn('[Server] recordTradeResult failed:', e.message); }
+
+    sendTelegramMessage(
+      `${emoji} *CLOSED* ${symbol.replace('=F','')} ${dir.toUpperCase()} ×${closedPos.qty || 1}\n` +
+      `📍 Entry: \`${entry}\`\n` +
+      `💵 Trade P&L: *${pnlStr}*\n` +
+      `📈 Session realized: \`$${cumulativeRealized.toFixed(2)}\`\n` +
+      `🔖 ${strategy}`,
+      { kind: 'close', header: `${emoji} *Antigravity — Trade Closed*` }
+    );
+    eventBus.emit('CLOSE', symbol, `${emoji} ${dir} closed — ${pnlStr}`, { pnl: tradePnL });
+  } catch (e) { /* non-fatal */ }
+});
 
 // ── Boot-time warmup ────────────────────────────────────────────────────────
 // Bootstrap loaded ~250 historical bars per family into the candle buffer,
@@ -348,7 +383,42 @@ const server = http.createServer((req, res) => {
         const regime = getActiveSessionRegime();
         const portfolioState = getPortfolioState();
         const yahooNews = await getYahooFinanceNews();
+
+        // All positions come from NT8 METRICS (live only — paper mode removed)
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        // Detect if a retrain is currently writing to a log file in
+        // models/retrain_logs/ — surfaces a "training in progress" badge
+        // on cards so users know why deployed bundles may be sparse / stale.
+        let retrainInProgress = null;
+        try {
+          const rlDir = path.join(__dirname, 'models', 'retrain_logs');
+          if (fs.existsSync(rlDir)) {
+            const latest = fs.readdirSync(rlDir)
+              .filter(f => f.endsWith('.log'))
+              .map(f => ({ f, mtime: fs.statSync(path.join(rlDir, f)).mtimeMs }))
+              .sort((a, b) => b.mtime - a.mtime)[0];
+            if (latest) {
+              const ageSec = (Date.now() - latest.mtime) / 1000;
+              // Active if log was written to in the last 10 minutes AND no
+              // completion marker is present. (Wider window than 90s because
+              // a single 4-fold GBDT bundle can take 4-5 min between log
+              // lines while it's computing the final deployment model.)
+              if (ageSec < 600) {
+                const content = fs.readFileSync(path.join(rlDir, latest.f), 'utf-8');
+                const isDone = /Total runtime|Wrote summary|Trainer complete/.test(content);
+                if (!isDone) {
+                  const started   = (content.match(/Starting walkforward/g) || []).length;
+                  const deployed  = (content.match(/DEPLOYED →/g) || []).length;
+                  const rolled    = (content.match(/ROLLBACK/g) || []).length;
+                  retrainInProgress = { logFile: latest.f, ageSec: Math.round(ageSec),
+                    bundlesStarted: started, deployed, rollback: rolled,
+                    totalExpected: 64 };
+                }
+              }
+            }
+          }
+        } catch (e) { /* non-fatal */ }
+
         return res.end(JSON.stringify({
           ...portfolioState,
           livePrices,
@@ -364,8 +434,34 @@ const server = http.createServer((req, res) => {
           microSymbols: MICRO_SYMBOLS,
           qualityFloors: getQualityFloors(),
           aggressivenessProfile: getActiveProfile(),
+          retrainInProgress,
+          nt8LinkedSymbols: (typeof getLinkedSymbols === 'function') ? getLinkedSymbols() : {},
+          decisionMode: (typeof getDecisionMode === 'function') ? getDecisionMode() : 'HYBRID',
+          familyContracts: (typeof getFamilyContracts === 'function') ? getFamilyContracts() : {},
           tastytradeId: process.env.TASTYTRADE_CLIENT_ID
         }));
+      }
+
+      // POST /api/family-contract — per-family MINI/MICRO toggle
+      // body: { family: 'NQ', type: 'MINI' | 'MICRO' }
+      if (pathname === '/api/family-contract' && req.method === 'POST') {
+        const result = setFamilyContract(reqBody.family, reqBody.type);
+        if (result.ok) {
+          eventBus.emit('INFO', null, `${result.family} family contract → ${result.type}`);
+        }
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      }
+
+      // POST /api/decision-mode — flip between HYBRID and V2
+      // body: { mode: 'HYBRID' | 'V2' }
+      if (pathname === '/api/decision-mode' && req.method === 'POST') {
+        const result = setDecisionMode(reqBody && reqBody.mode);
+        if (result.ok) {
+          eventBus.emit('INFO', null, `Decision mode → ${result.mode}`);
+        }
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
       }
 
       // GET /api/exits — current exits override config
@@ -421,6 +517,17 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify({ status: 'failed', error: 'invalid symbol or session' }));
       }
 
+      // POST /api/account-trading-mode — per-account LIVE/PAPER toggle
+      // body: { symbol: 'NQ=F', mode: 'live' | 'paper' }
+      if (pathname === '/api/account-trading-mode' && req.method === 'POST') {
+        const result = setAccountTradingMode(reqBody.symbol, reqBody.mode);
+        if (result.ok) {
+          eventBus.emit('INFO', result.symbol, `Account ${result.symbol} → ${result.mode.toUpperCase()} mode`);
+        }
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      }
+
       // POST /api/reset-accounts — wipes all 8 accounts + trade history back
       // to clean $50K starting state. Also clears paper_trades.json so the
       // paper engine starts fresh. Used when starting a new paper run.
@@ -429,7 +536,8 @@ const server = http.createServer((req, res) => {
         const symbol = reqBody.symbol;
         let ok = false;
         if (scope === 'symbol' && symbol) {
-          ok = resetSymbolAccount(symbol);
+          const r = resetSymbolAccount(symbol);
+          ok = !!(r && r.ok);
         } else {
           ok = resetAllAccounts();
           // Also wipe paper-trade journal so /api/paper stats start at 0
@@ -459,6 +567,62 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: ok ? 'success' : 'invalid mode', mode: getContractMode() }));
+      }
+
+      // POST /api/fire — manually fire a trade signal to NT8
+      // Body: { symbol: 'MNQ=F', action: 'BUY'|'SELL' }
+      // Uses current live price, current ATR, and standard session/regime exits.
+      // Bypasses the bundle threshold check — operator-initiated override.
+      if (pathname === '/api/fire' && req.method === 'POST') {
+        const { symbol, action } = reqBody;
+        if (!symbol || !action || !['BUY','SELL'].includes(action.toUpperCase())) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'body must include symbol and action (BUY|SELL)' }));
+        }
+        const fireAction = action.toUpperCase();
+        const ps = getPortfolioState();
+        const acc = ps.accounts[symbol];
+        if (!acc) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `unknown symbol ${symbol}` }));
+        }
+        if (acc.activePosition) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'already in position — close first' }));
+        }
+        const px = livePrices[symbol] || livePrices[familyMiniSymbol(symbol)];
+        if (!px) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'no live price yet — NT8 not streaming?' }));
+        }
+        // Get ATR from last decision, fall back to 10 ticks
+        const lastDec = lastDecisions[symbol] || lastDecisions[familyMiniSymbol(symbol)];
+        const atr = (lastDec && lastDec.atr) || 10;
+        const sessionRegime = {
+          ...getActiveSessionRegime(),
+          atrStopMultiplier:     1.5,
+          atrTargetMultiplier:   2.7,
+          atrBreakevenMultiplier: 0.8,
+          atrTrailingMultiplier:  1.0
+        };
+        const direction = fireAction === 'BUY' ? 'Long' : 'Short';
+        const strategy = `Manual ${direction} (operator)`;
+        const pos = enterTrade(symbol, direction, px, strategy, atr, sessionRegime);
+        if (pos) {
+          sendSignalToNT8(fireAction, symbol, pos.qty, pos.entryPrice,
+            pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+          eventBus.emit('ENTRY', symbol,
+            `🖐 MANUAL ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
+            { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            status: 'fired', symbol, direction, qty: pos.qty,
+            entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit,
+            atr: atr.toFixed(2)
+          }));
+        }
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'enterTrade returned null (sizer refused — DD cap?)' }));
       }
 
       // POST /api/close — force close a symbol's position
@@ -808,4 +972,87 @@ server.listen(PORT, () => {
 
   sendTelegramMessage(`🚀 Antigravity v2 cockpit online — mode=${TRADING_MODE}. Listening for NT8 bars on TCP 4000.`);
   fetchEconomicCalendar().catch(() => console.log('[Startup] Economic calendar fetch deferred.'));
+
+  // ── Periodic Telegram Status Digest ────────────────────────────────────────
+  // Every 30 minutes: send a compact state digest to Telegram so the user can
+  // monitor the bot while away from the desk. Shows session, regime, nearest
+  // signal, current P&L, and portfolio balance.
+  // Also detects "near-threshold" probabilities (within 0.06 of firing) and
+  // sends a real-time "signal approaching" alert when probabilities get close.
+  const _nearThresholdAlerted = new Set();  // dedup — only alert once per approach
+  setInterval(() => {
+    try {
+      const ps = getPortfolioState();
+      const syms = ['NQ=F', 'ES=F'];
+      const lines = [];
+      let sessionLabel = '';
+      let totalRealizedToday = 0;
+
+      for (const sym of syms) {
+        const dec = lastDecisions[sym];
+        if (!dec) continue;
+        sessionLabel = dec.session || '';
+        const p = dec.probabilities || {};
+        const sym2 = sym.replace('=F','');
+        const regime = dec.regime || '—';
+        const price = livePrices[sym] ? livePrices[sym].toFixed(2) : '—';
+
+        // Active family micro contract
+        const microSym = sym.replace('NQ','MNQ').replace('ES','MES');
+        const acc = (ps.accounts[microSym] || ps.accounts[sym]) || {};
+        const realized = acc.nt8RealizedPnL || 0;
+        totalRealizedToday += realized;
+
+        const posStr = acc.activePosition
+          ? `📌 ${acc.activePosition.direction} ×${acc.activePosition.qty} @${acc.activePosition.entryPrice.toFixed(2)} (${acc.activePosition.unrealizedPnL >= 0 ? '+' : ''}$${(acc.activePosition.unrealizedPnL || 0).toFixed(0)})`
+          : '⬜ Flat';
+
+        const longPct = p.long != null ? (p.long * 100).toFixed(1) : null;
+        const shortPct = p.short != null ? (p.short * 100).toFixed(1) : null;
+        const longThPct = p.longTh != null ? (p.longTh * 100).toFixed(1) : null;
+        const shortThPct = p.shortTh != null ? (p.shortTh * 100).toFixed(1) : null;
+
+        const probLine = longPct && shortPct
+          ? `📊 L:${longPct}%→${longThPct}% | S:${shortPct}%→${shortThPct}%`
+          : `📊 ${dec.reason || '—'}`;
+
+        lines.push(`*${sym2}* ${price} | ${regime}\n${posStr}\n${probLine}`);
+
+        // Near-threshold alert: prob within 0.06 of the threshold
+        const NEAR_GAP = 0.06;
+        ['long','short'].forEach(dir => {
+          const prob = p[dir];
+          const th = p[dir + 'Th'];
+          if (prob == null || th == null) return;
+          const key = `${sym}_${dir}_${Math.round(prob * 100)}`;
+          if (prob >= (th - NEAR_GAP) && prob < th && !_nearThresholdAlerted.has(key)) {
+            _nearThresholdAlerted.add(key);
+            const gapPct = ((th - prob) * 100).toFixed(1);
+            const dEmoji = dir === 'long' ? '🟢' : '🔴';
+            sendTelegramMessage(
+              `${dEmoji} *SIGNAL APPROACHING* ${sym2} ${dir.toUpperCase()}\n` +
+              `🎯 Prob: ${(prob*100).toFixed(1)}% → needs ${(th*100).toFixed(1)}% (gap: ${gapPct}%)\n` +
+              `📍 ${regime} | ${sessionLabel} | Price: ${price}`,
+              { header: '⚠️ *Antigravity — Near Threshold*' }
+            );
+          } else if (prob < (th - NEAR_GAP)) {
+            // Reset alert so it can fire again on next approach
+            _nearThresholdAlerted.delete(key);
+          }
+        });
+      }
+
+      // Digest summary
+      const allFlat = syms.every(s => {
+        const a = (ps.accounts[s.replace('NQ','MNQ').replace('ES','MES')] || ps.accounts[s]) || {};
+        return !a.activePosition;
+      });
+      const pnlSign = totalRealizedToday >= 0 ? '+' : '';
+      const header = `📡 *Antigravity Status — ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone:'America/Los_Angeles'})} PT*`;
+      sendTelegramMessage(
+        lines.join('\n\n') + `\n\n💰 Session P&L: *${pnlSign}$${totalRealizedToday.toFixed(2)}*`,
+        { kind: 'summary', header }
+      );
+    } catch (e) { /* non-fatal */ }
+  }, 30 * 60 * 1000);  // every 30 minutes
 });

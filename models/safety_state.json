@@ -1,0 +1,16 @@
+{
+  "lastLossAt": {},
+  "lastLossPrice": {},
+  "lossStreak": {},
+  "winStreak": {},
+  "dailyPnL": {
+    "MNQ=F": {
+      "date": "2026-05-27",
+      "pnl": -277.45
+    },
+    "MES=F": {
+      "date": "2026-05-27",
+      "pnl": -853.75
+    }
+  }
+}
