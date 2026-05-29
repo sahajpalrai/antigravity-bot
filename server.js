@@ -847,8 +847,11 @@ const server = http.createServer((req, res) => {
         const ps = getPortfolioState();
         const acc = ps.accounts[symbol];
         if (acc && acc.activePosition) {
-          // Clear local position record immediately so dashboard reflects Flat.
-          // NT8 is source of truth — the CLOSE signal handles the actual exit.
+          // Snapshot position BEFORE clearing so Telegram has the details.
+          // clearActivePosition() wipes the record immediately (dashboard → Flat),
+          // but NT8 METRICS Flat won't fire the setOnPositionClose callback because
+          // prevPosition will already be null by the time it arrives.
+          const closedPos = { ...acc.activePosition };
           clearActivePosition(symbol);
           if (isNT8Connected()) {
             sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
@@ -856,6 +859,19 @@ const server = http.createServer((req, res) => {
             eventBus.emit('WARN', symbol, `⚠ FLAT sent but NT8 not connected — close the position manually in NT8`);
           }
           eventBus.emit('CLOSE', symbol, '🖐 Forced close via dashboard', { pnl: 0 });
+          // Send Telegram close alert (P&L unknown at this point — NT8 hasn't confirmed yet)
+          try {
+            const dir = closedPos.direction || '?';
+            const entry = closedPos.entryPrice ? closedPos.entryPrice.toFixed(2) : '?';
+            const strategy = closedPos.strategyUsed || '?';
+            sendTelegramMessage(
+              `🖐 *MANUAL CLOSE* ${symbol.replace('=F','')} ${dir.toUpperCase()} ×${closedPos.qty || 1}\n` +
+              `📍 Entry: \`${entry}\`\n` +
+              `🔖 ${strategy}\n` +
+              `💵 P&L pending NT8 confirm`,
+              { kind: 'close', header: '🖐 *Antigravity — Forced Close*' }
+            );
+          } catch (e) { /* non-fatal */ }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
             status: 'success',
