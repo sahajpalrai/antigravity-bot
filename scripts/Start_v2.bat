@@ -17,6 +17,11 @@ echo   NT8:  TCP 4000 (waiting for chart connections)
 echo =====================================================
 echo.
 
+REM Start Gate 2 pattern engine in background (port 3100)
+echo Starting Gate 2 pattern engine...
+start "" /B cmd /c "python gate2\scripts\pattern_engine.py > gate2\pattern_engine.log 2>&1"
+timeout /t 2 /nobreak >nul
+
 REM Open browser after a brief delay so it lands on a ready page
 start "" /B cmd /c "timeout /t 3 /nobreak >nul & start http://localhost:3000"
 
