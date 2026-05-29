@@ -853,12 +853,11 @@ namespace NinjaTrader.NinjaScript.Strategies
                         if (isDragging) {
                             Point curPos = e.GetPosition(wpfCanvas);
                             double newLeft = startLeft + (curPos.X - dragStart.X);
-                            double newTop = startTop + (curPos.Y - dragStart.Y);
-                            
-                            // Bounds checks
-                            newLeft = Math.Max(0, Math.Min(wpfCanvas.ActualWidth - wpfPanel.Width, newLeft));
-                            newTop = Math.Max(0, Math.Min(wpfCanvas.ActualHeight - wpfPanel.Height, newTop));
-                            
+                            double newTop  = startTop  + (curPos.Y - dragStart.Y);
+                            // Free placement — no bounds clamp so panel goes anywhere.
+                            // (Previous clamp used wpfPanel.Height which is NaN for
+                            // auto-sized content → Math.Min(NaN,y)=NaN → SetTop(NaN)
+                            // silently froze vertical drag. Fix: just set directly.)
                             Canvas.SetLeft(wpfPanel, newLeft);
                             Canvas.SetTop(wpfPanel, newTop);
                             e.Handled = true;
