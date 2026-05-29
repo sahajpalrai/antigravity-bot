@@ -922,6 +922,18 @@ const server = http.createServer((req, res) => {
         return res.end(JSON.stringify(result));
       }
 
+      // POST /api/max-contracts — set per-account max-contracts ceiling
+      // Body: { symbol: "MNQ=F", qty: 3 }
+      if (pathname === '/api/max-contracts' && req.method === 'POST') {
+        const { setUserMaxContracts } = require('./lib/paperEngine');
+        const result = setUserMaxContracts(reqBody.symbol, reqBody.qty);
+        if (result.ok) {
+          eventBus.emit('INFO', reqBody.symbol, `Max contracts → ${result.userMaxContracts} for ${reqBody.symbol}`);
+        }
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      }
+
       // POST /api/account-number — update account label
       if (pathname === '/api/account-number' && req.method === 'POST') {
         const { updateAccountNumber } = require('./lib/paperEngine');

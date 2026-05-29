@@ -456,6 +456,14 @@
         ${probL}
         ${probS}
         ${posLine}
+        <div class="v6c-maxqty">
+          <span class="v6c-maxqty-lbl">MAX QTY</span>
+          ${[1,2,3,5,10].map(n => {
+            const cur = acc && typeof acc.userMaxContracts === 'number' ? acc.userMaxContracts : 3;
+            const active = cur === n ? ' active' : '';
+            return `<button class="v6c-qbtn${active}" onclick="setMaxQty('${sym}',${n},this)">${n}</button>`;
+          }).join('')}
+        </div>
         <div class="v6c-btns">
           <button class="v6c-btn buy"
                   onclick="ctrl('${sym}','BUY',this)"
@@ -497,6 +505,29 @@
       }
     } catch (e) { console.warn('ctrl error', e); alert(`Network error: ${e.message}`); }
     setTimeout(() => { if (el) el.disabled = false; }, 1500);
+  };
+
+  // ── Max contracts selector ────────────────────────────────────────────────
+  window.setMaxQty = async function (sym, qty, el) {
+    // Optimistically mark the button active immediately so there's no flicker
+    const card = el && el.closest('.v6card');
+    if (card) {
+      card.querySelectorAll('.v6c-qbtn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+    try {
+      const res = await fetch('/api/max-contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym, qty })
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok) {
+        alert(`⚠ Could not set max qty for ${sym.replace('=F','')}\n${d.error || 'Unknown error'}`);
+        // Revert optimistic UI on failure — next state poll will redraw correctly
+        if (card) card.querySelectorAll('.v6c-qbtn').forEach(b => b.classList.remove('active'));
+      }
+    } catch (e) { console.warn('setMaxQty error', e); }
   };
 
   function buildGauge(side, prob, threshold, status, decision) {

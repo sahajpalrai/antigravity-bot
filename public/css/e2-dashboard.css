@@ -666,6 +666,28 @@
 .v6c-gate.warn { background: rgba(255,152,0,0.12); color: #ff9800;                    border: 1px solid rgba(255,152,0,0.4); }
 .v6c-gate.dim  { background: rgba(255,255,255,0.04); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(255,255,255,0.08); }
 
+/* ── Max qty selector ───────────────────────────────────────────────────── */
+.v6c-maxqty {
+  display: flex; align-items: center; gap: 5px; margin: 6px 0 4px;
+}
+.v6c-maxqty-lbl {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.6px; color: rgba(255,255,255,0.38);
+  text-transform: uppercase; white-space: nowrap; margin-right: 2px;
+}
+.v6c-qbtn {
+  flex: 1; border: 1px solid rgba(255,255,255,0.14); border-radius: 5px;
+  background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.45);
+  font-family: inherit; font-size: 10px; font-weight: 700; padding: 4px 0;
+  cursor: pointer; transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.v6c-qbtn:hover {
+  background: rgba(0,240,255,0.10); border-color: rgba(0,240,255,0.45); color: var(--cyan-glow,#00F0FF);
+}
+.v6c-qbtn.active {
+  background: rgba(0,240,255,0.18); border-color: var(--cyan-glow,#00F0FF);
+  color: var(--cyan-glow,#00F0FF); box-shadow: 0 0 8px rgba(0,240,255,0.2);
+}
+
 /* ── Action buttons ────────────────────────────────────────────────────── */
 .v6c-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 2px; }
 .v6c-btn {
