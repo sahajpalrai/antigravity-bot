@@ -445,58 +445,51 @@
         ${posLine}
         <div class="v6c-btns">
           <button class="v6c-btn buy"
-                  onclick="manualFire('${sym}','BUY')"
+                  onclick="ctrl('${sym}','BUY',this)"
                   ${pos ? 'disabled title="Already in position — use FLAT first"' : ''}>▲ BUY</button>
           <button class="v6c-btn sell"
-                  onclick="manualFire('${sym}','SELL')"
+                  onclick="ctrl('${sym}','SELL',this)"
                   ${pos ? 'disabled title="Already in position — use FLAT first"' : ''}>▼ SELL</button>
           <button class="v6c-btn flat"
-                  onclick="manualFlat('${sym}')"
+                  onclick="ctrl('${sym}','FLAT',this)"
                   ${!pos ? 'disabled title="No open position to close"' : ''}>■ FLAT</button>
           <button class="v6c-btn stop"
-                  onclick="toggleSymbolState('${sym}', false)">⊘ STOP</button>
+                  onclick="ctrl('${sym}','STOP',this)">⊘ STOP</button>
         </div>
         ${mismatchBanner}
       </div>`;
   }
 
-  // ── Manual override buttons ───────────────────────────────────────────────
-
-  window.manualFire = async function (sym, action) {
+  // ── Manual override buttons — unified V6-style ctrl() ────────────────────
+  // No confirm dialogs. Button is locked while the fetch is in-flight (prevents
+  // double-fire). Re-enables 1.5 s later (matches next WS state refresh).
+  // cmd: 'BUY' | 'SELL' | 'FLAT' | 'STOP'
+  window.ctrl = async function (sym, cmd, el) {
+    if (el) el.disabled = true;
     try {
-      const res = await fetch('/api/fire', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: sym, action })
-      });
-      const d = await res.json();
-      if (!res.ok || d.error) {
-        alert(`⚠ ${action} failed on ${sym.replace('=F','')}\n\n${d.error || 'Unknown server error'}`);
+      const hdrs = { 'Content-Type': 'application/json' };
+      let res;
+      if (cmd === 'BUY' || cmd === 'SELL') {
+        res = await fetch('/api/fire', { method: 'POST', headers: hdrs,
+          body: JSON.stringify({ symbol: sym, action: cmd }) });
+      } else if (cmd === 'FLAT') {
+        res = await fetch('/api/close', { method: 'POST', headers: hdrs,
+          body: JSON.stringify({ symbol: sym }) });
+      } else if (cmd === 'STOP') {
+        res = await fetch('/api/toggle-symbol', { method: 'POST', headers: hdrs,
+          body: JSON.stringify({ symbol: sym, enabled: false }) });
       }
-    } catch (e) { console.warn('manualFire error', e); alert(`Network error: ${e.message}`); }
-  };
-
-  window.manualFlat = async function (sym) {
-    const label = sym.replace('=F', '');
-    if (!confirm(`Force FLAT on ${label}?\n\nThis closes the open position at current market price.`)) return;
-    try {
-      const res = await fetch('/api/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: sym })
-      });
-      const d = await res.json();
-      if (!res.ok || d.error) {
-        alert(`⚠ FLAT failed on ${label}\n\n${d.error || 'Unknown server error'}`);
-      } else if (d.nt8Sent === false) {
-        alert(`⚠ Paper position closed, but NT8 was not connected.\nClose the position manually in NinjaTrader.`);
+      if (res) {
+        const d = await res.json();
+        if (!res.ok || d.error) {
+          alert(`⚠ ${cmd} failed on ${sym.replace('=F','')}\n\n${d.error || 'Unknown server error'}`);
+        } else if (cmd === 'FLAT' && d.nt8Sent === false) {
+          alert(`⚠ Paper position closed — NT8 not connected.\nClose the position manually in NinjaTrader.`);
+        }
       }
-    } catch (e) { console.warn('manualFlat error', e); alert(`Network error: ${e.message}`); }
+    } catch (e) { console.warn('ctrl error', e); alert(`Network error: ${e.message}`); }
+    setTimeout(() => { if (el) el.disabled = false; }, 1500);
   };
-
-  // STOP fires immediately — no confirm dialog (consistent with BUY/SELL/FLAT).
-  // Pauses NEW automated signals for the symbol; open positions stay open.
-  // Re-enable via the ● ON toggle on the card.
 
   function buildGauge(side, prob, threshold, status, decision) {
     const cls = side === 'long' ? 'l' : 's';
