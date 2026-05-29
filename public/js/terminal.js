@@ -204,136 +204,82 @@
     container.innerHTML = symbols.map(sym => buildE2Card(sym, decisions[sym], accounts[sym], livePrices[sym], specs[sym], floors, data)).join('');
   }
 
+  // ── V6-style symbol card ─────────────────────────────────────────────────
   function buildE2Card(sym, decision, acc, px, spec, floors, data) {
     floors = floors || { rth: 0.65, eth: 0.55 };
     data = data || {};
-    const family = (spec && spec.family) || sym.replace(/^M/, '').replace('=F', '');
-    const isMicro = spec && spec.isMicro;
+    const family    = (spec && spec.family) || sym.replace(/^M/, '').replace('=F', '');
+    const isMicro   = spec && spec.isMicro;
     const displaySym = sym.replace('=F', '');
-    const balance = acc ? acc.balance : 0;
-    const todayPnl = acc ? (acc.realizedPnL || 0) + (acc.unrealizedPnL || 0) : 0;
-    const enabled = acc ? acc.enabled !== false : true;
+    const enabled   = acc ? acc.enabled !== false : true;
 
-    // Decision-derived state
-    const action = decision ? decision.action : null;
-    const regime = decision ? decision.regime : null;
-    const session = decision ? decision.session : '—';
-    const isChop = regime === 'CHOP';
-    const probs = (decision && decision.probabilities) || {};
-    const longP = probs.long;
-    const shortP = probs.short;
-    const longTh = probs.longTh;
-    const shortTh = probs.shortTh;
-    const longBundle = (decision && decision.longBundle) || 'OK';
+    // ── Decision state ──────────────────────────────────────────────────
+    const action      = decision ? decision.action      : null;
+    const regime      = decision ? decision.regime      : null;
+    const session     = decision ? decision.session     : '—';
+    const isChop      = regime === 'CHOP';
+    const probs       = (decision && decision.probabilities) || {};
+    const longP       = probs.long;
+    const shortP      = probs.short;
+    const longTh      = probs.longTh;
+    const shortTh     = probs.shortTh;
+    const longBundle  = (decision && decision.longBundle)  || 'OK';
     const shortBundle = (decision && decision.shortBundle) || 'OK';
+    const retrain     = data && data.retrainInProgress;
 
-    // Classes for fire/chop states
+    // ── Fire class ──────────────────────────────────────────────────────
     let fireClass = '';
-    if (action === 'BUY')  fireClass = 'fire-long';
+    if (action === 'BUY')       fireClass = 'fire-long';
     else if (action === 'SELL') fireClass = 'fire-short';
-    else if (isChop) fireClass = 'chop';
-    if (!enabled) fireClass = 'off';
+    else if (isChop)            fireClass = 'chop';
+    if (!enabled)               fireClass = 'off';
 
-    // Regime pill class
-    const rClass = regime === 'TREND_UP' ? 'up'
-                 : regime === 'TREND_DOWN' ? 'down'
+    // ── Regime pill ─────────────────────────────────────────────────────
+    const rClass = regime === 'TREND_UP'      ? 'up'
+                 : regime === 'TREND_DOWN'    ? 'down'
                  : regime === 'VOL_EXPANSION' ? 'vol'
                  : 'chop';
-    const regimeText = regime ? regime.replace('TREND_', 'TREND ').replace('_', ' ') : 'waiting';
+    const regimeText = regime === 'TREND_UP'      ? 'TREND ↑'
+                     : regime === 'TREND_DOWN'    ? 'TREND ↓'
+                     : regime === 'VOL_EXPANSION' ? 'VOL EXP'
+                     : regime === 'CHOP'          ? 'CHOP'
+                     : '—';
 
-    // Verdict pill
-    let verdictHtml;
-    if (action === 'BUY')       verdictHtml = `<span class="e2-verdict long">▲ FIRE LONG</span>`;
-    else if (action === 'SELL') verdictHtml = `<span class="e2-verdict short">▼ FIRE SHORT</span>`;
-    else if (isChop)            verdictHtml = `<span class="e2-verdict wait">CHOP</span>`;
-    else                        verdictHtml = `<span class="e2-verdict wait">WAIT</span>`;
+    // ── Verdict badge ───────────────────────────────────────────────────
+    let verdictBadge;
+    if (action === 'BUY')        verdictBadge = `<span class="v6c-verdict long">▲ FIRE LONG</span>`;
+    else if (action === 'SELL')  verdictBadge = `<span class="v6c-verdict short">▼ FIRE SHORT</span>`;
+    else if (isChop)             verdictBadge = `<span class="v6c-verdict wait">CHOP</span>`;
+    else                         verdictBadge = `<span class="v6c-verdict wait">WAIT</span>`;
 
-    // Specialist line — shows ALL primed specialists for this family even
-    // before any decision fires, so the user can see what the bot is armed
-    // to do at any moment. In CHOP we surface why classifier rejected the
-    // bar (adx + mix reason) PLUS the primed specialists waiting for a
-    // tradeable regime — otherwise the card looks dead and the user thinks
-    // the bot is broken.
-    // Read live feature data + retrain status from the decision/state object
-    const live = decision && decision.liveFeatures;
-    const retrain = data && data.retrainInProgress;
-
-    // Helper: ADX-colored badge
-    function adxBadge(v) {
-      if (v == null || isNaN(v)) return '<span style="opacity:0.5;">ADX&nbsp;—</span>';
-      const c = v >= 30 ? 'var(--neon-green)' : v >= 20 ? 'var(--neon-orange)' : 'rgba(255,255,255,0.5)';
-      return `<span style="color:${c};">ADX&nbsp;<strong>${v.toFixed(1)}</strong></span>`;
-    }
-    // Helper: RSI-colored badge
-    function rsiBadge(v) {
-      if (v == null || isNaN(v)) return '';
-      const c = v >= 70 ? 'var(--neon-red)' : v <= 30 ? 'var(--neon-green)' : 'rgba(255,255,255,0.5)';
-      return `<span style="color:${c};">RSI&nbsp;<strong>${v.toFixed(0)}</strong></span>`;
-    }
-    // Helper: MACD sign chip
-    function macdBadge(v) {
-      if (v == null || isNaN(v)) return '';
-      const c = v > 0 ? 'var(--neon-green)' : v < 0 ? 'var(--neon-red)' : 'rgba(255,255,255,0.5)';
-      const sign = v > 0 ? '↑' : v < 0 ? '↓' : '·';
-      return `<span style="color:${c};">MACD&nbsp;<strong>${sign}${Math.abs(v).toFixed(2)}</strong></span>`;
-    }
-
-    let specLine;
-    // Banner if a retrain is currently running — explains WHY bundles may be missing
-    const retrainBanner = retrain
-      ? `<span style="display:inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(0,240,255,0.15); border: 1px solid rgba(0,240,255,0.4); color: var(--cyan-glow); font-weight: 700; font-size: 9px; letter-spacing: 0.4px; margin-right: 8px;">🔧 RETRAIN ${retrain.bundlesStarted}/${retrain.totalExpected}</span>`
+    // ── Retrain banner ──────────────────────────────────────────────────
+    const retrainTag = retrain
+      ? `<span style="display:inline-block; padding:2px 7px; border-radius:4px; background:rgba(0,240,255,0.15); border:1px solid rgba(0,240,255,0.4); color:var(--cyan-glow); font-weight:700; font-size:9px; letter-spacing:0.4px; margin-right:6px;">🔧 RETRAIN ${retrain.bundlesStarted}/${retrain.totalExpected}</span>`
       : '';
 
-    if (isChop) {
-      const adx = live && live.adx;
-      const rsi = live && live.rsi;
-      const macd = live && live.macd_hist;
-      const bundles = deployedBundlesFor(family);
-      const armed = bundles.length;
-      const reason = decision && decision.reason || '';
-      // Detect the specific reason so message tells the user what's happening
-      let statusMsg;
-      if (reason.includes('no models trained')) {
-        statusMsg = retrain
-          ? `<span style="color: var(--cyan-glow);">CHOP specialists training now…</span>`
-          : `<span style="color: var(--neon-orange);">CHOP specialists not deployed yet</span>`;
-      } else if (reason.includes('bundle(s) disabled')) {
-        statusMsg = `<span style="color: var(--neon-red);">CHOP bundles failed quality gate (retrain may help)</span>`;
-      } else if (armed > 0) {
-        statusMsg = `<span style="opacity:0.8;">${armed} specialist${armed === 1 ? '' : 's'} primed · waiting for ADX&nbsp;≥&nbsp;25 + EMA alignment</span>`;
-      } else {
-        statusMsg = '<span style="opacity:0.6;">no specialists deployed yet</span>';
-      }
-      specLine = `${retrainBanner}${adxBadge(adx)} ${rsiBadge(rsi)} ${macdBadge(macd)} · ${statusMsg}`;
-    } else if (decision && (longBundle === 'DISABLED' && shortBundle === 'DISABLED')) {
+    // ── Specialist line ─────────────────────────────────────────────────
+    let specLine;
+    if (longBundle === 'DISABLED' && shortBundle === 'DISABLED') {
       specLine = '<span style="color:var(--neon-red);">all bundles gated off (low quality)</span>';
-    } else if (decision && (longBundle === 'MISSING' && shortBundle === 'MISSING')) {
-      specLine = '<span style="color:var(--neon-orange);">no model trained for this regime</span>';
-    } else if (decision && (action === 'BUY' || action === 'SELL')) {
+    } else if (longBundle === 'MISSING' && shortBundle === 'MISSING') {
+      specLine = '<span style="color:var(--neon-orange,#ff9800);">no model trained for this regime</span>';
+    } else if (action === 'BUY' || action === 'SELL') {
       const dir = action === 'BUY' ? 'long' : 'short';
-      specLine = `<strong>active: ${family}_${session}_${regime}_${dir}</strong>`;
+      specLine = `${retrainTag}active: <strong>${family}_${session}_${regime}_${dir}</strong>`;
     } else {
-      // No decision yet — list deployed bundles for this family
-      const bundles = deployedBundlesFor(family);
-      if (bundles.length === 0) {
-        specLine = '<span style="opacity:0.6;">no deployed bundles · waiting for retrain</span>';
+      const primedLong  = longBundle  !== 'MISSING' && longBundle  !== 'DISABLED';
+      const primedShort = shortBundle !== 'MISSING' && shortBundle !== 'DISABLED';
+      const dirs = (primedLong && primedShort) ? '↑↓' : primedLong ? '↑' : primedShort ? '↓' : '';
+      const armed = deployedBundlesFor(family).length;
+      if (armed === 0) {
+        specLine = `${retrainTag}<span style="opacity:0.55;">no deployed bundles · waiting for retrain</span>`;
       } else {
-        const compact = bundles.slice(0, 3).map(b => {
-          const k = b.key.replace('_long', '↑').replace('_short', '↓').replace('VOL_EXPANSION', 'VOL_EXP');
-          return `<strong>${k}</strong>@${b.threshold.toFixed(2)}`;
-        }).join('  ·  ');
-        const more = bundles.length > 3 ? `  +${bundles.length - 3}` : '';
-        specLine = `<span style="opacity:0.85;">primed: ${compact}${more}</span>`;
+        specLine = `${retrainTag}watching: <strong>${family}_${session}_${regime || '…'}${dirs ? ' ' + dirs : ''}</strong>`;
       }
     }
 
-    // Sparkline
-    const sparkPoints = sparkBuffers[family] || [];
-    const sparkSvg = buildSparkline(sparkPoints, todayPnl);
-
-    // Gauges. When no decision yet, surface the BEST threshold across the
-    // family's deployed bundles for each direction (gives user the firing
-    // bar before any bar arrives).
+    // ── Probability bars ─────────────────────────────────────────────────
+    // Best-threshold fallback from deployed bundles when decision hasn't fired
     let displayLongTh = longTh, displayShortTh = shortTh;
     if (displayLongTh === undefined || displayLongTh === null) {
       const dl = deployedBundlesFor(family).filter(b => b.key.endsWith('_long'));
@@ -343,154 +289,179 @@
       const ds = deployedBundlesFor(family).filter(b => b.key.endsWith('_short'));
       displayShortTh = ds.length > 0 ? Math.min(...ds.map(b => b.threshold)) : null;
     }
-    const longGauge = buildGauge('long', longP, displayLongTh, longBundle, decision);
-    const shortGauge = buildGauge('short', shortP, displayShortTh, shortBundle, decision);
 
-    // Change percentage placeholder (computed from sparkline)
-    const chgPct = sparkPoints.length >= 2
-      ? ((sparkPoints[sparkPoints.length - 1] - sparkPoints[0]) / sparkPoints[0]) * 100
-      : 0;
-    const chgClass = chgPct > 0.01 ? 'pos' : (chgPct < -0.01 ? 'neg' : 'flat');
-    const chgText = (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%';
-
-    // Position strip
-    const pos = acc && acc.activePosition;
-    const posHtml = pos
-      ? `<div class="e2-pos-status">${pos.direction} × ${pos.qty} @ ${pos.entryPrice ? pos.entryPrice.toFixed(2) : '—'}</div>
-         <div class="e2-pos-pnl ${(pos.unrealizedPnL || 0) >= 0 ? 'pos' : 'neg'}">${(pos.unrealizedPnL || 0) >= 0 ? '+' : ''}${formatCurrency(pos.unrealizedPnL || 0)}</div>`
-      : `<div class="e2-pos-status">no open position</div>
-         <div class="e2-pos-pnl" style="color:var(--text-secondary); font-size:11px;">flat</div>`;
-
-    // ─── Design-A card style ────────────────────────────────────────────
-    // (Replaces the gauge/sparkline-heavy E2 card body. Clean, scannable,
-    //  exactly like /mockups/design-a.html. Only the card markup changes —
-    //  everything else on the dashboard is preserved.)
-
-    // FIRE badge
-    let opaFireBadge;
-    if (action === 'BUY')        opaFireBadge = `<span class="opa-fire-badge long">▲ FIRE LONG</span>`;
-    else if (action === 'SELL')  opaFireBadge = `<span class="opa-fire-badge short">▼ FIRE SHORT</span>`;
-    else if (isChop)             opaFireBadge = '<span class="opa-fire-badge wait">CHOP</span>';
-    else                         opaFireBadge = '<span class="opa-fire-badge wait">WAIT</span>';
-
-    // Specialist line
-    // Note: CHOP is tradeable via CHOP_long/CHOP_short specialists — don't
-    // hard-code "no specialist active" for CHOP. Fall through to normal logic.
-    let opaSpec;
-    if (longBundle === 'DISABLED' && shortBundle === 'DISABLED') {
-      opaSpec = '<span style="color:var(--neon-red);">all bundles gated (low quality)</span>';
-    } else if (longBundle === 'MISSING' && shortBundle === 'MISSING') {
-      opaSpec = '<span style="color:var(--neon-orange);">no model trained for this regime</span>';
-    } else if (action === 'BUY' || action === 'SELL') {
-      const dir = action === 'BUY' ? 'long' : 'short';
-      opaSpec = `active: <strong>${family}_${session}_${regime}_${dir}</strong>`;
-    } else {
-      // WAIT — primed but probability hasn't crossed threshold yet.
-      // Show which direction bundles are armed (↑ = long, ↓ = short, ↑↓ = both).
-      const primedLong  = longBundle  !== 'MISSING' && longBundle  !== 'DISABLED';
-      const primedShort = shortBundle !== 'MISSING' && shortBundle !== 'DISABLED';
-      const dirs = (primedLong && primedShort) ? '↑↓' : primedLong ? '↑' : primedShort ? '↓' : '';
-      opaSpec = `watching: <strong>${family}_${session}_${regime}</strong>${dirs ? ' ' + dirs : ''}`;
-    }
-
-    // L/S probability bars — always render both bars for visual consistency.
-    //
-    // Three distinct visual states:
-    //   null  → model absent / CHOP suppressed : fill=0, value="—" muted, no tick
-    //           (track looks intentionally empty — not a real reading)
-    //   ~0    → model deployed, near-zero output: fill=1.5% min sliver, value="<1%"
-    //           (track looks alive but quiet — a real reading of no signal)
-    //   N>0   → model deployed, real signal     : fill=N%, value="N%"
-    //           (normal bar — approaching or above threshold)
     function probBar(side, prob, th) {
       const cls    = side === 'long' ? 'long' : 'short';
       const lbl    = side === 'long' ? 'L' : 'S';
       const lblCls = side === 'long' ? 'opa-prob-l' : 'opa-prob-s';
       const hasProb = prob != null;
       const pct     = hasProb ? Math.round(Math.max(0, Math.min(1, prob)) * 100) : 0;
-      const thPct   = th != null ? Math.round(Math.max(0, Math.min(1, th)) * 100) : null;
+      const thPct   = th  != null ? Math.round(Math.max(0, Math.min(1, th))  * 100) : null;
       const hit     = hasProb && th != null && prob >= th;
-
-      // Near-zero: model exists but rounds to 0% — show a minimum sliver + "< 1%"
-      // so the bar looks "live/quiet" rather than "broken/missing".
       const isNearZero = hasProb && pct === 0 && prob > 0;
       const fillPct    = isNearZero ? 1.5 : pct;
       const valText    = !hasProb ? '—' : isNearZero ? '< 1%' : `${pct}%`;
       const valColor   = hit      ? (side === 'long' ? 'var(--neon-green)' : 'var(--neon-red)')
                        : hasProb  ? 'var(--text-primary)'
                        :            'rgba(255,255,255,0.3)';
-
-      const tickHtml = thPct != null ? `<span class="opa-prob-th" style="left:${thPct}%;"></span>` : '';
-      return `<div class="opa-prob"><span class="${lblCls}">${lbl}</span>
+      const tickHtml = thPct != null
+        ? `<span class="opa-prob-th" style="left:${thPct}%;"></span>` : '';
+      return `<div class="opa-prob">
+                <span class="${lblCls}">${lbl}</span>
                 <div class="opa-prob-track">
                   <span class="opa-prob-fill ${cls}" style="width:${fillPct}%;"></span>
                   ${tickHtml}
                 </div>
-                <span class="opa-prob-val" style="color:${valColor};">${valText}</span></div>`;
+                <span class="opa-prob-val" style="color:${valColor};">${valText}</span>
+              </div>`;
     }
-    // Always show real probs — CHOP has dedicated CHOP_long/CHOP_short specialists
-    // that CAN fire BUY/SELL. Suppressing to null created a contradiction where
-    // Signal showed BUY but the bars were empty.
-    const opaProbL = probBar('long',  longP,  displayLongTh);
-    const opaProbS = probBar('short', shortP, displayShortTh);
+    const probL = probBar('long',  longP,  displayLongTh);
+    const probS = probBar('short', shortP, displayShortTh);
 
-    // Position summary
-    let opaPos;
-    if (pos) {
-      const pnl = pos.unrealizedPnL || 0;
-      const pnlClass = pnl >= 0 ? 'pos' : 'neg';
-      const sign = pnl >= 0 ? '+' : '';
-      opaPos = `<div class="opa-pos has">
-                  <span>${pos.direction} × ${pos.qty || 1} @ ${pos.entryPrice ? pos.entryPrice.toFixed(2) : '—'}</span>
-                  <strong class="${pnlClass}">${sign}${formatCurrency(pnl)}</strong>
-                </div>`;
-    } else if (!enabled) {
-      opaPos = `<div class="opa-pos"><span>symbol OFF — paused</span><span>px ${px ? px.toFixed(2) : '—'}</span></div>`;
-    } else {
-      opaPos = `<div class="opa-pos"><span>no open position</span><span>px ${px ? px.toFixed(2) : '—'}</span></div>`;
+    // ── Open position line ───────────────────────────────────────────────
+    const pos = acc && acc.activePosition;
+    const posLine = pos
+      ? `<div style="font-family:'Consolas',monospace; font-size:10px; color:var(--text-secondary); padding:3px 0;">
+           📌 ${pos.direction} ×${pos.qty || 1} @${pos.entryPrice ? pos.entryPrice.toFixed(2) : '—'}
+           &nbsp;·&nbsp;<span style="color:${(pos.unrealizedPnL||0) >= 0 ? 'var(--neon-green)' : 'var(--neon-red)'}; font-weight:800;">${(pos.unrealizedPnL||0) >= 0 ? '+' : ''}${formatCurrency(pos.unrealizedPnL||0)}</span>
+         </div>`
+      : '';
+
+    // ── Account stats (REALIZED / FLOAT / NET LIQ / TRADES) ─────────────
+    const netLiq   = acc ? (acc.nt8Balance   || acc.balance || 0)     : 0;
+    const realized = acc ? (acc.nt8RealizedPnL || 0)                  : 0;
+    const float_   = pos ? (pos.unrealizedPnL || 0)
+                         : (acc ? (acc.nt8UnrealizedPnL || 0) : 0);
+
+    // Today's closed-trade count for this family
+    const todayStr   = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+    const allHistory = Array.isArray(data.history) ? data.history : [];
+    const todayCount = allHistory.filter(t => {
+      if (!t.exitTime) return false;
+      const tFam = (t.symbol || '').replace(/^M/, '').replace('=F', '');
+      return tFam === family && String(t.exitTime).slice(0, 10) === todayStr;
+    }).length;
+
+    function fmtStat(v) {
+      if (v === 0) return `<span class="v6c-stat-val dim">$0</span>`;
+      return `<span class="v6c-stat-val ${v > 0 ? 'pos' : 'neg'}">${v > 0 ? '+' : ''}${formatCurrency(v)}</span>`;
     }
+    const statsHtml = `<div class="v6c-stats">
+      <div class="v6c-stat"><span class="v6c-stat-lbl">REALIZED</span>${fmtStat(realized)}</div>
+      <div class="v6c-stat"><span class="v6c-stat-lbl">FLOAT</span>${fmtStat(float_)}</div>
+      <div class="v6c-stat">
+        <span class="v6c-stat-lbl">NET LIQ</span>
+        <span class="v6c-stat-val">${netLiq > 0 ? formatCurrency(netLiq) : '—'}</span>
+      </div>
+      <div class="v6c-stat">
+        <span class="v6c-stat-lbl">TRADES</span>
+        <span class="v6c-stat-val">${todayCount}</span>
+      </div>
+    </div>`;
 
-    // ─── NT8 symbol-mismatch detection ──────────────────────────────────
-    // Compare the symbol this CARD represents with what NT8 chart is reporting
-    // for this family. If user is in MICRO mode (card sym = MNQ=F) but NT8
-    // chart is on NQ=F (mini), trades won't make it to the chart.
-    const linked = data && data.nt8LinkedSymbols ? data.nt8LinkedSymbols : {};
-    const chartSym = linked[family];
+    // ── Gates row ────────────────────────────────────────────────────────
+    // EMA: regime direction (up/down = green, vol = warn, chop/none = dim)
+    // ML:  any fired signal this bar (green) or probabilities rising (dim)
+    // LQ:  at least one direction has a deployed bundle (green vs off)
+    // SESSION: current session tag with RTH=green, ETH=amber
+    const emaClass = regime === 'TREND_UP' || regime === 'TREND_DOWN' ? 'on'
+                   : regime === 'VOL_EXPANSION' ? 'warn' : 'dim';
+    const emaLabel = regime === 'TREND_UP'   ? 'EMA ↑'
+                   : regime === 'TREND_DOWN' ? 'EMA ↓' : 'EMA';
+
+    const mlClass  = (action === 'BUY' || action === 'SELL') ? 'on' : 'dim';
+    const mlLabel  = (action === 'BUY' || action === 'SELL') ? 'ML ✓' : 'ML ○';
+
+    const lqOk    = !((longBundle === 'DISABLED' || longBundle === 'MISSING') &&
+                      (shortBundle === 'DISABLED' || shortBundle === 'MISSING'));
+    const lqClass = lqOk ? 'on' : 'off';
+    const lqLabel = lqOk ? 'LQ OK' : 'LQ OFF';
+
+    const sessClass = session === 'RTH' ? 'on' : session === 'ETH' ? 'warn' : 'dim';
+
+    const gatesHtml = `<div class="v6c-gates">
+      <span class="v6c-gate ${emaClass}">${emaLabel}</span>
+      <span class="v6c-gate ${mlClass}">${mlLabel}</span>
+      <span class="v6c-gate ${lqClass}">${lqLabel}</span>
+      <span class="v6c-gate ${sessClass}">${session !== '—' ? session : 'OFFLINE'}</span>
+    </div>`;
+
+    // ── NT8 symbol-mismatch detection ────────────────────────────────────
+    const linked    = data && data.nt8LinkedSymbols ? data.nt8LinkedSymbols : {};
+    const chartSym  = linked[family];
     const isMismatch = chartSym && chartSym !== sym;
     let mismatchBanner = '';
     if (isMismatch) {
       const cleanChart = chartSym.replace('=F', '');
-      const cleanCard = displaySym;
       mismatchBanner = `
-        <div style="margin-top:6px; padding:6px 8px; border-radius:6px;
-                    background:rgba(255,152,0,0.12); border:1px solid rgba(255,152,0,0.45);
-                    color: var(--neon-orange); font-size:10px; line-height:1.4;">
-          🚫 <strong>SYMBOL MISMATCH</strong> — NT8 chart is on <strong>${cleanChart}</strong>,
-          bot wants to fire <strong>${cleanCard}</strong>. Trades blocked until you
-          switch ${cleanChart.includes('M') ? 'bot to MICRO mode' : 'bot to MINI mode'}
-          OR retarget chart to <strong>${cleanCard}</strong>.
+        <div style="padding:6px 8px; border-radius:6px; background:rgba(255,152,0,0.12);
+                    border:1px solid rgba(255,152,0,0.45); color:#ff9800; font-size:10px; line-height:1.4;">
+          🚫 <strong>SYMBOL MISMATCH</strong> — NT8 chart on <strong>${cleanChart}</strong>,
+          bot wants <strong>${displaySym}</strong>.
+          Switch chart to ${displaySym} or toggle bot contract mode.
         </div>`;
     }
 
+    // ── Assemble ─────────────────────────────────────────────────────────
     return `
-      <div class="opa-card ${fireClass}" ${isMismatch ? 'style="border-color: rgba(255,152,0,0.6);"' : ''}>
-        <div class="opa-head">
-          <span class="opa-sym">${displaySym}</span>
-          <span class="opa-onoff ${enabled ? 'on' : 'off'}"
+      <div class="v6card ${fireClass}"${isMismatch ? ' style="border-color:rgba(255,152,0,0.6);"' : ''}>
+        <div class="v6c-head">
+          <div class="v6c-sym-row">
+            <span class="v6c-sym">${displaySym}</span>
+            <span class="v6c-tier ${isMicro ? 'micro' : 'mini'}">${isMicro ? 'MICRO' : 'MINI'}</span>
+            <span class="v6c-regime ${rClass}">${regimeText}</span>
+          </div>
+          <span class="v6c-onoff ${enabled ? 'on' : 'off'}"
                 onclick="toggleSymbolState('${sym}', ${!enabled})">${enabled ? '● ON' : '○ OFF'}</span>
         </div>
-        <div class="opa-row2">
-          <span class="opa-r-pill ${rClass}">${regimeText}</span>
-          <span class="opa-sess">${session}</span>
-          ${opaFireBadge}
+        <div class="v6c-row2">
+          <span class="v6c-sess">${session} · ${px != null ? px.toFixed(2) : '—'}</span>
+          ${verdictBadge}
         </div>
-        <div class="opa-spec">${opaSpec}</div>
-        ${opaProbL}
-        ${opaProbS}
+        <div class="v6c-spec">${specLine}</div>
+        ${probL}
+        ${probS}
+        ${posLine}
+        ${statsHtml}
+        ${gatesHtml}
+        <div class="v6c-btns">
+          <button class="v6c-btn buy"  onclick="manualFire('${sym}','BUY')">▲ BUY</button>
+          <button class="v6c-btn sell" onclick="manualFire('${sym}','SELL')">▼ SELL</button>
+          <button class="v6c-btn flat" onclick="manualFlat('${sym}')">■ FLAT</button>
+          <button class="v6c-btn stop" onclick="toggleSymbolState('${sym}', false)">⊘ STOP</button>
+        </div>
         ${mismatchBanner}
-        ${opaPos}
       </div>`;
   }
+
+  // ── Manual override buttons ───────────────────────────────────────────────
+  window.manualFire = async function (sym, action) {
+    const label = sym.replace('=F', '');
+    if (!confirm(`Manual ${action} signal on ${label}?\n\nThis bypasses the bundle threshold check and fires immediately to NT8.`)) return;
+    try {
+      const res = await fetch('/api/fire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym, action })
+      });
+      const d = await res.json();
+      if (d.error) { alert(`⚠ Fire failed: ${d.error}`); }
+    } catch (e) { console.warn('manualFire error', e); alert(`Network error: ${e.message}`); }
+  };
+
+  window.manualFlat = async function (sym) {
+    const label = sym.replace('=F', '');
+    if (!confirm(`Force FLAT on ${label}?\n\nThis will close any open position immediately.`)) return;
+    try {
+      const res = await fetch('/api/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym })
+      });
+      const d = await res.json();
+      if (d.error) { alert(`⚠ Close failed: ${d.error}`); }
+    } catch (e) { console.warn('manualFlat error', e); alert(`Network error: ${e.message}`); }
+  };
 
   function buildGauge(side, prob, threshold, status, decision) {
     const cls = side === 'long' ? 'l' : 's';

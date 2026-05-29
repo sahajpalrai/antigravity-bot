@@ -5,15 +5,12 @@
    Layered on top of style.css + terminal.css. Overrides only what E2 changes.
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* Split layout: 60% cards left, 40% sticky stream right */
+/* Split layout: full-width — stream moved below news (v6 redesign) */
 .e2-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   margin-bottom: 22px;
-}
-@media (max-width: 1200px) {
-  .e2-split { grid-template-columns: 1fr; }
 }
 
 /* ── LEFT pane: D-style operation cards ───────────────────────────────── */
@@ -303,7 +300,7 @@
 .e2-pos-pnl.pos { color: var(--neon-green, #39ff14); }
 .e2-pos-pnl.neg { color: var(--neon-red, #ff3838); }
 
-/* ── RIGHT pane: event stream — stretches full height of the ops column ── */
+/* ── RIGHT pane: event stream — sized to match the ops column height ── */
 .e2-stream-pane {
   background: rgba(11, 14, 30, 0.55);
   border: 1px solid var(--border-light, rgba(255,255,255,0.07));
@@ -313,15 +310,19 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* Force-match the left ops-pane's height. Grid's default align-items:
-     stretch should do this on its own, but some browser layout edge cases
-     (older Chrome + Edge in certain widths) collapse the pane to content
-     height. align-self + height:100% pins it explicitly. */
+  /* align-self: stretch alone makes the pane fill the grid row height —
+     which equals the ops-pane's natural content height. The .e2-stream-body
+     inside has overflow-y: auto so it scrolls internally without growing
+     the outer pane.
+     ⚠ DO NOT add height: 100% or min-height: 100% here. With auto-sized
+     grid rows, percentage heights resolve against the item's own content,
+     which makes the pane stretch to fit ALL 220 wrapped events — pushing
+     past the GC card. align-self is the grid-native answer. */
   align-self: stretch;
-  height: 100%;
-  min-height: 100%;
+  /* Cap at viewport so very long event lists don't blow the layout in
+     edge cases where the user scrolls the page and the row hasn't reflowed */
+  max-height: 100vh;
 }
-/* Also pin the grid container so children grow together */
 .e2-split { align-items: stretch; }
 .e2-stream-head {
   display: flex;
@@ -425,3 +426,275 @@
 .e2-stream-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
 .e2-cards-stack::-webkit-scrollbar-thumb:hover,
 .e2-stream-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   OPA-CARD — Design A style (Trading Floor Terminal cards)
+   Replaces the gauge/sparkline-heavy E2 card body with a cleaner layout:
+     • Symbol + ON/OFF
+     • Regime pill + session + FIRE/WAIT badge
+     • "active: SYM_SESS_REG_{long|short}" line
+     • Horizontal L/S probability bars with threshold tick
+     • V5 confluence chips (display only — patterns visible on chart)
+     • Position summary
+   ──────────────────────────────────────────────────────────────────────── */
+.opa-card {
+  background: rgba(20,25,38,0.7);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.opa-card.fire-short { border-color: rgba(255,56,56,0.45); box-shadow: 0 0 16px rgba(255,56,56,0.1); }
+.opa-card.fire-long  { border-color: rgba(57,255,20,0.45); box-shadow: 0 0 16px rgba(57,255,20,0.1); }
+.opa-card.chop       { opacity: 0.7; }
+.opa-card.off        { opacity: 0.4; filter: grayscale(40%); }
+
+.opa-head { display: flex; justify-content: space-between; align-items: center; }
+.opa-sym  { font-size: 16px; font-weight: 800; }
+.opa-onoff {
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+.opa-onoff.on  { background: rgba(57,255,20,0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+.opa-onoff.off { background: rgba(255,255,255,0.04); color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.1); }
+
+.opa-row2 { display: flex; align-items: center; gap: 8px; }
+.opa-r-pill {
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.opa-r-pill.up   { background: rgba(57,255,20,0.12); color: var(--neon-green); border: 1px solid rgba(57,255,20,0.3); }
+.opa-r-pill.down { background: rgba(255,56,56,0.12); color: var(--neon-red);   border: 1px solid rgba(255,56,56,0.3); }
+.opa-r-pill.vol  { background: rgba(0,240,255,0.12); color: var(--cyan-glow);  border: 1px solid rgba(0,240,255,0.3); }
+.opa-r-pill.chop { background: rgba(154,160,166,0.1); color: var(--text-secondary); border: 1px solid rgba(154,160,166,0.2); }
+.opa-sess { font-size: 9px; color: var(--text-secondary); }
+.opa-fire-badge {
+  margin-left: auto;
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.opa-fire-badge.long  { background: rgba(57,255,20,0.2);  color: var(--neon-green); border: 1px solid var(--neon-green); }
+.opa-fire-badge.short { background: rgba(255,56,56,0.2);  color: var(--neon-red);   border: 1px solid var(--neon-red); }
+.opa-fire-badge.wait  { background: rgba(154,160,166,0.1); color: var(--text-secondary); border: 1px solid rgba(154,160,166,0.25); }
+
+.opa-spec {
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.opa-spec strong { color: var(--text-primary); }
+
+.opa-prob {
+  display: grid;
+  grid-template-columns: 24px 1fr 50px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+.opa-prob-l { color: var(--neon-green); font-weight: 800; }
+.opa-prob-s { color: var(--neon-red);   font-weight: 800; }
+.opa-prob-track {
+  position: relative;
+  height: 8px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.opa-prob-fill { display: block; height: 100%; border-radius: 4px; }
+.opa-prob-fill.long  { background: linear-gradient(90deg, rgba(57,255,20,0.3), var(--neon-green)); }
+.opa-prob-fill.short { background: linear-gradient(90deg, rgba(255,56,56,0.3), var(--neon-red)); }
+.opa-prob-th {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: rgba(255,255,255,0.5);
+}
+.opa-prob-val { text-align: right; font-weight: 700; font-feature-settings: "tnum"; }
+
+.opa-confluence { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.opa-conf-chip {
+  font-size: 8.5px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.opa-conf-chip.bull { background: rgba(57,255,20,0.13); color: var(--neon-green); border: 1px solid rgba(57,255,20,0.35); }
+.opa-conf-chip.bear { background: rgba(255,56,56,0.13); color: var(--neon-red);   border: 1px solid rgba(255,56,56,0.35); }
+
+.opa-pos {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+}
+.opa-pos.has { background: rgba(0,240,255,0.05); border-color: rgba(0,240,255,0.2); }
+.opa-pos strong { color: var(--text-primary); }
+.opa-pos strong.pos { color: var(--neon-green); }
+.opa-pos strong.neg { color: var(--neon-red); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   V6-CARD REDESIGN — 4-column grid + rich card body (2026-05-28)
+   Stream sidebar removed from split; now a full-width section below news.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* 4-column grid for the symbol cards */
+.v6card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+}
+@media (max-width: 1500px) {
+  .v6card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 780px) {
+  .v6card-grid { grid-template-columns: 1fr; }
+}
+
+/* ── V6 card shell ─────────────────────────────────────────────────────── */
+.v6card {
+  background: rgba(14, 18, 32, 0.82);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.v6card.fire-long  { border-color: rgba(57,255,20,0.5);  box-shadow: 0 0 22px rgba(57,255,20,0.09); }
+.v6card.fire-short { border-color: rgba(255,56,56,0.5);  box-shadow: 0 0 22px rgba(255,56,56,0.09); }
+.v6card.chop       { opacity: 0.78; }
+.v6card.off        { opacity: 0.40; filter: grayscale(30%); }
+
+/* ── Header row: symbol + tier badge + regime pill + ON/OFF ─────────────── */
+.v6c-head { display: flex; justify-content: space-between; align-items: center; }
+.v6c-sym-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.v6c-sym { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; line-height: 1; }
+
+.v6c-tier {
+  font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
+  letter-spacing: 0.7px; text-transform: uppercase;
+}
+.v6c-tier.mini  { background: rgba(0,240,255,0.12); color: var(--cyan-glow, #00F0FF); border: 1px solid rgba(0,240,255,0.3); }
+.v6c-tier.micro { background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.4); }
+
+.v6c-regime {
+  font-size: 9px; font-weight: 800; padding: 2px 8px;
+  border-radius: 10px; letter-spacing: 0.4px;
+}
+.v6c-regime.up   { background: rgba(57,255,20,0.12);  color: var(--neon-green, #39ff14); border: 1px solid rgba(57,255,20,0.3); }
+.v6c-regime.down { background: rgba(255,56,56,0.12);  color: var(--neon-red, #ff3838);   border: 1px solid rgba(255,56,56,0.3); }
+.v6c-regime.vol  { background: rgba(0,240,255,0.12);  color: var(--cyan-glow, #00F0FF);  border: 1px solid rgba(0,240,255,0.3); }
+.v6c-regime.chop { background: rgba(154,160,166,0.1); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(154,160,166,0.2); }
+
+.v6c-onoff {
+  cursor: pointer; font-size: 9px; font-weight: 800; padding: 3px 9px;
+  border-radius: 10px; letter-spacing: 0.5px; user-select: none; flex-shrink: 0;
+}
+.v6c-onoff.on  { background: rgba(57,255,20,0.15); color: var(--neon-green, #39ff14); border: 1px solid var(--neon-green, #39ff14); }
+.v6c-onoff.off { background: rgba(255,255,255,0.04); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(255,255,255,0.1); }
+
+/* ── Session + verdict row ──────────────────────────────────────────────── */
+.v6c-row2 { display: flex; align-items: center; gap: 8px; }
+.v6c-sess { font-size: 9px; color: var(--text-secondary, #9aa0a6); letter-spacing: 0.3px; }
+.v6c-verdict {
+  margin-left: auto; font-size: 9px; font-weight: 800; padding: 2px 9px;
+  border-radius: 10px; letter-spacing: 0.5px;
+}
+.v6c-verdict.long  { background: rgba(57,255,20,0.2);  color: var(--neon-green, #39ff14); border: 1px solid var(--neon-green, #39ff14); animation: e2pulse 1.5s infinite; }
+.v6c-verdict.short { background: rgba(255,56,56,0.2);  color: var(--neon-red, #ff3838);   border: 1px solid var(--neon-red, #ff3838);   animation: e2pulse 1.5s infinite; }
+.v6c-verdict.wait  { background: rgba(154,160,166,0.1); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(154,160,166,0.25); }
+
+/* ── Specialist info ───────────────────────────────────────────────────── */
+.v6c-spec {
+  font-family: 'Consolas', 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--text-secondary, #9aa0a6);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.v6c-spec strong { color: var(--text-primary, #f0f6fc); }
+
+/* ── Account stats (REALIZED / FLOAT / NET LIQ / TRADES) ───────────────── */
+.v6c-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.v6c-stat { text-align: center; }
+.v6c-stat-lbl {
+  display: block; font-size: 7.5px; font-weight: 700; letter-spacing: 0.5px;
+  color: var(--text-secondary, #9aa0a6); text-transform: uppercase; margin-bottom: 2px;
+}
+.v6c-stat-val {
+  display: block; font-size: 11px; font-weight: 800; font-feature-settings: "tnum";
+  color: var(--text-primary, #f0f6fc);
+}
+.v6c-stat-val.pos { color: var(--neon-green, #39ff14); }
+.v6c-stat-val.neg { color: var(--neon-red, #ff3838); }
+.v6c-stat-val.dim { color: var(--text-secondary, #9aa0a6); }
+
+/* ── Gates row ─────────────────────────────────────────────────────────── */
+.v6c-gates { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.v6c-gate {
+  font-size: 8px; font-weight: 800; padding: 2px 7px; border-radius: 8px;
+  letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap;
+}
+.v6c-gate.on   { background: rgba(57,255,20,0.13); color: var(--neon-green, #39ff14); border: 1px solid rgba(57,255,20,0.35); }
+.v6c-gate.off  { background: rgba(255,56,56,0.10); color: var(--neon-red, #ff3838);   border: 1px solid rgba(255,56,56,0.30); }
+.v6c-gate.warn { background: rgba(255,152,0,0.12); color: #ff9800;                    border: 1px solid rgba(255,152,0,0.4); }
+.v6c-gate.dim  { background: rgba(255,255,255,0.04); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(255,255,255,0.08); }
+
+/* ── Action buttons ────────────────────────────────────────────────────── */
+.v6c-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 2px; }
+.v6c-btn {
+  border: none; border-radius: 6px; font-family: inherit; font-size: 9px; font-weight: 800;
+  padding: 7px 4px; cursor: pointer; letter-spacing: 0.5px; text-transform: uppercase;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.v6c-btn:active { transform: scale(0.94); }
+.v6c-btn.buy  { background: rgba(57,255,20,0.16); color: var(--neon-green, #39ff14); border: 1px solid var(--neon-green, #39ff14); }
+.v6c-btn.sell { background: rgba(255,56,56,0.16); color: var(--neon-red, #ff3838);   border: 1px solid var(--neon-red, #ff3838); }
+.v6c-btn.flat { background: rgba(0,240,255,0.13); color: var(--cyan-glow, #00F0FF);  border: 1px solid var(--cyan-glow, #00F0FF); }
+.v6c-btn.stop { background: rgba(255,255,255,0.05); color: var(--text-secondary, #9aa0a6); border: 1px solid rgba(255,255,255,0.14); }
+.v6c-btn.buy:hover  { background: rgba(57,255,20,0.30);  box-shadow: 0 0 12px rgba(57,255,20,0.25); }
+.v6c-btn.sell:hover { background: rgba(255,56,56,0.30);  box-shadow: 0 0 12px rgba(255,56,56,0.25); }
+.v6c-btn.flat:hover { background: rgba(0,240,255,0.25);  box-shadow: 0 0 12px rgba(0,240,255,0.2); }
+.v6c-btn.stop:hover { background: rgba(255,255,255,0.11); }
+
+/* ── Full-width event stream section (below news) ──────────────────────── */
+.e2-stream-section {
+  background: rgba(11, 14, 30, 0.55);
+  border: 1px solid var(--border-light, rgba(255,255,255,0.07));
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+  margin-top: 22px;
+}
+/* The stream body inside the section gets a fixed max-height so it scrolls
+   without blowing the page layout */
+.e2-stream-section .e2-stream-body {
+  max-height: 380px;
+}

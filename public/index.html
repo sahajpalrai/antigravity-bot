@@ -8,9 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=20260526j">
-  <link rel="stylesheet" href="css/terminal.css?v=20260526j">
-  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260526j">
+  <link rel="stylesheet" href="css/style.css?v=20260528v6">
+  <link rel="stylesheet" href="css/terminal.css?v=20260528v6">
+  <link rel="stylesheet" href="css/e2-dashboard.css?v=20260528v6">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -241,27 +241,11 @@
                 </div>
               </div>
             </div>
-            <div id="e2-cards" class="e2-cards-stack">
+            <div id="e2-cards" class="v6card-grid">
               <div class="e2-card-placeholder">Waiting for first NT8 bar push on TCP :4000…</div>
             </div>
           </div>
 
-          <!-- RIGHT: sticky event stream sidebar (40%) -->
-          <aside class="e2-stream-pane">
-            <div class="e2-stream-head">
-              <span class="e2-stream-title"><span class="live-pulse"></span> LIVE EVENT STREAM</span>
-              <button class="stream-pause-btn" id="stream-pause-btn" onclick="toggleStreamPause()" title="Pause/resume live stream">⏸</button>
-            </div>
-            <div class="e2-stream-filters">
-              <button class="stream-filter-btn active" data-filter="ALL" onclick="setStreamFilter('ALL')">ALL</button>
-              <button class="stream-filter-btn" data-filter="NQ" onclick="setStreamFilter('NQ')">NQ</button>
-              <button class="stream-filter-btn" data-filter="ES" onclick="setStreamFilter('ES')">ES</button>
-              <button class="stream-filter-btn" data-filter="CL" onclick="setStreamFilter('CL')">CL</button>
-              <button class="stream-filter-btn" data-filter="GC" onclick="setStreamFilter('GC')">GC</button>
-              <button class="stream-filter-btn" data-filter="ERRORS" onclick="setStreamFilter('ERRORS')">⚠</button>
-            </div>
-            <div id="event-stream" class="e2-stream-body"></div>
-          </aside>
         </section>
 
         <!-- Below the terminal: active positions, news, calendar, trades (slimmer rows) -->
@@ -336,6 +320,23 @@
               <div class="market-news-grid" id="market-news-grid">
                 <div class="market-news-empty">Streaming live financial news…</div>
               </div>
+            </div>
+
+            <!-- Live Event Stream — full width below news (v6 redesign 2026-05-28) -->
+            <div class="e2-stream-section">
+              <div class="e2-stream-head">
+                <span class="e2-stream-title"><span class="live-pulse"></span> LIVE EVENT STREAM</span>
+                <button class="stream-pause-btn" id="stream-pause-btn" onclick="toggleStreamPause()" title="Pause/resume live stream">⏸</button>
+              </div>
+              <div class="e2-stream-filters">
+                <button class="stream-filter-btn active" data-filter="ALL"    onclick="setStreamFilter('ALL')">ALL</button>
+                <button class="stream-filter-btn"        data-filter="NQ"     onclick="setStreamFilter('NQ')">NQ</button>
+                <button class="stream-filter-btn"        data-filter="ES"     onclick="setStreamFilter('ES')">ES</button>
+                <button class="stream-filter-btn"        data-filter="CL"     onclick="setStreamFilter('CL')">CL</button>
+                <button class="stream-filter-btn"        data-filter="GC"     onclick="setStreamFilter('GC')">GC</button>
+                <button class="stream-filter-btn"        data-filter="ERRORS" onclick="setStreamFilter('ERRORS')">⚠</button>
+              </div>
+              <div id="event-stream" class="e2-stream-body"></div>
             </div>
           </main>
 
@@ -708,7 +709,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260528b"></script>
-  <script src="js/terminal.js?v=20260528h"></script>
+  <script src="js/app.js?v=20260528v6"></script>
+  <script src="js/terminal.js?v=20260528v6"></script>
 </body>
 </html>
