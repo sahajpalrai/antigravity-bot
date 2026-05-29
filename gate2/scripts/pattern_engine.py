@@ -535,7 +535,11 @@ if __name__ == '__main__':
     port = int(os.environ.get('PATTERN_ENGINE_PORT', 3100))
     print(f'[PatternEngine] Starting on http://localhost:{port}')
     print(f'[PatternEngine] Patterns: FVG | ORB | EMA_RASCHKE | RSI_REVERSAL | DAILY_LEVEL | VWAP_REVERSION | HTF_BREAK')
-    print(f'[PatternEngine] ML model: {"LOADED" if ML_MODEL_FILE.exists() else "NOT YET TRAINED — using pass-through 0.5/0.5"}')
+    # Eager-load ML model so /health immediately shows ml_loaded: true
+    if ML_MODEL_FILE.exists():
+        _load_ml_model()
+    else:
+        print('[PatternEngine] ML model: NOT YET TRAINED — using pass-through 0.5/0.5')
 
     server = HTTPServer(('localhost', port), PatternHandler)
     try:
