@@ -29,7 +29,7 @@ if (fs.existsSync(envPath)) {
 }
 
 const PORT = process.env.PORT || 3000;
-const TRADING_MODE = (process.env.TRADING_MODE || 'paper').toLowerCase(); // 'paper' | 'live'
+const TRADING_MODE = (process.env.TRADING_MODE || 'live').toLowerCase(); // always 'live' — NT8 is source of truth
 
 // ── Modules ─────────────────────────────────────────────────────────────────
 const { checkTradingStatus, getNextSessionChange, getCurrentSessionState } = require('./lib/scheduleController');
@@ -37,12 +37,12 @@ const { getNewsTradingSuspension, fetchEconomicCalendar } = require('./lib/newsC
 const { getYahooFinanceNews } = require('./lib/yahooNews');
 const { getActiveSessionRegime } = require('./lib/sessionRegime');
 const {
-  loadPortfolioState, getPortfolioState, enterTrade, updatePortfolioMetrics,
-  closeTrade, transitionToPAAccount,
+  loadPortfolioState, getPortfolioState, prepareEntry, clearActivePosition,
+  transitionToPAAccount,
   setContractMode, getContractMode, activeSymbols,
   ALL_SYMBOLS, MINI_SYMBOLS, MICRO_SYMBOLS, CONTRACT_SPECS,
   familyMiniSymbol, familyMicroSymbol, activeContractFor,
-  resetAllAccounts, resetSymbolAccount, setAccountTradingMode,
+  resetAllAccounts, resetSymbolAccount,
   setFamilyContract, getFamilyContracts,
   setOnPositionClose
 } = require('./lib/paperEngine');
@@ -130,7 +130,7 @@ function _fireToNT8(d, symbol) {
       atrTrailingMultiplier:  1.0
     };
     const strategy = `${gateTag}${d.regime} ${direction} (p=${(d.probability || 0).toFixed(2)})`;
-    const pos = enterTrade(symbol, direction, d.close, strategy, d.atr, sessionRegime);
+    const pos = prepareEntry(symbol, direction, d.close, strategy, d.atr, sessionRegime);
     if (pos) {
       eventBus.emit('ENTRY', symbol,
         `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
@@ -152,7 +152,7 @@ function _fireToNT8(d, symbol) {
         );
       } catch (e) { /* non-fatal */ }
     } else {
-      eventBus.emit('BLOCKED', symbol, 'enterTrade refused (sizer returned 0)');
+      eventBus.emit('BLOCKED', symbol, 'prepareEntry refused (sizer returned 0)');
     }
   } catch (e) {
     console.error('[_fireToNT8]', e.message);
@@ -258,7 +258,7 @@ function processBarUpdate(rawSymbol, candles) {
     const _fam = familySym.replace('=F','');
     const _famContracts = (typeof getFamilyContracts === 'function') ? getFamilyContracts() : {};
     const _perFamContract = _famContracts[_fam] || getContractMode();
-    const _perAcctMode = (acc && acc.tradingMode) || TRADING_MODE;
+    const _perAcctMode = 'live';
     // CHOP is tradeable via dedicated CHOP_long/CHOP_short specialists — always
     // send real probs and the specialist name regardless of regime.
 
@@ -371,7 +371,7 @@ function processBarUpdate(rawSymbol, candles) {
           atrTrailingMultiplier:  1.0
         };
         const strategy = `${decision.regime} ${direction} (p=${decision.probability.toFixed(2)})`;
-        const pos = enterTrade(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
+        const pos = prepareEntry(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
         if (pos) {
           eventBus.emit('ENTRY', symbol,
             `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
@@ -393,7 +393,7 @@ function processBarUpdate(rawSymbol, candles) {
             );
           } catch (e) { /* non-fatal */ }
         } else {
-          eventBus.emit('BLOCKED', symbol, 'enterTrade refused (sizer returned 0)');
+          eventBus.emit('BLOCKED', symbol, 'prepareEntry refused (sizer returned 0)');
         }
       }
     }
@@ -736,17 +736,6 @@ const server = http.createServer((req, res) => {
         }
       }
 
-      // POST /api/account-trading-mode — per-account LIVE/PAPER toggle
-      // body: { symbol: 'NQ=F', mode: 'live' | 'paper' }
-      if (pathname === '/api/account-trading-mode' && req.method === 'POST') {
-        const result = setAccountTradingMode(reqBody.symbol, reqBody.mode);
-        if (result.ok) {
-          eventBus.emit('INFO', result.symbol, `Account ${result.symbol} → ${result.mode.toUpperCase()} mode`);
-        }
-        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify(result));
-      }
-
       // POST /api/reset-accounts — wipes all 8 accounts + trade history back
       // to clean $50K starting state. Also clears paper_trades.json so the
       // paper engine starts fresh. Used when starting a new paper run.
@@ -759,12 +748,7 @@ const server = http.createServer((req, res) => {
           ok = !!(r && r.ok);
         } else {
           ok = resetAllAccounts();
-          // Also wipe paper-trade journal so /api/paper stats start at 0
-          try {
-            const paperFile = path.join(__dirname, 'models', 'paper_trades.json');
-            if (fs.existsSync(paperFile)) fs.unlinkSync(paperFile);
-          } catch (e) {}
-          // And the loss-attribution buckets
+          // Wipe loss-attribution buckets
           try {
             const lossFile = path.join(__dirname, 'models', 'loss_attributions.json');
             if (fs.existsSync(lossFile)) fs.unlinkSync(lossFile);
@@ -815,11 +799,8 @@ const server = http.createServer((req, res) => {
           return res.end(JSON.stringify({ error: 'no live price yet — NT8 not streaming?' }));
         }
         // ── NT8 connection gate ─────────────────────────────────────────────
-        // Check BEFORE enterTrade so we don't record an internal paper position
-        // that has no matching NT8 order. Accounts default to tradingMode='live'
-        // so this check fires for almost every operator-initiated manual trade.
-        const acctMode = (acc.tradingMode || 'live');
-        if (acctMode === 'live' && !isNT8Connected()) {
+        // All accounts are live — block manual fire if NT8 not connected.
+        if (!isNT8Connected()) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
             error: 'NT8 not connected — open AntigravityBotBridge in NinjaTrader and wait for the bridge to connect, then retry'
@@ -838,16 +819,14 @@ const server = http.createServer((req, res) => {
         };
         const direction = fireAction === 'BUY' ? 'Long' : 'Short';
         const strategy = `Manual ${direction} (operator)`;
-        const pos = enterTrade(symbol, direction, px, strategy, atr, sessionRegime, 1); // manualQty=1: bypass DD sizer for operator button presses
+        const pos = prepareEntry(symbol, direction, px, strategy, atr, sessionRegime, 1); // manualQty=1: bypass DD sizer
         if (pos) {
-          if (acctMode === 'live') {
-            // Pre-send STATUS 1 so NT8's isTradingEnabled is guaranteed true
-            // before the trade signal arrives — handles the case where a prior
-            // STOP or symbol-OFF sent STATUS 0 and the re-enable wasn't received.
-            sendSignalToNT8('STATUS', symbol, 1, 0, 0, 0);
-            sendSignalToNT8(fireAction, symbol, pos.qty, pos.entryPrice,
-              pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
-          }
+          // Pre-send STATUS 1 so NT8's isTradingEnabled is guaranteed true
+          // before the trade signal arrives — handles the case where a prior
+          // STOP or symbol-OFF sent STATUS 0 and the re-enable wasn't received.
+          sendSignalToNT8('STATUS', symbol, 1, 0, 0, 0);
+          sendSignalToNT8(fireAction, symbol, pos.qty, pos.entryPrice,
+            pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
           eventBus.emit('ENTRY', symbol,
             `🖐 MANUAL ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
             { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
@@ -855,11 +834,11 @@ const server = http.createServer((req, res) => {
           return res.end(JSON.stringify({
             status: 'fired', symbol, direction, qty: pos.qty,
             entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit,
-            atr: atr.toFixed(2), nt8Sent: acctMode === 'live'
+            atr: atr.toFixed(2), nt8Sent: true
           }));
         }
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: `enterTrade refused — symbol is disabled or already in a position (symbol=${symbol}, enabled=${acc.enabled})` }));
+        return res.end(JSON.stringify({ error: `prepareEntry refused — symbol is disabled or already in a position (symbol=${symbol}, enabled=${acc.enabled})` }));
       }
 
       // POST /api/close — force close a symbol's position
@@ -868,23 +847,19 @@ const server = http.createServer((req, res) => {
         const ps = getPortfolioState();
         const acc = ps.accounts[symbol];
         if (acc && acc.activePosition) {
-          const exitPrice = livePrices[symbol] || acc.activePosition.entryPrice;
-          closeTrade(symbol, exitPrice, 'Forced Close via Dashboard');
-          // Send CLOSE to NT8 only when connected — always close the paper
-          // position regardless (keeps internal state clean).
-          const acctModeClose = (acc.tradingMode || 'live');
-          if (acctModeClose === 'live') {
-            if (isNT8Connected()) {
-              sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
-            } else {
-              // Paper side closed; warn the operator NT8 didn't get it.
-              eventBus.emit('WARN', symbol, `⚠ FLAT sent but NT8 not connected — close the position manually in NT8`);
-            }
+          // Clear local position record immediately so dashboard reflects Flat.
+          // NT8 is source of truth — the CLOSE signal handles the actual exit.
+          clearActivePosition(symbol);
+          if (isNT8Connected()) {
+            sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
+          } else {
+            eventBus.emit('WARN', symbol, `⚠ FLAT sent but NT8 not connected — close the position manually in NT8`);
           }
+          eventBus.emit('CLOSE', symbol, '🖐 Forced close via dashboard', { pnl: 0 });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
             status: 'success',
-            nt8Sent: acctModeClose === 'live' && isNT8Connected()
+            nt8Sent: isNT8Connected()
           }));
         }
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1041,7 +1016,6 @@ const server = http.createServer((req, res) => {
           buckets,
           topLossFeatures: topFeatures,
           retrainFlags: flags,
-          stats: getRecentTrades(30),
           settings: _legacySettingsShim()
         }));
       }
@@ -1050,16 +1024,6 @@ const server = http.createServer((req, res) => {
       if (pathname === '/api/models' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ models: modelStatus() }));
-      }
-
-      // GET /api/paper — paper trade history + stats
-      if (pathname === '/api/paper' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({
-          stats: getStats(),
-          byRegime: getStatsByRegime(),
-          recent: getRecentTrades(50)
-        }));
       }
 
       // GET /api/decisions — latest decision per symbol (for live regime/prob display)
@@ -1259,19 +1223,6 @@ setInterval(() => {
     console.log(`[EOD] 4:58 PM ET check — no open positions, nothing to close.`);
   }
 }, 30000);
-
-// ── Live-price ticker (low-frequency, mirrors NT8 reality) ──────────────────
-// Old code spammed Yahoo every 2s. New behavior: prices update only when NT8
-// pushes a BAR. updatePortfolioMetrics still gets called to compute equity
-// curves and trigger SL/TP exits on positions opened via /api/state path.
-setInterval(() => {
-  const regime = getActiveSessionRegime();
-  updatePortfolioMetrics(livePrices, {
-    ...regime,
-    atrBreakevenMultiplier: 0.8,
-    atrTrailingMultiplier: 1.0
-  });
-}, 5000);
 
 // ── Startup ─────────────────────────────────────────────────────────────────
 server.listen(PORT, () => {

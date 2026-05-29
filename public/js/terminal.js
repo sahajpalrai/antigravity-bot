@@ -321,7 +321,7 @@
       const hit     = hasProb && th != null && prob >= th;
       const isNearZero = hasProb && pct === 0 && prob > 0;
       const fillPct    = isNearZero ? 1.5 : pct;
-      const valText    = !hasProb ? '—' : isNearZero ? '< 1%' : `${pct}%`;
+      const valText    = !hasProb ? '0%' : isNearZero ? '< 1%' : `${pct}%`;
       const valColor   = hit      ? (side === 'long' ? 'var(--neon-green)' : 'var(--neon-red)')
                        : hasProb  ? 'var(--text-primary)'
                        :            'rgba(255,255,255,0.3)';

@@ -348,26 +348,14 @@ function renderAccounts(accounts) {
                 : `<span style="color: var(--neon-green);">✓ NT8 chart linked: <strong>${chartClean}</strong></span>`)
             : `<span style="color: var(--text-secondary); opacity:0.7;">○ NT8 chart not connected for ${family}</span>`}
         </div>
-        <!-- Per-account LIVE/PAPER toggle + RESET — built per user request -->
+        <!-- Reset account button -->
         <div style="display:flex; align-items:center; gap: 10px; margin-top: 8px; flex-wrap: wrap;">
-          <div style="display:flex; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 2px;">
-            <button onclick="setAccountTradingMode('${sym}','paper')"
-                    style="border: none; background: ${(acc.tradingMode||'paper') === 'paper' ? 'rgba(154,160,166,0.25); color: var(--text-primary)' : 'transparent; color: var(--text-secondary)'};
-                           font-family: inherit; font-size: 9px; font-weight: 800;
-                           padding: 4px 10px; border-radius: 6px; cursor: pointer; letter-spacing: 0.5px;">PAPER</button>
-            <button onclick="setAccountTradingMode('${sym}','live')"
-                    style="border: none; background: ${(acc.tradingMode||'paper') === 'live' ? 'rgba(255,152,0,0.25); color: var(--neon-orange); box-shadow: 0 0 10px rgba(255,152,0,0.2)' : 'transparent; color: var(--text-secondary)'};
-                           font-family: inherit; font-size: 9px; font-weight: 800;
-                           padding: 4px 10px; border-radius: 6px; cursor: pointer; letter-spacing: 0.5px;">LIVE</button>
-          </div>
           <button onclick="resetSingleAccount('${sym}')"
                   style="border: 1px solid rgba(255,56,56,0.3); background: rgba(255,56,56,0.06); color: var(--neon-red);
                          font-family: inherit; font-size: 9px; font-weight: 800;
                          padding: 4px 10px; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;"
-                  title="Wipe this account back to $50K + clear paper trades for ${cleanSymbol}">↻ RESET</button>
-          ${(acc.tradingMode||'paper') === 'live'
-            ? '<span style="font-size:9px; color:var(--neon-orange); font-weight:800;">⚡ orders to NT8</span>'
-            : '<span style="font-size:9px; color:var(--text-secondary); opacity:0.7;">internal only</span>'}
+                  title="Wipe this account back to $50K for ${cleanSymbol}">↻ RESET</button>
+          <span style="font-size:9px; color:var(--neon-orange); font-weight:800;">⚡ LIVE — orders via NT8</span>
         </div>
       </div>
       <div class="account-details">
@@ -1583,31 +1571,6 @@ async function setFamilyContractType(family, type) {
     const j = await r.json();
     if (j.ok) {
       console.log(`[Dashboard] ${family} → ${type}`);
-      updateDashboard();
-    } else {
-      alert('Failed: ' + (j.error || 'unknown'));
-    }
-  } catch (e) {
-    alert('Network error: ' + e.message);
-  }
-}
-
-// Per-account LIVE/PAPER mode toggle — flips one symbol independently
-// of the global TRADING_MODE env var.
-async function setAccountTradingMode(symbol, mode) {
-  // Confirm LIVE switch (paper → live is the dangerous direction)
-  if (mode === 'live') {
-    if (!confirm(`Switch ${symbol.replace('=F','')} to LIVE mode?\n\nLIVE means orders fire to NT8 on every signal. Make sure:\n  • NT8 chart is on this symbol (or family)\n  • Strategy is enabled on the chart\n  • Account is correct\n\nClick OK to confirm.`)) return;
-  }
-  try {
-    const r = await fetch('/api/account-trading-mode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol, mode })
-    });
-    const j = await r.json();
-    if (j.ok) {
-      console.log(`[Dashboard] ${symbol} → ${mode.toUpperCase()}`);
       updateDashboard();
     } else {
       alert('Failed: ' + (j.error || 'unknown'));
