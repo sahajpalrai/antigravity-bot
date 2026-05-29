@@ -441,15 +441,7 @@
 
   // ── Manual override buttons ───────────────────────────────────────────────
 
-  // Issue 4 fix: confirm copy now correctly lists ALL bypasses (threshold +
-  // cooldown + direction lock) so the operator knows exactly what they're doing.
   window.manualFire = async function (sym, action) {
-    const label = sym.replace('=F', '');
-    if (!confirm(
-      `Manual ${action} on ${label}?\n\n` +
-      `⚠ This bypasses the bundle threshold, cooldown timer, and direction lock — ` +
-      `fires immediately to NT8.`
-    )) return;
     try {
       const res = await fetch('/api/fire', {
         method: 'POST',
