@@ -454,7 +454,7 @@
                   onclick="manualFlat('${sym}')"
                   ${!pos ? 'disabled title="No open position to close"' : ''}>■ FLAT</button>
           <button class="v6c-btn stop"
-                  onclick="confirmStop('${sym}')">⊘ STOP</button>
+                  onclick="toggleSymbolState('${sym}', false)">⊘ STOP</button>
         </div>
         ${mismatchBanner}
       </div>`;
@@ -494,20 +494,9 @@
     } catch (e) { console.warn('manualFlat error', e); alert(`Network error: ${e.message}`); }
   };
 
-  // Issue 3 fix: STOP was calling toggleSymbolState() directly with no confirm,
-  // making it easy to accidentally halt a symbol mid-session. Now it explains
-  // exactly what it does (pauses NEW signals, does NOT close open positions)
-  // so the operator can decide whether to FLAT first.
-  window.confirmStop = function (sym) {
-    const label = sym.replace('=F', '');
-    if (!confirm(
-      `Stop ${label}?\n\n` +
-      `This pauses new automated signals for this symbol.\n` +
-      `Any open position stays open — use FLAT to close it first if needed.\n\n` +
-      `Re-enable with the ● ON toggle on the card.`
-    )) return;
-    toggleSymbolState(sym, false);
-  };
+  // STOP fires immediately — no confirm dialog (consistent with BUY/SELL/FLAT).
+  // Pauses NEW automated signals for the symbol; open positions stay open.
+  // Re-enable via the ● ON toggle on the card.
 
   function buildGauge(side, prob, threshold, status, decision) {
     const cls = side === 'long' ? 'l' : 's';
