@@ -453,8 +453,6 @@
           <button class="v6c-btn flat"
                   onclick="ctrl('${sym}','FLAT',this)"
                   ${!pos ? 'disabled title="No open position to close"' : ''}>■ FLAT</button>
-          <button class="v6c-btn stop"
-                  onclick="ctrl('${sym}','STOP',this)">⊘ STOP</button>
         </div>
         ${mismatchBanner}
       </div>`;
@@ -463,7 +461,7 @@
   // ── Manual override buttons — unified V6-style ctrl() ────────────────────
   // No confirm dialogs. Button is locked while the fetch is in-flight (prevents
   // double-fire). Re-enables 1.5 s later (matches next WS state refresh).
-  // cmd: 'BUY' | 'SELL' | 'FLAT' | 'STOP'
+  // cmd: 'BUY' | 'SELL' | 'FLAT'
   window.ctrl = async function (sym, cmd, el) {
     if (el) el.disabled = true;
     try {
@@ -475,9 +473,6 @@
       } else if (cmd === 'FLAT') {
         res = await fetch('/api/close', { method: 'POST', headers: hdrs,
           body: JSON.stringify({ symbol: sym }) });
-      } else if (cmd === 'STOP') {
-        res = await fetch('/api/toggle-symbol', { method: 'POST', headers: hdrs,
-          body: JSON.stringify({ symbol: sym, enabled: false }) });
       }
       if (res) {
         const d = await res.json();
