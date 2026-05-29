@@ -423,19 +423,33 @@
         ${probS}
         ${posLine}
         <div class="v6c-btns">
-          <button class="v6c-btn buy"  onclick="manualFire('${sym}','BUY')">▲ BUY</button>
-          <button class="v6c-btn sell" onclick="manualFire('${sym}','SELL')">▼ SELL</button>
-          <button class="v6c-btn flat" onclick="manualFlat('${sym}')">■ FLAT</button>
-          <button class="v6c-btn stop" onclick="toggleSymbolState('${sym}', false)">⊘ STOP</button>
+          <button class="v6c-btn buy"
+                  onclick="manualFire('${sym}','BUY')"
+                  ${pos ? 'disabled title="Already in position — use FLAT first"' : ''}>▲ BUY</button>
+          <button class="v6c-btn sell"
+                  onclick="manualFire('${sym}','SELL')"
+                  ${pos ? 'disabled title="Already in position — use FLAT first"' : ''}>▼ SELL</button>
+          <button class="v6c-btn flat"
+                  onclick="manualFlat('${sym}')"
+                  ${!pos ? 'disabled title="No open position to close"' : ''}>■ FLAT</button>
+          <button class="v6c-btn stop"
+                  onclick="confirmStop('${sym}')">⊘ STOP</button>
         </div>
         ${mismatchBanner}
       </div>`;
   }
 
   // ── Manual override buttons ───────────────────────────────────────────────
+
+  // Issue 4 fix: confirm copy now correctly lists ALL bypasses (threshold +
+  // cooldown + direction lock) so the operator knows exactly what they're doing.
   window.manualFire = async function (sym, action) {
     const label = sym.replace('=F', '');
-    if (!confirm(`Manual ${action} signal on ${label}?\n\nThis bypasses the bundle threshold check and fires immediately to NT8.`)) return;
+    if (!confirm(
+      `Manual ${action} on ${label}?\n\n` +
+      `⚠ This bypasses the bundle threshold, cooldown timer, and direction lock — ` +
+      `fires immediately to NT8.`
+    )) return;
     try {
       const res = await fetch('/api/fire', {
         method: 'POST',
@@ -449,7 +463,7 @@
 
   window.manualFlat = async function (sym) {
     const label = sym.replace('=F', '');
-    if (!confirm(`Force FLAT on ${label}?\n\nThis will close any open position immediately.`)) return;
+    if (!confirm(`Force FLAT on ${label}?\n\nThis closes the open position at current market price.`)) return;
     try {
       const res = await fetch('/api/close', {
         method: 'POST',
@@ -459,6 +473,21 @@
       const d = await res.json();
       if (d.error) { alert(`⚠ Close failed: ${d.error}`); }
     } catch (e) { console.warn('manualFlat error', e); alert(`Network error: ${e.message}`); }
+  };
+
+  // Issue 3 fix: STOP was calling toggleSymbolState() directly with no confirm,
+  // making it easy to accidentally halt a symbol mid-session. Now it explains
+  // exactly what it does (pauses NEW signals, does NOT close open positions)
+  // so the operator can decide whether to FLAT first.
+  window.confirmStop = function (sym) {
+    const label = sym.replace('=F', '');
+    if (!confirm(
+      `Stop ${label}?\n\n` +
+      `This pauses new automated signals for this symbol.\n` +
+      `Any open position stays open — use FLAT to close it first if needed.\n\n` +
+      `Re-enable with the ● ON toggle on the card.`
+    )) return;
+    toggleSymbolState(sym, false);
   };
 
   function buildGauge(side, prob, threshold, status, decision) {

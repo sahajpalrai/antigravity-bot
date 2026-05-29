@@ -682,6 +682,15 @@
 .v6c-btn.sell:hover { background: rgba(255,56,56,0.30);  box-shadow: 0 0 12px rgba(255,56,56,0.25); }
 .v6c-btn.flat:hover { background: rgba(0,240,255,0.25);  box-shadow: 0 0 12px rgba(0,240,255,0.2); }
 .v6c-btn.stop:hover { background: rgba(255,255,255,0.11); }
+/* Disabled state — shown when action is not valid given current position state */
+.v6c-btn:disabled {
+  opacity: 0.22;
+  cursor: not-allowed;
+  box-shadow: none !important;
+  transform: none !important;
+  filter: saturate(0);
+}
+.v6c-btn:disabled:hover { background: inherit !important; box-shadow: none !important; }
 
 /* ── Full-width event stream section (below news) ──────────────────────── */
 .e2-stream-section {
