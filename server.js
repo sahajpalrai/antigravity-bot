@@ -261,6 +261,22 @@ function processBarUpdate(rawSymbol, candles) {
     const _perAcctMode = (acc && acc.tradingMode) || TRADING_MODE;
     // CHOP is tradeable via dedicated CHOP_long/CHOP_short specialists — always
     // send real probs and the specialist name regardless of regime.
+
+    // Compute per-instrument open P&L from price data.
+    // NT8's unrealizedPnL is account-wide — all 4 charts on the same sim
+    // account share one P&L figure (e.g., ES, CL, GC all show -$9170.50).
+    // Fix: derive from (close − entryPrice) × direction × qty × pointVal.
+    const _brainSpec = CONTRACT_SPECS[targetSym];
+    const _brainPos  = acc.activePosition;
+    const _brainPnl  = (() => {
+      if (!_brainPos) return 0;
+      if (_brainSpec && _brainPos.entryPrice > 0 && last && last.close) {
+        const diff = (last.close - _brainPos.entryPrice) * (_brainPos.direction === 'Long' ? 1 : -1);
+        return Math.round(diff * (_brainSpec.pointVal || 1) * (_brainPos.qty || 1) * 100) / 100;
+      }
+      return _brainPos.unrealizedPnL || 0;  // fallback when price unavailable
+    })();
+
     broadcastBrainState({
       symbol: targetSym,
       family: familySym,
@@ -276,10 +292,10 @@ function processBarUpdate(rawSymbol, candles) {
       specialist: (decision && decision.regime && decision.session)
         ? `${familyMiniSymbol(targetSym).replace('=F','')}_${decision.session}_${decision.regime}`
         : '—',
-      positionDir: acc.activePosition ? acc.activePosition.direction : null,
-      positionQty: acc.activePosition ? acc.activePosition.qty : 0,
-      positionEntry: acc.activePosition ? acc.activePosition.entryPrice : 0,
-      positionPnl: acc.activePosition ? (acc.activePosition.unrealizedPnL || 0) : 0,
+      positionDir: _brainPos ? _brainPos.direction : null,
+      positionQty: _brainPos ? _brainPos.qty : 0,
+      positionEntry: _brainPos ? _brainPos.entryPrice : 0,
+      positionPnl: _brainPnl,
       sl: acc.activePosition ? acc.activePosition.stopLoss : null,
       tp: acc.activePosition ? acc.activePosition.takeProfit : null,
       contractMode: _perFamContract,   // per-family (was global)
@@ -678,6 +694,46 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: 'failed', error: 'invalid symbol or session' }));
+      }
+
+      // GET /api/shadow-log — Gate 2 shadow mode summary
+      // Returns the last 200 entries from gate2/shadow_log.json with
+      // a summary: total bars, G2 fires, agreement rate, pattern breakdown.
+      if (pathname === '/api/shadow-log' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        try {
+          const logFile = path.join(__dirname, 'gate2', 'shadow_log.json');
+          let rows = [];
+          if (fs.existsSync(logFile)) {
+            const raw = fs.readFileSync(logFile, 'utf-8').trim();
+            if (raw) rows = JSON.parse(raw);
+          }
+          // Most recent first, cap at 200 for display
+          const recent = rows.slice(-200).reverse();
+          // Compute summary stats
+          const total = rows.length;
+          let gate2Fires = 0, agreements = 0, eligiblePairs = 0;
+          const patternCounts = {};
+          for (const r of rows) {
+            if (r.gate2Signal && r.gate2Signal !== 'FLAT') gate2Fires++;
+            if (r.gate2Pattern) patternCounts[r.gate2Pattern] = (patternCounts[r.gate2Pattern] || 0) + 1;
+            if (r.agrees !== null && r.agrees !== undefined) {
+              eligiblePairs++;
+              if (r.agrees) agreements++;
+            }
+          }
+          return res.end(JSON.stringify({
+            rows: recent,
+            summary: {
+              total,
+              gate2Fires,
+              agreementRate: eligiblePairs > 0 ? agreements / eligiblePairs : null,
+              patternCounts
+            }
+          }));
+        } catch (e) {
+          return res.end(JSON.stringify({ rows: [], summary: { total: 0, gate2Fires: 0, agreementRate: null, patternCounts: {} }, error: e.message }));
+        }
       }
 
       // POST /api/account-trading-mode — per-account LIVE/PAPER toggle

@@ -341,18 +341,31 @@
 
     // ── Open position line ───────────────────────────────────────────────
     const pos = acc && acc.activePosition;
+    // Compute per-position P&L from live price — NT8's unrealizedPnL is
+    // account-wide: all charts on the same sim account share one number
+    // (e.g., NQ+ES+CL+GC all show -$9170.50).
+    // Fix: derive from (livePrice − entryPrice) × direction × qty × pointVal.
+    const posPnl = (() => {
+      if (!pos) return 0;
+      if (px && spec && pos.entryPrice > 0) {
+        const diff = (px - pos.entryPrice) * (pos.direction === 'Long' ? 1 : -1);
+        return Math.round(diff * (spec.pointVal || 1) * (pos.qty || 1) * 100) / 100;
+      }
+      return pos.unrealizedPnL || 0;  // fallback when live price unavailable
+    })();
+
     const posLine = pos
       ? `<div style="font-family:'Consolas',monospace; font-size:10px; color:var(--text-secondary); padding:3px 0;">
            📌 ${pos.direction} ×${pos.qty || 1} @${pos.entryPrice ? pos.entryPrice.toFixed(2) : '—'}
-           &nbsp;·&nbsp;<span style="color:${(pos.unrealizedPnL||0) >= 0 ? 'var(--neon-green)' : 'var(--neon-red)'}; font-weight:800;">${(pos.unrealizedPnL||0) >= 0 ? '+' : ''}${formatCurrency(pos.unrealizedPnL||0)}</span>
+           &nbsp;·&nbsp;<span style="color:${posPnl >= 0 ? 'var(--neon-green)' : 'var(--neon-red)'}; font-weight:800;">${posPnl >= 0 ? '+' : ''}${formatCurrency(posPnl)}</span>
          </div>`
       : '';
 
     // ── Account stats (REALIZED / FLOAT / NET LIQ / TRADES) ─────────────
     const netLiq   = acc ? (acc.nt8Balance   || acc.balance || 0)     : 0;
     const realized = acc ? (acc.nt8RealizedPnL || 0)                  : 0;
-    const float_   = pos ? (pos.unrealizedPnL || 0)
-                         : (acc ? (acc.nt8UnrealizedPnL || 0) : 0);
+    // float_ = open P&L for this instrument only (0 when flat)
+    const float_   = pos ? posPnl : 0;
 
     // Today's closed-trade count for this family
     const todayStr   = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -879,15 +892,67 @@
     return out;
   }
 
+  // ── Gate 2 Shadow Log Reader ─────────────────────────────────────────
+  async function pollShadowLog() {
+    const el = document.getElementById('shadow-log-body');
+    if (!el) return;
+    try {
+      const res = await fetch('/api/shadow-log');
+      if (!res.ok) { el.innerHTML = '<div style="color:var(--neon-red);padding:10px;">Shadow log unavailable</div>'; return; }
+      const d = await res.json();
+      if (!d.rows || d.rows.length === 0) {
+        el.innerHTML = '<div style="color:var(--text-muted,#888);padding:10px;font-size:12px;">No shadow log entries yet. Start the server and wait for NT8 bar pushes.</div>';
+        return;
+      }
+      // Header stats
+      const hdr = document.getElementById('shadow-log-stats');
+      if (hdr) {
+        const agr = d.summary.agreementRate != null ? (d.summary.agreementRate * 100).toFixed(1) + '%' : '—';
+        const fires = d.summary.gate2Fires || 0;
+        const total = d.summary.total || 0;
+        hdr.textContent = `${total} bars · ${fires} G2 fires · ${agr} agree w/ G1`;
+      }
+      // Table rows (newest first)
+      el.innerHTML = d.rows.map(r => {
+        const ts = r.ts ? new Date(r.ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Los_Angeles' }) : '—';
+        const sym = (r.symbol || '').replace('=F', '');
+        const g1 = r.gate1Signal || 'FLAT';
+        const g2 = r.gate2Signal || 'FLAT';
+        const pat = r.gate2Pattern || '—';
+        const g1Color = g1 === 'BUY' ? 'var(--neon-green)' : g1 === 'SELL' ? 'var(--neon-red)' : 'rgba(255,255,255,0.35)';
+        const g2Color = g2 === 'BUY' ? 'var(--neon-green)' : g2 === 'SELL' ? 'var(--neon-red)' : 'rgba(255,255,255,0.35)';
+        const agree = r.agrees;
+        const agreeHtml = agree === true ? '<span style="color:var(--neon-green)">✓</span>'
+                        : agree === false ? '<span style="color:var(--neon-red)">✗</span>'
+                        : '<span style="color:rgba(255,255,255,0.3)">—</span>';
+        const px = r.close ? r.close.toFixed(2) : '—';
+        return `<tr style="font-size:11px; font-family:'Consolas',monospace;">
+          <td style="color:rgba(255,255,255,0.5);white-space:nowrap;">${ts}</td>
+          <td style="font-weight:700;">${sym}</td>
+          <td style="color:${g1Color};">${g1}</td>
+          <td style="color:${g2Color};">${g2}</td>
+          <td style="color:var(--cyan-glow,#0ff);">${pat}</td>
+          <td>${agreeHtml}</td>
+          <td style="color:rgba(255,255,255,0.6);">${px}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      const el2 = document.getElementById('shadow-log-body');
+      if (el2) el2.innerHTML = '<tr><td colspan="7" style="color:var(--neon-red);padding:10px;">Error loading shadow log</td></tr>';
+    }
+  }
+
   // ── Boot ───────────────────────────────────────────────────────────────
   setInterval(pollEvents, 1500);
   setInterval(pollPaperStats, 10000);
   setInterval(pollModelStatus, 15000);
   setInterval(pollExitsConfig, 30000);
+  setInterval(pollShadowLog, 30000);
   pollEvents();
   pollPaperStats();
   pollModelStatus();
   pollExitsConfig();
+  pollShadowLog();
 
   // Refresh Exits tab whenever it becomes the active view
   const _origSwitchTab = window.switchTab;

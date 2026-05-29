@@ -927,8 +927,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                     lastStrategy, 
                     pnlColorText);
                 
-                // Set border color based on P&L (Neon Green for profit, Deep Hot Pink for loss)
-                borderGlowColor = pnl >= 0 ? Color.FromRgb(57, 255, 20) : Color.FromRgb(255, 0, 122);
+                // Set border color based on trade direction (Long = neon green, Short = neon red)
+                // Previously P&L-based; direction-based is more immediately readable at a glance.
+                bool posLong = Position.MarketPosition == MarketPosition.Long;
+                borderGlowColor = posLong ? Color.FromRgb(57, 255, 20) : Color.FromRgb(255, 56, 56);
                 
                 // Triggers calculation
                 double atr = currentAtr;

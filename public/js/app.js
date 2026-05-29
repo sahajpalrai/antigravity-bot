@@ -853,6 +853,23 @@ setInterval(_mcTick, 1000);
   setInterval(_tickEtTime, 1000);     // then every second
 }());
 
+// Live PT clock — Pacific Time displayed next to ET in the top bar.
+(function _initPtClock() {
+  function _tickPtTime() {
+    const el = document.getElementById('tni-pt-time');
+    if (!el) return;
+    el.textContent = new Date().toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour:    '2-digit',
+      minute:  '2-digit',
+      second:  '2-digit',
+      hour12:  true
+    }) + ' PT';
+  }
+  _tickPtTime();
+  setInterval(_tickPtTime, 1000);
+}());
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AGGRESSIVENESS PROFILE PICKER
 //

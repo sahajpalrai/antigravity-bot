@@ -30,6 +30,8 @@
           <div class="sidebar-logo is-eth" id="sidebar-logo" style="display:none"></div>
           <span id="tni-glyph" class="tni-glyph">⏳</span>
           <span class="tni-ettime" id="tni-et-time">—</span>
+          <span class="tni-sep" style="opacity:0.4; margin:0 4px;">|</span>
+          <span class="tni-ettime" id="tni-pt-time" style="color:#ffc947; opacity:0.85;">—</span>
           <span class="tni-sep">·</span>
           <span class="tni-sched">Opens: <strong>Sun 6:00 PM ET</strong></span>
           <span class="tni-sep">·</span>
@@ -379,6 +381,32 @@
               <h2 class="panel-title" style="margin-bottom: 14px;">📊 Today's Performance</h2>
               <div id="daily-stats-body">
                 <div class="text-muted text-center" style="padding: 12px 0; font-size: 12px;">No trades today yet.</div>
+              </div>
+            </div>
+
+            <!-- Gate 2 Shadow Log Reader -->
+            <div class="glass-card" id="shadow-log-card" style="padding:18px 20px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h2 class="panel-title" style="margin:0;">🔍 Gate 2 Shadow Log</h2>
+                <span id="shadow-log-stats" style="font-size:10px; color:var(--cyan-glow,#0ff); opacity:0.7; font-family:'Consolas',monospace;">—</span>
+              </div>
+              <div style="overflow-x:auto; max-height:280px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                  <thead>
+                    <tr style="color:rgba(255,255,255,0.4); border-bottom:1px solid rgba(255,255,255,0.08); text-align:left;">
+                      <th style="padding:4px 6px; font-weight:600;">Time PT</th>
+                      <th style="padding:4px 6px; font-weight:600;">Sym</th>
+                      <th style="padding:4px 6px; font-weight:600;">G1</th>
+                      <th style="padding:4px 6px; font-weight:600;">G2</th>
+                      <th style="padding:4px 6px; font-weight:600;">Pattern</th>
+                      <th style="padding:4px 6px; font-weight:600;">Agree</th>
+                      <th style="padding:4px 6px; font-weight:600;">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody id="shadow-log-body">
+                    <tr><td colspan="7" style="color:rgba(255,255,255,0.3); padding:12px 6px; font-size:11px; font-family:'Consolas',monospace;">Loading…</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -735,6 +763,6 @@
   </div>
 
   <script src="js/app.js?v=20260528v9"></script>
-  <script src="js/terminal.js?v=20260528v13"></script>
+  <script src="js/terminal.js?v=20260529v1"></script>
 </body>
 </html>
