@@ -899,31 +899,18 @@ body {
   background: radial-gradient(circle at top left, #0b0e1e 0%, #060814 100%) !important;
 }
 
-/* Core App Layout */
+/* Core App Layout — v6 redesign: top-nav instead of left sidebar */
 .app-layout {
   display: flex;
+  flex-direction: column;   /* top-nav stacks above main content */
   min-height: 100vh;
   position: relative;
   z-index: 1;
 }
 
-/* Cybernetic Left Sidebar Navigation */
+/* Old left sidebar — hidden in v6 redesign (top-nav takes its place) */
 .sidebar-nav {
-  width: 72px;
-  background: rgba(8, 10, 22, 0.98);
-  border-right: 1px solid rgba(255, 255, 255, 0.04);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px 0;
-  gap: 28px;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 100;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
+  display: none !important;
 }
 
 .sidebar-logo {
@@ -1041,12 +1028,12 @@ body {
   transform: translateX(0);
 }
 
-/* Widescreen Main Content Box */
+/* Widescreen Main Content Box — no sidebar offset in v6 top-nav layout */
 .main-content {
   flex: 1;
-  margin-left: 72px;
+  margin-left: 0;
   padding: 24px 32px;
-  max-width: calc(100vw - 72px);
+  max-width: 100vw;
   overflow-x: hidden;
 }
 
@@ -1821,3 +1808,143 @@ body {
 
 
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   V6 TOP NAVIGATION BAR  (replaces left sidebar — 2026-05-28)
+   Row 1: market info strip (time · schedule · countdown · status badge)
+   Row 2: brand + horizontal tab buttons + operator name
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: rgba(6, 8, 18, 0.97);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  width: 100%;
+}
+
+/* ── Row 1: info strip ──────────────────────────────────────────────────── */
+.tni-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 11px;
+  color: var(--text-secondary, #9aa0a6);
+  min-height: 30px;
+  gap: 12px;
+}
+.tni-left  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tni-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.tni-glyph  { font-size: 13px; line-height: 1; }
+.tni-ettime {
+  font-family: 'Consolas', 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 700; color: var(--text-primary, #f0f6fc);
+  letter-spacing: 0.3px;
+}
+.tni-sep { opacity: 0.25; }
+.tni-sched { font-size: 10.5px; }
+.tni-sched strong { color: var(--text-primary, #f0f6fc); font-weight: 700; }
+
+/* Countdown pill */
+.tni-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  font-size: 11px; font-weight: 700; font-family: 'Consolas', monospace;
+  color: var(--text-secondary, #9aa0a6);
+  transition: background 0.4s, border-color 0.4s, color 0.4s;
+}
+
+/* Market status badge */
+.tni-badge {
+  display: inline-flex; align-items: center; padding: 3px 12px; border-radius: 20px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-secondary); white-space: nowrap;
+  transition: background 0.4s, border-color 0.4s, color 0.4s;
+}
+
+/* State-specific colors on #tni-bar — driven by same JS class mutations */
+#tni-bar.is-rth .tni-pill  { background: rgba(57,255,20,0.08);  border-color: rgba(57,255,20,0.45);  color: var(--neon-green, #39ff14); }
+#tni-bar.is-rth .tni-badge { background: rgba(57,255,20,0.12);  border-color: rgba(57,255,20,0.55);  color: var(--neon-green, #39ff14); }
+#tni-bar.is-rth .tni-glyph { color: #ffd54f; }
+
+#tni-bar.is-eth .tni-pill  { background: rgba(255,152,0,0.08);  border-color: rgba(255,152,0,0.4);   color: #ff9800; }
+#tni-bar.is-eth .tni-badge { background: rgba(255,152,0,0.12);  border-color: rgba(255,152,0,0.5);   color: #ff9800; }
+#tni-bar.is-eth .tni-glyph { color: rgba(0,200,230,0.9); }
+
+#tni-bar.is-maintenance .tni-pill,
+#tni-bar.is-weekend .tni-pill,
+#tni-bar.is-holiday .tni-pill  { background: rgba(255,56,56,0.07); border-color: rgba(255,56,56,0.3); color: var(--neon-red, #ff3838); }
+#tni-bar.is-maintenance .tni-badge,
+#tni-bar.is-weekend .tni-badge,
+#tni-bar.is-holiday .tni-badge { background: rgba(255,56,56,0.10); border-color: rgba(255,56,56,0.4); color: var(--neon-red, #ff3838); }
+
+/* ── Row 2: tabs row ────────────────────────────────────────────────────── */
+.tni-tabs-row {
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 0;
+  min-height: 44px;
+}
+
+.tni-brand {
+  font-size: 12px; font-weight: 800; letter-spacing: 1.8px;
+  background: linear-gradient(to right, #fff 30%, #b3c5ff);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  padding-right: 20px;
+  border-right: 1px solid rgba(255,255,255,0.07);
+  margin-right: 16px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tni-tab-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.tni-operator {
+  font-size: 10px; font-weight: 700; color: var(--text-secondary, #9aa0a6);
+  letter-spacing: 0.6px; margin-left: 16px; padding-left: 16px;
+  border-left: 1px solid rgba(255,255,255,0.07);
+  white-space: nowrap; flex-shrink: 0;
+}
+
+/* ── Tab buttons inside top-nav: override old square sidebar sizing ──────── */
+.top-nav .sidebar-tab-btn {
+  width: auto !important;
+  height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-family: var(--font-family, 'Outfit', sans-serif) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.4px !important;
+}
+.top-nav .sidebar-tab-btn svg {
+  width: 14px !important;
+  height: 14px !important;
+  flex-shrink: 0;
+}
+.top-nav .sidebar-tab-btn span {
+  font-size: 11px;
+  font-weight: 700;
+}
+/* Hide tooltip — positioned for left-sidebar, irrelevant here */
+.top-nav .sidebar-tab-btn::after {
+  display: none !important;
+}

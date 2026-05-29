@@ -778,11 +778,26 @@ function renderMarketClock(schedule) {
   ['is-rth', 'is-eth', 'is-maintenance', 'is-holiday', 'is-weekend'].forEach(c => root.classList.remove(c));
   root.classList.add('is-' + _mcState);
 
+  // ── Mirror state onto the top-nav info bar ──────────────────────────────
+  const tniBar = document.getElementById('tni-bar');
+  if (tniBar) {
+    ['is-rth', 'is-eth', 'is-maintenance', 'is-holiday', 'is-weekend'].forEach(c => tniBar.classList.remove(c));
+    tniBar.classList.add('is-' + _mcState);
+  }
+
   // Glyph + state text
   const disp = _MC_DISPLAY[_mcState] || _MC_DISPLAY.eth;
   if (glyphEl) glyphEl.textContent = disp.glyph;
   stateEl.textContent = disp.label;
   if (labelEl) labelEl.textContent = _mcLabel ? `${_mcLabel} in` : 'Next:';
+
+  // Top-nav info bar: glyph, state label, next-label
+  const tniGlyph = document.getElementById('tni-glyph');
+  const tniState = document.getElementById('tni-state');
+  const tniNextLabel = document.getElementById('tni-next-label');
+  if (tniGlyph) tniGlyph.textContent = disp.glyph;
+  if (tniState) tniState.textContent = disp.label;
+  if (tniNextLabel) tniNextLabel.textContent = _mcLabel ? `${_mcLabel} in` : 'Next:';
 
   // Tooltip with full session info
   if (schedule) {
@@ -801,17 +816,42 @@ function _mcTick() {
   if (!timeEl) return;
   if (_mcNextEventTs > 0) {
     const remaining = _mcNextEventTs - Date.now();
-    timeEl.textContent = _mcFormatRemaining(remaining);
+    const formatted = _mcFormatRemaining(remaining);
+    timeEl.textContent = formatted;
+    // Mirror countdown to top-nav pill
+    const tniCountdown = document.getElementById('tni-countdown-time');
+    if (tniCountdown) tniCountdown.textContent = formatted;
     // If we're past the event, clear so the next /api/state poll gives us a
     // fresh nextEvent for the new session
     if (remaining <= 0) _mcNextEventTs = 0;
   } else {
     timeEl.textContent = '—';
+    const tniCountdown = document.getElementById('tni-countdown-time');
+    if (tniCountdown) tniCountdown.textContent = '—';
   }
 }
 
 // Tick the countdown locally once per second between server polls
 setInterval(_mcTick, 1000);
+
+// Live ET clock — updates the top-nav info bar time display every second.
+// Independent of the server poll so it stays accurate between API calls.
+(function _initEtClock() {
+  function _tickEtTime() {
+    const el = document.getElementById('tni-et-time');
+    if (!el) return;
+    el.textContent = new Date().toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'short',
+      hour:    '2-digit',
+      minute:  '2-digit',
+      second:  '2-digit',
+      hour12:  true
+    }) + ' ET';
+  }
+  _tickEtTime();                      // paint immediately on load
+  setInterval(_tickEtTime, 1000);     // then every second
+}());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AGGRESSIVENESS PROFILE PICKER
