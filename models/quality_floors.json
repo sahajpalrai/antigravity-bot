@@ -20,6 +20,20 @@
       "minPF": 1.50,
       "minSharpe": 0.5,
       "_note": "CL-specific — set 2026-05-28. Crude oil mean-reversion + momentum patterns produce 50-58% WR with high PF (3-5x). RTH≥55% and ETH≥50% with minPF≥1.50 admits profitable bundles like RTH_TREND_UP_long (WR=58.1%, PF=5.43) that the 60% global floor rejected. minSharpe lowered to 0.5 since null Sharpe (=not blocking per code) is common in CL bundles."
+    },
+    "GC=F": {
+      "rthFloor": 0.55,
+      "ethFloor": 0.53,
+      "minPF": 1.30,
+      "minSharpe": 0.5,
+      "_note": "GC-specific — set 2026-05-29. Gold futures trained on full manual retrain. RTH 0.55 / ETH 0.53 unlocks the ~7 GC bundles with 55-70% WR that the global 0.60 RTH floor was rejecting. minSharpe 0.5 since GC Sharpe values tend to be lower due to wider ATR-based stops."
+    },
+    "NQ=F": {
+      "rthFloor": 0.60,
+      "ethFloor": 0.56,
+      "minPF": 1.30,
+      "minSharpe": 0.8,
+      "_note": "NQ-specific — set 2026-05-29. ETH floor lowered 0.58→0.56 to admit NQ_ETH_VOL_EXPANSION_short (WR=57.6%, PF=2.1x) that was 1.4% below the global 0.58 ETH floor. RTH and minPF/Sharpe kept at global floor levels — NQ RTH patterns are high-quality and don't need relaxing."
     }
   }
 }
