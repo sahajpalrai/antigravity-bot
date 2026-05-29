@@ -61,14 +61,25 @@ SYMBOLS = ["NQ", "ES", "CL", "GC"]
 
 def load_csv(symbol: str, days: int) -> pd.DataFrame | None:
     """Load OHLCV CSV for a symbol, keep last N days."""
+    sym_lc = symbol.lower()
     candidates = [
-        DATA_DIR / f"{symbol.lower()}_5m.csv",
-        DATA_DIR / f"{symbol.lower()}.csv",
+        DATA_DIR / f"{sym_lc}_5m.csv",
+        DATA_DIR / f"{sym_lc}.csv",
+        # NT8 export naming convention used by the pre-seed pipeline
+        DATA_DIR / f"{sym_lc}_5min_nt8.csv",
+        DATA_DIR / f"m{sym_lc}_5min_nt8.csv",   # micro variant (mnq, mes …)
     ]
     for f in candidates:
         if f.exists():
             df = pd.read_csv(f)
             if len(df) > 100:
+                # Normalize column names: lowercase + strip BOM so 'Close' → 'close'
+                df.columns = [c.strip().lower().replace('﻿', '') for c in df.columns]
+                # Gate 1 trainer expects time column named "time" — rename any alias
+                for alias in ("datetime", "date", "timestamp"):
+                    if alias in df.columns:
+                        df = df.rename(columns={alias: "time"})
+                        break
                 # Keep last `days` days worth of 5-min bars (~78 bars/day)
                 bars_per_day = 78
                 cutoff = max(0, len(df) - days * bars_per_day)
@@ -92,8 +103,8 @@ def _compute_features(df: pd.DataFrame, symbol: str) -> tuple[np.ndarray, np.nda
     mod  = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    # Gate 1 trainer's build_features_from_df handles all 32 features
-    return mod.build_feature_matrix(df, symbol)
+    # Gate 1 trainer's build_features_matrix handles all 32 features
+    return mod.build_features_matrix(df, symbol)
 
 def _triple_barrier_labels(
         df: pd.DataFrame, X: np.ndarray, row_indices: np.ndarray,

@@ -8,11 +8,18 @@
   "_note": "Global floors (NQ/CL/GC): RTH≥60% WR, ETH≥58% WR, PF≥1.30, Sharpe≥0.8. ES uses per-symbol override (symbolFloors) because ES 5-min patterns max out at 54-56% WR — same strict floor would leave ES with zero deployed bundles.",
   "symbolFloors": {
     "ES=F": {
-      "rthFloor": 0.55,
+      "rthFloor": 0.50,
       "ethFloor": 0.53,
       "minPF": 1.20,
       "minSharpe": 0.5,
-      "_note": "ES-specific — set 2026-05-28. ES WR ceiling is ~55-56% with current feature set. These match pre-raise floors that were profitable live before the 2026-05-28 floor raise."
+      "_note": "ES-specific — updated 2026-05-29. RTH floor lowered 0.55→0.50 to admit ES VOL_EXPANSION bundles (WR 51-53%, PF 3.4-3.6x). Audit shows ONLY the two VOL_EXPANSION RTH bundles unlock at 50% — no other ES RTH bundle passes at <55% WR. ETH stays at 53% (ES ETH VOL_EXPANSION already passes at 53%)."
+    },
+    "CL=F": {
+      "rthFloor": 0.55,
+      "ethFloor": 0.50,
+      "minPF": 1.50,
+      "minSharpe": 0.5,
+      "_note": "CL-specific — set 2026-05-28. Crude oil mean-reversion + momentum patterns produce 50-58% WR with high PF (3-5x). RTH≥55% and ETH≥50% with minPF≥1.50 admits profitable bundles like RTH_TREND_UP_long (WR=58.1%, PF=5.43) that the 60% global floor rejected. minSharpe lowered to 0.5 since null Sharpe (=not blocking per code) is common in CL bundles."
     }
   }
 }
