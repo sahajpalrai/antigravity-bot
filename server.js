@@ -782,7 +782,7 @@ const server = http.createServer((req, res) => {
         };
         const direction = fireAction === 'BUY' ? 'Long' : 'Short';
         const strategy = `Manual ${direction} (operator)`;
-        const pos = enterTrade(symbol, direction, px, strategy, atr, sessionRegime);
+        const pos = enterTrade(symbol, direction, px, strategy, atr, sessionRegime, 1); // manualQty=1: bypass DD sizer for operator button presses
         if (pos) {
           if (acctMode === 'live') {
             // Pre-send STATUS 1 so NT8's isTradingEnabled is guaranteed true
@@ -803,7 +803,7 @@ const server = http.createServer((req, res) => {
           }));
         }
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: `enterTrade refused — symbol may be disabled or DD floor hit (symbol=${symbol}, enabled=${acc.enabled}, balance=${acc.balance})` }));
+        return res.end(JSON.stringify({ error: `enterTrade refused — symbol is disabled or already in a position (symbol=${symbol}, enabled=${acc.enabled})` }));
       }
 
       // POST /api/close — force close a symbol's position
