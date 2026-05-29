@@ -106,14 +106,25 @@ namespace NinjaTrader.NinjaScript.Strategies
         private string brainContractMode = "MINI";
         private string brainTradingMode  = "paper";
         private string brainExitMode     = "ATR";
+        private string brainGate         = "gate1";  // "gate1" | "gate2"
+        private string brainPattern      = "";        // Gate 2 pattern name (FVG, ORB, etc.)
         private string brainFeatures     = "";
         private DateTime brainLastUpdate = DateTime.MinValue;
+
+        // ── EOD halt + prop firm daily loss gate ─────────────────────────
+        private bool   eodHaltApplied    = false;   // set at 4:45 PM ET — blocks new entries
+        private bool   forceFlatApplied  = false;   // set at 4:58 PM ET — exits all positions
+        private double dailyLossRealized = 0;       // cumulative realized loss today
+        private double dailyLossStart    = 0;       // start-of-day realized P&L baseline
+        private bool   dailyLossBaseSet  = false;   // true once baseline is captured
+        private DateTime dailyLossDate   = DateTime.MinValue;
+        private const double PROP_FIRM_DAILY_LOSS_LIMIT = 500.0; // $500 max daily drawdown
 
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
             {
-                Description                                  = "V1 Antigravity C# Socket Execution Bridge for NinjaTrader 8";
+                Description                                  = "Antigravity v2 Socket Execution Bridge — dual-gate (Gate1/Gate2) + EOD halt + prop firm daily-loss gate";
                 Name                                         = "AntigravityBotBridge";
                 Calculate                                    = Calculate.OnEachTick;
                 EntriesPerDirection                          = 1;
@@ -149,6 +160,67 @@ namespace NinjaTrader.NinjaScript.Strategies
         protected override void OnBarUpdate()
         {
             if (CurrentBar < 40) return;
+
+            // ── EOD halt + force-flat (ET timezone, handles DST) ─────────
+            // Offset: EDT = UTC-4 (Mar second-Sun through Nov first-Sun), EST = UTC-5
+            {
+                DateTime utcNow = DateTime.UtcNow;
+                int monthNum    = utcNow.Month;
+                bool isDst      = (monthNum > 3 && monthNum < 11)
+                               || (monthNum == 3  && utcNow.Day >= 8)
+                               || (monthNum == 11 && utcNow.Day <  7);
+                int offsetHrs   = isDst ? 4 : 5;
+                DateTime etNow  = utcNow.AddHours(-offsetHrs);
+                int etMins      = etNow.Hour * 60 + etNow.Minute;
+
+                // 4:45 PM ET = 16*60+45 = 1005 — halt new entries
+                if (!eodHaltApplied && etMins >= 1005)
+                {
+                    eodHaltApplied = true;
+                    Print("AntigravityBridge: EOD halt triggered (4:45 PM ET). No new entries until next session.");
+                }
+                // Reset halt flag early next morning (4:00 AM ET = 240 mins)
+                if (eodHaltApplied && etMins < 240)
+                {
+                    eodHaltApplied    = false;
+                    forceFlatApplied  = false;
+                    Print("AntigravityBridge: EOD halt reset (4:00 AM ET).");
+                }
+
+                // 4:58 PM ET = 16*60+58 = 1018 — force-flat all positions
+                if (!forceFlatApplied && etMins >= 1018 && etMins < 1080)
+                {
+                    forceFlatApplied = true;
+                    if (Position.MarketPosition != MarketPosition.Flat)
+                    {
+                        Print("AntigravityBridge: Force-flat triggered (4:58 PM ET). Exiting all positions.");
+                        if (Position.MarketPosition == MarketPosition.Long)  ExitLong();
+                        if (Position.MarketPosition == MarketPosition.Short) ExitShort();
+                    }
+                }
+            }
+
+            // ── Daily loss cap baseline capture ──────────────────────────
+            if (Account != null)
+            {
+                DateTime today = (CurrentBar > 0) ? Time[0].Date : DateTime.Now.Date;
+                if (!dailyLossBaseSet || today != dailyLossDate)
+                {
+                    dailyLossStart   = Account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar);
+                    dailyLossBaseSet = true;
+                    dailyLossDate    = today;
+                }
+                double realizedToday = Account.Get(AccountItem.RealizedProfitLoss, Currency.UsDollar) - dailyLossStart;
+                // Negative = loss. Check if loss exceeds limit.
+                if (realizedToday < -PROP_FIRM_DAILY_LOSS_LIMIT && isTradingEnabled)
+                {
+                    isTradingEnabled = false;
+                    Print(string.Format("AntigravityBridge: DAILY LOSS CAP hit (${0:F2} realized today). Halting trading.", -realizedToday));
+                    if (Position.MarketPosition == MarketPosition.Long)  ExitLong();
+                    if (Position.MarketPosition == MarketPosition.Short) ExitShort();
+                    UpdateChartOverlay();
+                }
+            }
 
             if (Position.MarketPosition == MarketPosition.Flat)
             {
@@ -229,14 +301,22 @@ namespace NinjaTrader.NinjaScript.Strategies
             }
         }
 
-        // Resolves Yahoo-style symbol code from current chart instrument
+        // Resolves Yahoo-style symbol code from current chart instrument.
+        // MICRO check MUST come before MINI — both contain the 2-char family
+        // ("MNQ" contains "NQ"), so the order matters.
         private string ResolveSymbolCode()
         {
             string name = Instrument.FullName.ToUpper();
-            if (name.Contains("NQ")) return "NQ=F";
-            if (name.Contains("ES")) return "ES=F";
-            if (name.Contains("CL")) return "CL=F";
-            if (name.Contains("GC")) return "GC=F";
+            // Micros first
+            if (name.StartsWith("MNQ")) return "MNQ=F";
+            if (name.StartsWith("MES")) return "MES=F";
+            if (name.StartsWith("MCL")) return "MCL=F";
+            if (name.StartsWith("MGC")) return "MGC=F";
+            // Then minis
+            if (name.StartsWith("NQ"))  return "NQ=F";
+            if (name.StartsWith("ES"))  return "ES=F";
+            if (name.StartsWith("CL"))  return "CL=F";
+            if (name.StartsWith("GC"))  return "GC=F";
             return "NQ=F";
         }
 
@@ -289,26 +369,25 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
             }
 
-            // Stage 2: Trailing — once trail trigger hit, advance SL at currentAtr * 1.0 behind price
+            // Stage 2: Trailing — starts immediately when BE fires (no separate trigger gate).
+            // Trail distance = 1.0 × ATR (V6 spec — matches gate2Engine.js trailingDistance).
+            // The stop only ever advances (ratchets up for longs, down for shorts).
             if (beApplied)
             {
-                bool trailHit = isLong ? px >= signalTrailingPrice : px <= signalTrailingPrice;
-                if (trailHit)
+                double trailDist = currentAtr > 0 ? currentAtr * 1.0 : (TickSize * 20);
+                double newSL = isLong ? px - trailDist : px + trailDist;
+                bool advances = isLong ? newSL > signalStopLoss : newSL < signalStopLoss;
+                if (advances)
                 {
-                    double trailDist = currentAtr > 0 ? currentAtr * 1.0 : (TickSize * 20);
-                    double newSL = isLong ? px - trailDist : px + trailDist;
-                    bool advances = isLong ? newSL > signalStopLoss : newSL < signalStopLoss;
-                    if (advances)
+                    try
                     {
-                        try
-                        {
-                            SetStopLoss(isLong ? "AntigravityLong" : "AntigravityShort",
-                                        CalculationMode.Price, newSL, false);
-                            signalStopLoss = newSL;
-                            trailApplied = true;
-                        }
-                        catch (Exception ex) { Print("Trail move error: " + ex.Message); }
+                        SetStopLoss(isLong ? "AntigravityLong" : "AntigravityShort",
+                                    CalculationMode.Price, newSL, false);
+                        signalStopLoss = newSL;
+                        trailApplied = true;
+                        Print(string.Format("AntigravityBridge: Trail advanced → SL {0:F2} (dist {1:F2} pts)", newSL, trailDist));
                     }
+                    catch (Exception ex) { Print("Trail move error: " + ex.Message); }
                 }
             }
         }
@@ -352,13 +431,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                         isConnected = true;
                         Print("AntigravityBridge: Connected successfully to Antigravity Bot!");
 
-                        // Transmit the active account for this symbol assigned on the chart to the Node.js server
-                        string symbol = "NQ=F";
-                        string name = Instrument.FullName.ToUpper();
-                        if (name.Contains("NQ")) symbol = "NQ=F";
-                        else if (name.Contains("ES")) symbol = "ES=F";
-                        else if (name.Contains("CL")) symbol = "CL=F";
-                        else if (name.Contains("GC")) symbol = "GC=F";
+                        // Transmit the active account for this symbol assigned on the chart to the Node.js server.
+                        // MICRO check MUST come before MINI — "MNQ".Contains("NQ") is true.
+                        // Use the shared resolver so this stays consistent with ResolveSymbolCode().
+                        string symbol = ResolveSymbolCode();
 
                         string accountName = (Account != null) ? Account.Name : "Sim101";
                         string accountMsg = string.Format("ACCOUNT,{0},{1}\n", symbol, accountName);
@@ -404,7 +480,12 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                 try
                 {
-                    byte[] buffer = new byte[1024];
+                    // Buffer 8192 bytes — BRAIN packets are ~500-900 bytes each,
+                    // and when 4 families' bars all close near-simultaneously the
+                    // server broadcasts 4 packets in quick succession which can
+                    // exceed 1024 → truncation → silent JSON parse failure.
+                    // Found 2026-05-26.
+                    byte[] buffer = new byte[8192];
                     int bytesRead = stream.Read(buffer, 0, buffer.Length);
                     
                     if (bytesRead == 0)
@@ -967,33 +1048,57 @@ namespace NinjaTrader.NinjaScript.Strategies
                                                 : (brainRegime == "CHOP" ? "CHOP — stand down" : "WAIT — below threshold");
                             brainSignalText.Foreground = isLong ? COL_GREEN : (isShort ? COL_RED : COL_MUTED);
                         }
-                        // Long probability bar
+                        // Long probability bar — show "—" only when threshold = 0 (no specialist
+                        // deployed for that direction). CHOP has its own CHOP_long/CHOP_short
+                        // specialists that CAN fire BUY/SELL — never suppress probs based on regime.
+                        bool hasLongData  = brainLongTh  > 0;
+                        bool hasShortData = brainShortTh > 0;
                         if (brainLongProbText != null) {
-                            brainLongProbText.Text = brainLongProb.ToString("F2");
-                            bool longHit = brainLongTh > 0 && brainLongProb >= brainLongTh;
-                            brainLongProbText.Foreground = longHit ? COL_GREEN : COL_VAL;
+                            if (hasLongData) {
+                                brainLongProbText.Text = brainLongProb.ToString("F2");
+                                bool longHit = brainLongProb >= brainLongTh;
+                                brainLongProbText.Foreground = longHit ? COL_GREEN : COL_VAL;
+                            } else {
+                                brainLongProbText.Text = "—";
+                                brainLongProbText.Foreground = COL_MUTED;
+                            }
                         }
                         if (brainLongProbBar != null) {
-                            double pct = Math.Max(0, Math.Min(1, brainLongProb));
+                            double pct = hasLongData ? Math.Max(0, Math.Min(1, brainLongProb)) : 0;
                             brainLongProbBar.Width = pct * PROB_BAR_WIDTH;
                         }
                         if (brainLongProbThMark != null) {
-                            double thFrac = Math.Max(0, Math.Min(1, brainLongTh));
-                            brainLongProbThMark.Margin = new Thickness(thFrac * PROB_BAR_WIDTH, -2, 0, -2);
+                            if (hasLongData) {
+                                double thFrac = Math.Max(0, Math.Min(1, brainLongTh));
+                                brainLongProbThMark.Margin = new Thickness(thFrac * PROB_BAR_WIDTH, -2, 0, -2);
+                                brainLongProbThMark.Visibility = Visibility.Visible;
+                            } else {
+                                brainLongProbThMark.Visibility = Visibility.Collapsed;
+                            }
                         }
                         // Short probability bar
                         if (brainShortProbText != null) {
-                            brainShortProbText.Text = brainShortProb.ToString("F2");
-                            bool shortHit = brainShortTh > 0 && brainShortProb >= brainShortTh;
-                            brainShortProbText.Foreground = shortHit ? COL_RED : COL_VAL;
+                            if (hasShortData) {
+                                brainShortProbText.Text = brainShortProb.ToString("F2");
+                                bool shortHit = brainShortProb >= brainShortTh;
+                                brainShortProbText.Foreground = shortHit ? COL_RED : COL_VAL;
+                            } else {
+                                brainShortProbText.Text = "—";
+                                brainShortProbText.Foreground = COL_MUTED;
+                            }
                         }
                         if (brainShortProbBar != null) {
-                            double pct = Math.Max(0, Math.Min(1, brainShortProb));
+                            double pct = hasShortData ? Math.Max(0, Math.Min(1, brainShortProb)) : 0;
                             brainShortProbBar.Width = pct * PROB_BAR_WIDTH;
                         }
                         if (brainShortProbThMark != null) {
-                            double thFrac = Math.Max(0, Math.Min(1, brainShortTh));
-                            brainShortProbThMark.Margin = new Thickness(thFrac * PROB_BAR_WIDTH, -2, 0, -2);
+                            if (hasShortData) {
+                                double thFrac = Math.Max(0, Math.Min(1, brainShortTh));
+                                brainShortProbThMark.Margin = new Thickness(thFrac * PROB_BAR_WIDTH, -2, 0, -2);
+                                brainShortProbThMark.Visibility = Visibility.Visible;
+                            } else {
+                                brainShortProbThMark.Visibility = Visibility.Collapsed;
+                            }
                         }
                         // Regime / Session
                         if (brainRegimeText != null) {
@@ -1006,10 +1111,29 @@ namespace NinjaTrader.NinjaScript.Strategies
                         if (brainSessionText != null) {
                             brainSessionText.Text = "session: " + (string.IsNullOrEmpty(brainSession) ? "—" : brainSession);
                         }
-                        // Specialist
+                        // Specialist — show direction + watching/active status so user can read state at a glance
                         if (brainSpecText != null) {
-                            brainSpecText.Text = string.IsNullOrEmpty(brainSpecialist) ? "—" : brainSpecialist;
-                            brainSpecText.Foreground = string.IsNullOrEmpty(brainSpecialist) || brainSpecialist == "—" ? COL_MUTED : COL_VAL;
+                            string baseSpec = string.IsNullOrEmpty(brainSpecialist) ? "" : brainSpecialist;
+                            string specDisplay;
+                            if (brainAction == "BUY" && baseSpec.Length > 0 && baseSpec != "—") {
+                                specDisplay = baseSpec + "  ↑ ACTIVE";
+                                brainSpecText.Foreground = COL_GREEN;
+                            } else if (brainAction == "SELL" && baseSpec.Length > 0 && baseSpec != "—") {
+                                specDisplay = baseSpec + "  ↓ ACTIVE";
+                                brainSpecText.Foreground = COL_RED;
+                            } else if (baseSpec.Length == 0 || baseSpec == "—") {
+                                // No specialist at all (no model deployed for this regime/session)
+                                specDisplay = "no specialist — monitoring";
+                                brainSpecText.Foreground = COL_MUTED;
+                            } else {
+                                // WAIT — show which directions are armed based on deployed thresholds
+                                string dirs = (hasLongData && hasShortData) ? " ↑↓"
+                                            : hasLongData  ? " ↑"
+                                            : hasShortData ? " ↓" : "";
+                                specDisplay = baseSpec + dirs + "  watching";
+                                brainSpecText.Foreground = COL_VAL;
+                            }
+                            brainSpecText.Text = specDisplay;
                         }
                         // Position + P&L (from NT8 directly, not from brain JSON)
                         if (Position != null && Position.MarketPosition != MarketPosition.Flat) {
@@ -1061,8 +1185,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                         if (brainTradesText != null) brainTradesText.Text = todayTrades.ToString();
                         // Mode + Exits
                         if (brainModeText != null) {
-                            brainModeText.Text = brainContractMode + " · " + brainTradingMode.ToUpper();
-                            brainModeText.Foreground = brainTradingMode == "live" ? COL_RED : COL_AMBER;
+                            string gateTag = (brainGate == "gate2")
+                                ? (" · G2" + (string.IsNullOrEmpty(brainPattern) ? "" : ":" + brainPattern))
+                                : " · G1";
+                            string eodTag = eodHaltApplied ? " · EOD HALT" : "";
+                            brainModeText.Text = brainContractMode + " · " + brainTradingMode.ToUpper() + gateTag + eodTag;
+                            brainModeText.Foreground = eodHaltApplied ? COL_RED
+                                                     : brainTradingMode == "live" ? COL_RED : COL_AMBER;
                         }
                         if (brainExitsText != null) {
                             brainExitsText.Text = "Exits: " + brainExitMode + (brainExitMode == "FIXED" ? "  (override active)" : "  (ATR-dynamic)");
@@ -1097,17 +1226,46 @@ namespace NinjaTrader.NinjaScript.Strategies
                     "🧠 ANTIGRAVITY v2 BRAIN  (awaiting first bar push)\n";
             }
 
+            // CHOP has CHOP_long/CHOP_short specialists — never suppress probs by regime
+            bool txtHasLong  = brainLongTh  > 0;
+            bool txtHasShort = brainShortTh > 0;
+
             string verdict;
-            if (brainAction == "BUY")       verdict = "▲ FIRE LONG";
+            if      (brainAction == "BUY")  verdict = "▲ FIRE LONG";
             else if (brainAction == "SELL") verdict = "▼ FIRE SHORT";
-            else if (brainRegime == "CHOP") verdict = "CHOP — stand down";
-            else                            verdict = "WAIT — below threshold";
+            else if (txtHasLong || txtHasShort) verdict = "WAIT — below threshold";
+            else                            verdict = "WAIT — awaiting specialist";
 
-            string longHit  = (brainLongTh  > 0 && brainLongProb  >= brainLongTh)  ? " ✓" : "";
-            string shortHit = (brainShortTh > 0 && brainShortProb >= brainShortTh) ? " ✓" : "";
+            string longHit  = (txtHasLong  && brainLongProb  >= brainLongTh)  ? " ✓" : "";
+            string shortHit = (txtHasShort && brainShortProb >= brainShortTh) ? " ✓" : "";
 
-            string modeLine = string.Format("Contract: {0}   |   Trading: {1}   |   Exits: {2}",
-                brainContractMode, brainTradingMode.ToUpper(), brainExitMode);
+            // Specialist line — include direction + status
+            string specBase = string.IsNullOrEmpty(brainSpecialist) ? "—" : brainSpecialist;
+            string specLine;
+            if (brainAction == "BUY"  && specBase != "—") specLine = specBase + " ↑ ACTIVE";
+            else if (brainAction == "SELL" && specBase != "—") specLine = specBase + " ↓ ACTIVE";
+            else if (specBase == "—") specLine = "no specialist — monitoring";
+            else {
+                string dirs = (txtHasLong && txtHasShort) ? " ↑↓" : txtHasLong ? " ↑" : txtHasShort ? " ↓" : "";
+                specLine = specBase + dirs + " watching";
+            }
+
+            // Prob lines — show "—" when no specialist is deployed for that direction
+            string longProbLine  = txtHasLong
+                ? string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "prob {0:F2} / th {1:F2}{2}", brainLongProb,  brainLongTh,  longHit)
+                : "prob — (no specialist)";
+            string shortProbLine = txtHasShort
+                ? string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "prob {0:F2} / th {1:F2}{2}", brainShortProb, brainShortTh, shortHit)
+                : "prob — (no specialist)";
+
+            string gateStr  = brainGate == "gate2"
+                ? ("Gate2" + (string.IsNullOrEmpty(brainPattern) ? "" : ":" + brainPattern))
+                : "Gate1";
+            string eodStr   = eodHaltApplied ? "  ⚠ EOD HALT" : "";
+            string modeLine = string.Format("Contract: {0}   |   Trading: {1}   |   Exits: {2}   |   {3}{4}",
+                brainContractMode, brainTradingMode.ToUpper(), brainExitMode, gateStr, eodStr);
 
             return string.Format(
                 "--------------------------------------------------\n" +
@@ -1116,17 +1274,17 @@ namespace NinjaTrader.NinjaScript.Strategies
                 "• Regime: {3}   Session: {4}\n" +
                 "• Verdict: {5}\n" +
                 "• Specialist: {6}\n" +
-                "• LONG  prob {7:F2} / th {8:F2}{9}\n" +
-                "• SHORT prob {10:F2} / th {11:F2}{12}\n" +
-                "• Features: {13}\n" +
-                "• {14}\n",
+                "• LONG  {7}\n" +
+                "• SHORT {8}\n" +
+                "• Features: {9}\n" +
+                "• {10}\n",
                 brainLastUpdate.ToLocalTime(),
                 brainClose, brainAtr,
                 brainRegime, brainSession,
                 verdict,
-                brainSpecialist,
-                brainLongProb, brainLongTh, longHit,
-                brainShortProb, brainShortTh, shortHit,
+                specLine,
+                longProbLine,
+                shortProbLine,
                 string.IsNullOrEmpty(brainFeatures) ? "—" : brainFeatures,
                 modeLine
             );
@@ -1171,29 +1329,37 @@ namespace NinjaTrader.NinjaScript.Strategies
         {
             try
             {
-                // ── Symbol filter ──────────────────────────────────────────────
+                // DEBUG — fires unconditionally so we know packet arrived at this chart
+                Print("[BRAIN] packet received, len=" + json.Length + " — chart=" + Instrument.FullName);
+                // ── Family-based symbol filter ─────────────────────────────────
                 // Node broadcasts BRAIN packets to ALL connected NT8 clients
-                // (one socket per chart). Without this filter, every chart's
-                // panel would update on every other chart's bar close —
-                // leaving the NQ chart showing ES data, etc. We read the
-                // packet's family (e.g. "NQ=F") and discard it unless it
-                // matches this chart's resolved symbol code.
-                string packetFamily = JsonStr(json, "family") ?? JsonStr(json, "symbol");
+                // (one socket per chart). Filter so each chart only renders
+                // its own family. The packet's `family` field is always the
+                // MINI sym ("NQ=F"), but THIS chart may be on micro ("MNQ=F").
+                // Normalize BOTH sides to the base family (strip leading M)
+                // before comparing — fixes brain panel never updating on
+                // micro charts (bug found 2026-05-26).
+                string packetFamily = JsonStr(json, "family");
+                if (string.IsNullOrEmpty(packetFamily)) packetFamily = JsonStr(json, "symbol");
                 if (!string.IsNullOrEmpty(packetFamily))
                 {
-                    // Strip leading "M" (micro prefix MNQ/MES/etc) so MNQ=F
-                    // also accepts a packet tagged NQ=F (same family).
-                    string normalized = packetFamily.StartsWith("M") &&
-                                        (packetFamily.StartsWith("MNQ") ||
-                                         packetFamily.StartsWith("MES") ||
-                                         packetFamily.StartsWith("MCL") ||
-                                         packetFamily.StartsWith("MGC"))
-                                        ? packetFamily.Substring(1)
-                                        : packetFamily;
-                    string mySym = ResolveSymbolCode();   // e.g. "NQ=F"
-                    if (!string.Equals(normalized, mySym, StringComparison.OrdinalIgnoreCase))
+                    string mySym = ResolveSymbolCode();   // e.g. "NQ=F" or "MNQ=F"
+                    // Inline strip — no lambda (NT8 compiler can be finicky with Func inside try)
+                    string pNorm = packetFamily;
+                    if (pNorm.StartsWith("MNQ") || pNorm.StartsWith("MES") ||
+                        pNorm.StartsWith("MCL") || pNorm.StartsWith("MGC"))
+                        pNorm = pNorm.Substring(1);
+                    string mNorm = mySym;
+                    if (mNorm.StartsWith("MNQ") || mNorm.StartsWith("MES") ||
+                        mNorm.StartsWith("MCL") || mNorm.StartsWith("MGC"))
+                        mNorm = mNorm.Substring(1);
+                    // DEBUG — fires on every packet so we can see filter decisions
+                    Print("[BRAIN-FILTER] packet=" + packetFamily + " norm=" + pNorm +
+                          " | chart=" + mySym + " norm=" + mNorm +
+                          " → " + (pNorm == mNorm ? "ACCEPT" : "REJECT"));
+                    if (pNorm != mNorm)
                     {
-                        return; // Packet is for a different chart's instrument — ignore.
+                        return; // Different family — ignore.
                     }
                 }
 
@@ -1204,6 +1370,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                 brainContractMode = JsonStr(json, "contractMode")  ?? "MINI";
                 brainTradingMode  = JsonStr(json, "tradingMode")   ?? "paper";
                 brainExitMode     = JsonStr(json, "exitMode")      ?? "ATR";
+                brainGate         = JsonStr(json, "gate")          ?? "gate1";
+                brainPattern      = JsonStr(json, "pattern")       ?? "";
                 brainClose        = JsonNum(json, "close", 0);
                 brainAtr          = JsonNum(json, "atr",   0);
                 brainLongProb     = JsonNum(json, "longProb",  0);
@@ -1255,8 +1423,16 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (action == "PARAMS")
                 {
                     string sym = parts[1];
-                    // Verify if this is the active chart instrument
-                    if (Instrument.FullName.Contains(sym.Replace("=F", "")))
+                    // Use family-based matching (same as BUY/SELL) to correctly
+                    // accept PARAMS on micro charts (MNQ=F) when signal says NQ=F.
+                    string pSigFamily = sym.Replace("=F", "");
+                    if (pSigFamily.Length > 2 && pSigFamily.StartsWith("M")) pSigFamily = pSigFamily.Substring(1);
+                    string pChartName = Instrument.FullName;
+                    string pChartFam  = pChartName.StartsWith("MNQ") || pChartName.StartsWith("NQ") ? "NQ"
+                                      : pChartName.StartsWith("MES") || pChartName.StartsWith("ES") ? "ES"
+                                      : pChartName.StartsWith("MCL") || pChartName.StartsWith("CL") ? "CL"
+                                      : pChartName.StartsWith("MGC") || pChartName.StartsWith("GC") ? "GC" : "";
+                    if (pChartFam == pSigFamily)
                     {
                         string emaFast = parts[2];
                         string emaSlow = parts[3];
@@ -1283,7 +1459,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 if (action == "STATUS")
                 {
                     string sym = parts[1];
-                    if (Instrument.FullName.Contains(sym.Replace("=F", "")))
+                    // Use family-based matching (same fix as PARAMS above)
+                    string sSigFamily = sym.Replace("=F", "");
+                    if (sSigFamily.Length > 2 && sSigFamily.StartsWith("M")) sSigFamily = sSigFamily.Substring(1);
+                    string sChartName = Instrument.FullName;
+                    string sChartFam  = sChartName.StartsWith("MNQ") || sChartName.StartsWith("NQ") ? "NQ"
+                                      : sChartName.StartsWith("MES") || sChartName.StartsWith("ES") ? "ES"
+                                      : sChartName.StartsWith("MCL") || sChartName.StartsWith("CL") ? "CL"
+                                      : sChartName.StartsWith("MGC") || sChartName.StartsWith("GC") ? "GC" : "";
+                    if (sChartFam == sSigFamily)
                     {
                         int enabledVal = 1;
                         int.TryParse(parts[2], out enabledVal);
@@ -1334,12 +1518,35 @@ namespace NinjaTrader.NinjaScript.Strategies
                     return;
                 }
 
-                // Ensure the chart matches the incoming symbol
-                if (!Instrument.FullName.Contains(symbol.Replace("=F", "")))
+                // ─── FAMILY-BASED MATCHING ─────────────────────────────────────
+                // Accept signals where the family (NQ/ES/CL/GC) matches the chart
+                // instrument, regardless of MINI/MICRO designation. If signal type
+                // differs from chart type (e.g., MNQ signal on NQ chart), the qty
+                // will be auto-scaled later. Eliminates symbol-mismatch silent
+                // rejections when bot's MINI/MICRO mode doesn't match chart.
+                //
+                // Signal sym examples: "NQ=F", "MNQ=F", "ES=F", "MES=F"
+                // Chart FullName examples: "NQ 12-26", "MNQ 12-26", "ES 12-26", "MES 12-26"
+                string sigFamily = symbol.Replace("=F", "");
+                if (sigFamily.StartsWith("M") && sigFamily.Length > 2)
+                    sigFamily = sigFamily.Substring(1);   // MNQ → NQ
+                string chartFamily = "";
+                string chartName = Instrument.FullName;
+                if (chartName.StartsWith("MNQ") || chartName.StartsWith("NQ")) chartFamily = "NQ";
+                else if (chartName.StartsWith("MES") || chartName.StartsWith("ES")) chartFamily = "ES";
+                else if (chartName.StartsWith("MCL") || chartName.StartsWith("CL")) chartFamily = "CL";
+                else if (chartName.StartsWith("MGC") || chartName.StartsWith("GC")) chartFamily = "GC";
+
+                if (chartFamily != sigFamily)
                 {
-                    Print("AntigravityBridge: Signal ignored. Active chart instrument does not match signal: " + symbol);
+                    Print("AntigravityBridge: Signal ignored. Chart family=" + chartFamily +
+                          " but signal family=" + sigFamily + " (chart=" + chartName + ", sig=" + symbol + ")");
                     return;
                 }
+
+                // Determine if chart is MICRO (M-prefix) vs MINI for qty scaling later
+                bool chartIsMicro = chartName.StartsWith("M");
+                bool signalIsMicro = symbol.StartsWith("M");
 
                 if (action == "CLOSE")
                 {
@@ -1375,7 +1582,29 @@ namespace NinjaTrader.NinjaScript.Strategies
                 }
                 else if (action == "BUY" || action == "SELL")
                 {
-                    int qty = int.Parse(parts[2]);
+                    int rawQty = int.Parse(parts[2]);
+
+                    // ─── AUTO QTY SCALING ─────────────────────────────────────
+                    // If signal is MICRO and chart is MINI → divide qty by 10
+                    //   (10 micros == 1 mini in point value)
+                    // If signal is MINI and chart is MICRO → multiply qty by 10
+                    //   (1 mini == 10 micros in point value)
+                    // Equal types → no change.
+                    // Minimum 1 contract floor (don't size down below 1).
+                    int qty = rawQty;
+                    if (signalIsMicro && !chartIsMicro)
+                    {
+                        qty = Math.Max(1, (int)Math.Round(rawQty / 10.0));
+                        Print(string.Format("AntigravityBridge: QTY SCALED — signal {0} micros → {1} mini contract(s) (chart={2})",
+                              rawQty, qty, chartName));
+                    }
+                    else if (!signalIsMicro && chartIsMicro)
+                    {
+                        qty = rawQty * 10;
+                        Print(string.Format("AntigravityBridge: QTY SCALED — signal {0} mini(s) → {1} micros (chart={2})",
+                              rawQty, qty, chartName));
+                    }
+
                     double entryPrice = double.Parse(parts[3]);
                     double stopLoss = double.Parse(parts[4]);
                     double takeProfit = double.Parse(parts[5]);
@@ -1407,6 +1636,13 @@ namespace NinjaTrader.NinjaScript.Strategies
                         Print("AntigravityBridge: BUY/SELL signal ignored. Strategy is suspended (OFF) on dashboard.");
                         return;
                     }
+
+                    // EOD halt — no new entries after 4:45 PM ET
+                    if (eodHaltApplied)
+                    {
+                        Print("AntigravityBridge: BUY/SELL signal ignored. EOD halt is active (after 4:45 PM ET).");
+                        return;
+                    }
                     
                     UpdateChartOverlay();
 
@@ -1414,9 +1650,14 @@ namespace NinjaTrader.NinjaScript.Strategies
                     double stopLossTicks = Math.Abs(entryPrice - stopLoss) / TickSize;
                     double takeProfitTicks = Math.Abs(takeProfit - entryPrice) / TickSize;
 
-                    // Set stop loss and profit targets programmatically
-                    SetStopLoss(CalculationMode.Ticks, stopLossTicks);
-                    SetProfitTarget(CalculationMode.Ticks, takeProfitTicks);
+                    // BE/TRAIL FIX (2026-05-26): SetStopLoss/SetProfitTarget MUST use the
+                    // same signal name as the entry order ("AntigravityLong" / "AntigravityShort"),
+                    // otherwise NT8 treats the initial SL and the later BE/trail move as
+                    // separate slots — the chart shows the original SL while the BE move
+                    // sits in a different bracket that never reaches the broker.
+                    string entrySignal = (action == "BUY") ? "AntigravityLong" : "AntigravityShort";
+                    SetStopLoss(entrySignal, CalculationMode.Ticks, stopLossTicks, false);
+                    SetProfitTarget(entrySignal, CalculationMode.Ticks, takeProfitTicks);
 
                     if (action == "BUY")
                     {

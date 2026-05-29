@@ -1,0 +1,14 @@
+{
+  "rthThreshold": 0.55,
+  "ethThreshold": 0.53,
+  "cooldownMs": 120000,
+  "directionLockMs": 600000,
+  "fvgLiveTrades": 0,
+  "fvgLiveWins": 0,
+  "fvgBypassMlAfterTrades": 100,
+  "maxDailyLoss": 500,
+  "patternEngineUrl": "http://localhost:3100/analyze",
+  "patternEnginePort": 3100,
+  "_note": "Gate 2 config. fvgBypassMlAfterTrades: FVG bypasses ML filter after this many live trades at 60%+ WR.",
+  "updatedAt": "2026-05-28T00:00:00.000Z"
+}

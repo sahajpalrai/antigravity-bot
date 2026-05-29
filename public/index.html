@@ -225,11 +225,13 @@
             <div class="e2-ops-head">
               <span class="e2-ops-title" id="opsContractTitle">⚙️ OPERATIONS</span>
               <div style="display:flex; gap: 10px; align-items: center;">
-                <div class="e2-contract-toggle" id="decisionModeToggle"
-                     title="HYBRID = bundle + V5 committee with veto. V2 = bundle path only (V5 display-only).">
-                  <button data-m="V2">V2</button>
-                  <button class="active" data-m="HYBRID">HYBRID</button>
+                <!-- Gate 1 / Gate 2 signal engine toggle (replaces old V2/HYBRID toggle) -->
+                <div class="e2-contract-toggle" id="gateToggle" title="Switch between Gate 1 (GBDT specialists) and Gate 2 (pattern+ML)">
+                  <button class="active" data-g="gate1">GATE 1</button>
+                  <button data-g="gate2">GATE 2</button>
                 </div>
+                <!-- Shadow badge — shown when Gate 1 is live but Gate 2 is recording -->
+                <span id="shadowBadge" style="display:none; font-size:10px; color:var(--cyan-glow); background:rgba(0,200,200,0.12); border:1px solid var(--cyan-glow); border-radius:4px; padding:2px 6px; letter-spacing:0.5px;">SHADOW</span>
                 <!-- Global MINI/MICRO toggle removed — each family card on the
                      Properties tab now has its own toggle so user can mix
                      mini + micro per family. (2026-05-26) -->
@@ -707,6 +709,6 @@
   </div>
 
   <script src="js/app.js?v=20260528b"></script>
-  <script src="js/terminal.js?v=20260526j"></script>
+  <script src="js/terminal.js?v=20260528h"></script>
 </body>
 </html>

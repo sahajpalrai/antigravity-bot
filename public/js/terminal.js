@@ -34,6 +34,7 @@
     renderKpiStrip(data);
     renderE2Cards(data);
     renderContractToggle(data);
+    renderGateToggle(data);
   };
 
   window.setStreamFilter = function (filter) {
@@ -89,39 +90,97 @@
   function wireContractToggle() {
     if (_toggleWired) return;
     const tg = document.getElementById('contractToggle');
+    if (tg) {
+      tg.querySelectorAll('button').forEach(b => {
+        b.addEventListener('click', async () => {
+          const mode = b.dataset.c;
+          try {
+            await fetch('/api/contract-mode', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode })
+            });
+            tg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+            b.classList.add('active');
+            const title = document.getElementById('opsContractTitle');
+            if (title) title.textContent = `⚙️ OPERATIONS · ${mode}`;
+          } catch (e) { console.warn('contract-mode toggle failed', e); }
+        });
+      });
+    }
+
+    _toggleWired = true;
+  }
+
+  // ── Gate 1 / Gate 2 toggle wiring ────────────────────────────────────
+  // Renders the active gate button state + shadow badge.
+  // Called on every /api/state poll so it stays in sync with server state.
+  function renderGateToggle(data) {
+    const gate   = data.activeGate  || 'gate1';
+    const shadow = !!data.shadowGate2;
+    document.querySelectorAll('#gateToggle button').forEach(b => {
+      b.classList.toggle('active', b.dataset.g === gate);
+    });
+    const badge = document.getElementById('shadowBadge');
+    // Show SHADOW badge when Gate 1 is live and Gate 2 is recording in background
+    if (badge) badge.style.display = (gate === 'gate1' && shadow) ? 'inline-block' : 'none';
+  }
+
+  let _gateToggleWired = false;
+  function wireGateToggle() {
+    if (_gateToggleWired) return;
+    const tg = document.getElementById('gateToggle');
     if (!tg) return;
     tg.querySelectorAll('button').forEach(b => {
       b.addEventListener('click', async () => {
-        const mode = b.dataset.c;
+        const newGate = b.dataset.g;
+        // Optimistic UI
+        tg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
         try {
-          await fetch('/api/contract-mode', {
+          const res = await fetch('/api/gate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode })
+            body: JSON.stringify({ activeGate: newGate })
           });
-          // Optimistic toggle until next state refresh
-          tg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
-          b.classList.add('active');
-          const title = document.getElementById('opsContractTitle');
-          if (title) title.textContent = `⚙️ OPERATIONS · ${mode}`;
-        } catch (e) { console.warn('contract-mode toggle failed', e); }
+          const data = await res.json();
+          if (data.status !== 'success') {
+            // Revert on failure
+            tg.querySelectorAll('button').forEach(x =>
+              x.classList.toggle('active', x.dataset.g !== newGate)
+            );
+            console.warn('[GateToggle] switch failed:', data);
+          }
+          const badge = document.getElementById('shadowBadge');
+          if (badge) badge.style.display = (data.activeGate === 'gate1' && data.shadowGate2) ? 'inline-block' : 'none';
+        } catch (e) {
+          console.warn('[GateToggle] fetch error:', e);
+          // Revert
+          tg.querySelectorAll('button').forEach(x =>
+            x.classList.toggle('active', x.dataset.g !== newGate)
+          );
+        }
       });
     });
-    _toggleWired = true;
+    _gateToggleWired = true;
   }
 
   // ── E2 symbol cards (left pane) ───────────────────────────────────────
   function renderE2Cards(data) {
     wireContractToggle();
+    wireGateToggle();
     const container = document.getElementById('e2-cards');
     if (!container) return;
 
-    const mode = data.contractMode || 'MINI';
-    const symbols = mode === 'MICRO' ? (data.microSymbols || []) : (data.miniSymbols || []);
-    if (symbols.length === 0) {
-      // Fallback if state doesn't include the lists yet
-      symbols.push('NQ=F', 'ES=F', 'CL=F', 'GC=F');
-    }
+    // Per-family active symbol — respects each family's MINI/MICRO toggle
+    // on the account card. Falls back to global contractMode for unset families.
+    const globalMode = data.contractMode || 'MINI';
+    const familyContracts = data.familyContracts || {};
+    const families = ['NQ', 'ES', 'CL', 'GC'];
+    const symbols = families.map(f => {
+      const t = familyContracts[f] || globalMode;
+      return (t === 'MICRO' ? 'M' : '') + f + '=F';
+    });
     const decisions = data.lastDecisions || {};
     const livePrices = data.livePrices || {};
     const accounts = data.accounts || {};
@@ -142,11 +201,12 @@
     // glance what the quality bar is for their current session.
     const floors = data.qualityFloors || { rth: 0.65, eth: 0.55 };
 
-    container.innerHTML = symbols.map(sym => buildE2Card(sym, decisions[sym], accounts[sym], livePrices[sym], specs[sym], floors)).join('');
+    container.innerHTML = symbols.map(sym => buildE2Card(sym, decisions[sym], accounts[sym], livePrices[sym], specs[sym], floors, data)).join('');
   }
 
-  function buildE2Card(sym, decision, acc, px, spec, floors) {
+  function buildE2Card(sym, decision, acc, px, spec, floors, data) {
     floors = floors || { rth: 0.65, eth: 0.55 };
+    data = data || {};
     const family = (spec && spec.family) || sym.replace(/^M/, '').replace('=F', '');
     const isMicro = spec && spec.isMicro;
     const displaySym = sym.replace('=F', '');
@@ -190,10 +250,61 @@
 
     // Specialist line — shows ALL primed specialists for this family even
     // before any decision fires, so the user can see what the bot is armed
-    // to do at any moment.
+    // to do at any moment. In CHOP we surface why classifier rejected the
+    // bar (adx + mix reason) PLUS the primed specialists waiting for a
+    // tradeable regime — otherwise the card looks dead and the user thinks
+    // the bot is broken.
+    // Read live feature data + retrain status from the decision/state object
+    const live = decision && decision.liveFeatures;
+    const retrain = data && data.retrainInProgress;
+
+    // Helper: ADX-colored badge
+    function adxBadge(v) {
+      if (v == null || isNaN(v)) return '<span style="opacity:0.5;">ADX&nbsp;—</span>';
+      const c = v >= 30 ? 'var(--neon-green)' : v >= 20 ? 'var(--neon-orange)' : 'rgba(255,255,255,0.5)';
+      return `<span style="color:${c};">ADX&nbsp;<strong>${v.toFixed(1)}</strong></span>`;
+    }
+    // Helper: RSI-colored badge
+    function rsiBadge(v) {
+      if (v == null || isNaN(v)) return '';
+      const c = v >= 70 ? 'var(--neon-red)' : v <= 30 ? 'var(--neon-green)' : 'rgba(255,255,255,0.5)';
+      return `<span style="color:${c};">RSI&nbsp;<strong>${v.toFixed(0)}</strong></span>`;
+    }
+    // Helper: MACD sign chip
+    function macdBadge(v) {
+      if (v == null || isNaN(v)) return '';
+      const c = v > 0 ? 'var(--neon-green)' : v < 0 ? 'var(--neon-red)' : 'rgba(255,255,255,0.5)';
+      const sign = v > 0 ? '↑' : v < 0 ? '↓' : '·';
+      return `<span style="color:${c};">MACD&nbsp;<strong>${sign}${Math.abs(v).toFixed(2)}</strong></span>`;
+    }
+
     let specLine;
+    // Banner if a retrain is currently running — explains WHY bundles may be missing
+    const retrainBanner = retrain
+      ? `<span style="display:inline-block; padding: 2px 8px; border-radius: 4px; background: rgba(0,240,255,0.15); border: 1px solid rgba(0,240,255,0.4); color: var(--cyan-glow); font-weight: 700; font-size: 9px; letter-spacing: 0.4px; margin-right: 8px;">🔧 RETRAIN ${retrain.bundlesStarted}/${retrain.totalExpected}</span>`
+      : '';
+
     if (isChop) {
-      specLine = 'CHOP — no specialist active';
+      const adx = live && live.adx;
+      const rsi = live && live.rsi;
+      const macd = live && live.macd_hist;
+      const bundles = deployedBundlesFor(family);
+      const armed = bundles.length;
+      const reason = decision && decision.reason || '';
+      // Detect the specific reason so message tells the user what's happening
+      let statusMsg;
+      if (reason.includes('no models trained')) {
+        statusMsg = retrain
+          ? `<span style="color: var(--cyan-glow);">CHOP specialists training now…</span>`
+          : `<span style="color: var(--neon-orange);">CHOP specialists not deployed yet</span>`;
+      } else if (reason.includes('bundle(s) disabled')) {
+        statusMsg = `<span style="color: var(--neon-red);">CHOP bundles failed quality gate (retrain may help)</span>`;
+      } else if (armed > 0) {
+        statusMsg = `<span style="opacity:0.8;">${armed} specialist${armed === 1 ? '' : 's'} primed · waiting for ADX&nbsp;≥&nbsp;25 + EMA alignment</span>`;
+      } else {
+        statusMsg = '<span style="opacity:0.6;">no specialists deployed yet</span>';
+      }
+      specLine = `${retrainBanner}${adxBadge(adx)} ${rsiBadge(rsi)} ${macdBadge(macd)} · ${statusMsg}`;
     } else if (decision && (longBundle === 'DISABLED' && shortBundle === 'DISABLED')) {
       specLine = '<span style="color:var(--neon-red);">all bundles gated off (low quality)</span>';
     } else if (decision && (longBundle === 'MISSING' && shortBundle === 'MISSING')) {
@@ -250,36 +361,134 @@
       : `<div class="e2-pos-status">no open position</div>
          <div class="e2-pos-pnl" style="color:var(--text-secondary); font-size:11px;">flat</div>`;
 
+    // ─── Design-A card style ────────────────────────────────────────────
+    // (Replaces the gauge/sparkline-heavy E2 card body. Clean, scannable,
+    //  exactly like /mockups/design-a.html. Only the card markup changes —
+    //  everything else on the dashboard is preserved.)
+
+    // FIRE badge
+    let opaFireBadge;
+    if (action === 'BUY')        opaFireBadge = `<span class="opa-fire-badge long">▲ FIRE LONG</span>`;
+    else if (action === 'SELL')  opaFireBadge = `<span class="opa-fire-badge short">▼ FIRE SHORT</span>`;
+    else if (isChop)             opaFireBadge = '<span class="opa-fire-badge wait">CHOP</span>';
+    else                         opaFireBadge = '<span class="opa-fire-badge wait">WAIT</span>';
+
+    // Specialist line
+    // Note: CHOP is tradeable via CHOP_long/CHOP_short specialists — don't
+    // hard-code "no specialist active" for CHOP. Fall through to normal logic.
+    let opaSpec;
+    if (longBundle === 'DISABLED' && shortBundle === 'DISABLED') {
+      opaSpec = '<span style="color:var(--neon-red);">all bundles gated (low quality)</span>';
+    } else if (longBundle === 'MISSING' && shortBundle === 'MISSING') {
+      opaSpec = '<span style="color:var(--neon-orange);">no model trained for this regime</span>';
+    } else if (action === 'BUY' || action === 'SELL') {
+      const dir = action === 'BUY' ? 'long' : 'short';
+      opaSpec = `active: <strong>${family}_${session}_${regime}_${dir}</strong>`;
+    } else {
+      // WAIT — primed but probability hasn't crossed threshold yet.
+      // Show which direction bundles are armed (↑ = long, ↓ = short, ↑↓ = both).
+      const primedLong  = longBundle  !== 'MISSING' && longBundle  !== 'DISABLED';
+      const primedShort = shortBundle !== 'MISSING' && shortBundle !== 'DISABLED';
+      const dirs = (primedLong && primedShort) ? '↑↓' : primedLong ? '↑' : primedShort ? '↓' : '';
+      opaSpec = `watching: <strong>${family}_${session}_${regime}</strong>${dirs ? ' ' + dirs : ''}`;
+    }
+
+    // L/S probability bars — always render both bars for visual consistency.
+    //
+    // Three distinct visual states:
+    //   null  → model absent / CHOP suppressed : fill=0, value="—" muted, no tick
+    //           (track looks intentionally empty — not a real reading)
+    //   ~0    → model deployed, near-zero output: fill=1.5% min sliver, value="<1%"
+    //           (track looks alive but quiet — a real reading of no signal)
+    //   N>0   → model deployed, real signal     : fill=N%, value="N%"
+    //           (normal bar — approaching or above threshold)
+    function probBar(side, prob, th) {
+      const cls    = side === 'long' ? 'long' : 'short';
+      const lbl    = side === 'long' ? 'L' : 'S';
+      const lblCls = side === 'long' ? 'opa-prob-l' : 'opa-prob-s';
+      const hasProb = prob != null;
+      const pct     = hasProb ? Math.round(Math.max(0, Math.min(1, prob)) * 100) : 0;
+      const thPct   = th != null ? Math.round(Math.max(0, Math.min(1, th)) * 100) : null;
+      const hit     = hasProb && th != null && prob >= th;
+
+      // Near-zero: model exists but rounds to 0% — show a minimum sliver + "< 1%"
+      // so the bar looks "live/quiet" rather than "broken/missing".
+      const isNearZero = hasProb && pct === 0 && prob > 0;
+      const fillPct    = isNearZero ? 1.5 : pct;
+      const valText    = !hasProb ? '—' : isNearZero ? '< 1%' : `${pct}%`;
+      const valColor   = hit      ? (side === 'long' ? 'var(--neon-green)' : 'var(--neon-red)')
+                       : hasProb  ? 'var(--text-primary)'
+                       :            'rgba(255,255,255,0.3)';
+
+      const tickHtml = thPct != null ? `<span class="opa-prob-th" style="left:${thPct}%;"></span>` : '';
+      return `<div class="opa-prob"><span class="${lblCls}">${lbl}</span>
+                <div class="opa-prob-track">
+                  <span class="opa-prob-fill ${cls}" style="width:${fillPct}%;"></span>
+                  ${tickHtml}
+                </div>
+                <span class="opa-prob-val" style="color:${valColor};">${valText}</span></div>`;
+    }
+    // Always show real probs — CHOP has dedicated CHOP_long/CHOP_short specialists
+    // that CAN fire BUY/SELL. Suppressing to null created a contradiction where
+    // Signal showed BUY but the bars were empty.
+    const opaProbL = probBar('long',  longP,  displayLongTh);
+    const opaProbS = probBar('short', shortP, displayShortTh);
+
+    // Position summary
+    let opaPos;
+    if (pos) {
+      const pnl = pos.unrealizedPnL || 0;
+      const pnlClass = pnl >= 0 ? 'pos' : 'neg';
+      const sign = pnl >= 0 ? '+' : '';
+      opaPos = `<div class="opa-pos has">
+                  <span>${pos.direction} × ${pos.qty || 1} @ ${pos.entryPrice ? pos.entryPrice.toFixed(2) : '—'}</span>
+                  <strong class="${pnlClass}">${sign}${formatCurrency(pnl)}</strong>
+                </div>`;
+    } else if (!enabled) {
+      opaPos = `<div class="opa-pos"><span>symbol OFF — paused</span><span>px ${px ? px.toFixed(2) : '—'}</span></div>`;
+    } else {
+      opaPos = `<div class="opa-pos"><span>no open position</span><span>px ${px ? px.toFixed(2) : '—'}</span></div>`;
+    }
+
+    // ─── NT8 symbol-mismatch detection ──────────────────────────────────
+    // Compare the symbol this CARD represents with what NT8 chart is reporting
+    // for this family. If user is in MICRO mode (card sym = MNQ=F) but NT8
+    // chart is on NQ=F (mini), trades won't make it to the chart.
+    const linked = data && data.nt8LinkedSymbols ? data.nt8LinkedSymbols : {};
+    const chartSym = linked[family];
+    const isMismatch = chartSym && chartSym !== sym;
+    let mismatchBanner = '';
+    if (isMismatch) {
+      const cleanChart = chartSym.replace('=F', '');
+      const cleanCard = displaySym;
+      mismatchBanner = `
+        <div style="margin-top:6px; padding:6px 8px; border-radius:6px;
+                    background:rgba(255,152,0,0.12); border:1px solid rgba(255,152,0,0.45);
+                    color: var(--neon-orange); font-size:10px; line-height:1.4;">
+          🚫 <strong>SYMBOL MISMATCH</strong> — NT8 chart is on <strong>${cleanChart}</strong>,
+          bot wants to fire <strong>${cleanCard}</strong>. Trades blocked until you
+          switch ${cleanChart.includes('M') ? 'bot to MICRO mode' : 'bot to MINI mode'}
+          OR retarget chart to <strong>${cleanCard}</strong>.
+        </div>`;
+    }
+
     return `
-      <div class="e2-card ${fireClass}">
-        <div class="e2-head">
-          <div class="e2-sym-row">
-            <span class="e2-sym">${displaySym}</span>
-            ${px > 0 ? `<span class="e2-px">${px.toFixed(2)}</span>` : ''}
-            ${px > 0 ? `<span class="e2-chg ${chgClass}">${chgText}</span>` : ''}
-          </div>
-          <span class="e2-onoff ${enabled ? 'on' : 'off'}"
+      <div class="opa-card ${fireClass}" ${isMismatch ? 'style="border-color: rgba(255,152,0,0.6);"' : ''}>
+        <div class="opa-head">
+          <span class="opa-sym">${displaySym}</span>
+          <span class="opa-onoff ${enabled ? 'on' : 'off'}"
                 onclick="toggleSymbolState('${sym}', ${!enabled})">${enabled ? '● ON' : '○ OFF'}</span>
         </div>
-        <div class="e2-row">
-          <span class="e2-regime-pill ${rClass}">${regimeText}</span>
-          <span class="e2-sess">${session}</span>
-          ${verdictHtml}
+        <div class="opa-row2">
+          <span class="opa-r-pill ${rClass}">${regimeText}</span>
+          <span class="opa-sess">${session}</span>
+          ${opaFireBadge}
         </div>
-        <div class="e2-floors-row" title="Quality gate: bundles must hit this WR to deploy. RTH (NY hours) holds a high bar; ETH (overnight) uses a realistic bar.">
-          <span class="e2-floor-chip ${session==='RTH' ? 'active' : ''}">RTH&nbsp;<strong>${Math.round(floors.rth*100)}%</strong></span>
-          <span class="e2-floor-chip ${session==='ETH' ? 'active' : ''}">ETH&nbsp;<strong>${Math.round(floors.eth*100)}%</strong></span>
-          <span class="e2-floors-label">WR floor</span>
-        </div>
-        <div class="e2-spark-row">
-          ${sparkSvg}
-          <div class="e2-spark-stats">today<br><strong class="${todayPnl > 0 ? 'pos' : (todayPnl < 0 ? 'neg' : '')}">${todayPnl >= 0 ? '+' : ''}${formatCurrency(todayPnl)}</strong></div>
-        </div>
-        <div class="e2-gauges">${longGauge}${shortGauge}</div>
-        <div class="e2-foot">
-          <div class="e2-spec">${specLine}</div>
-          <div class="e2-pos">${posHtml}</div>
-        </div>
+        <div class="opa-spec">${opaSpec}</div>
+        ${opaProbL}
+        ${opaProbS}
+        ${mismatchBanner}
+        ${opaPos}
       </div>`;
   }
 
@@ -542,20 +751,41 @@
     });
   }
 
-  // ── Paper stats KPI hook + models polling ──────────────────────────────
+  // ── Today WR/PF KPI — derived from /api/state.history ──────────────────
+  // History is unified: in LIVE mode it's NT8-mirror trades; in PAPER mode
+  // it's paperHarness trades. Either way the tile shows what the bot has
+  // actually done today.
   async function pollPaperStats() {
     try {
-      const res = await fetch('/api/paper');
+      const res = await fetch('/api/state');
       if (!res.ok) return;
       const data = await res.json();
-      if (data.stats) {
-        const wrEl = document.getElementById('kpi-paper-wr');
-        const pfEl = document.getElementById('kpi-paper-pf');
-        if (wrEl) wrEl.textContent = data.stats.total > 0
-          ? (data.stats.winRate * 100).toFixed(1) + '% (' + data.stats.total + ')'
-          : '— (0)';
-        if (pfEl) pfEl.textContent = (data.stats.netR || 0).toFixed(1) + ' R';
+      const wrEl = document.getElementById('kpi-paper-wr');
+      const pfEl = document.getElementById('kpi-paper-pf');
+      const wrLabel = document.getElementById('kpi-wr-label');
+      const pfLabel = document.getElementById('kpi-pf-label');
+      // Relabel based on mode so user knows what they're looking at
+      const isLive = (data.tradingMode || '').toLowerCase() === 'live';
+      if (wrLabel) wrLabel.textContent = isLive ? 'Live WR (today)' : 'Paper WR (today)';
+      if (pfLabel) pfLabel.textContent = isLive ? 'Live R (today)'   : 'Paper R (today)';
+
+      // Filter history to today only (PT)
+      const todayPT = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      const all = Array.isArray(data.history) ? data.history : [];
+      const today = all.filter(t => {
+        if (!t.exitTime) return false;
+        return String(t.exitTime).slice(0, 10) === todayPT;
+      });
+      if (today.length === 0) {
+        if (wrEl) wrEl.textContent = '— (0)';
+        if (pfEl) pfEl.textContent = '0.0 R';
+        return;
       }
+      const wins = today.filter(t => (t.profit || t.pnl || 0) > 0).length;
+      const wr = wins / today.length;
+      const netR = today.reduce((s, t) => s + (t.pnlR != null ? t.pnlR : 0), 0);
+      if (wrEl) wrEl.textContent = (wr * 100).toFixed(1) + '% (' + today.length + ')';
+      if (pfEl) pfEl.textContent = (netR >= 0 ? '+' : '') + netR.toFixed(1) + ' R';
     } catch (e) {}
   }
 

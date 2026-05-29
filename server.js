@@ -51,8 +51,27 @@ const {
   startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
   broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols
 } = require('./lib/nt8Bridge');
-const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8, getDecisionMode, setDecisionMode } = require('./lib/decisionEngine');
+const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8 } = require('./lib/decisionEngine');
+const { decide2, decide2Shadow } = require('./lib/gate2Engine');
 const llmAnalyst = require('./lib/llmAnalyst');
+
+// ── Gate config (hot-reload every 3 seconds) ──────────────────────────────────
+const GATE_CONFIG_FILE = path.join(__dirname, 'models', 'gate_config.json');
+let _gateCache = null; let _gateCacheMs = 0;
+function _getGateConfig() {
+  if (_gateCache && (Date.now() - _gateCacheMs) < 3000) return _gateCache;
+  try { _gateCache = JSON.parse(fs.readFileSync(GATE_CONFIG_FILE, 'utf-8')); }
+  catch (e) { _gateCache = { activeGate: 'gate1', shadowGate2: true }; }
+  _gateCacheMs = Date.now();
+  return _gateCache;
+}
+function _setGateConfig(patch) {
+  const cfg = _getGateConfig();
+  Object.assign(cfg, patch, { updatedAt: new Date().toISOString() });
+  fs.writeFileSync(GATE_CONFIG_FILE, JSON.stringify(cfg, null, 2));
+  _gateCache = cfg; _gateCacheMs = Date.now();
+  return cfg;
+}
 // paperHarness removed — all symbols run LIVE via NT8
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
@@ -80,6 +99,66 @@ for (const s of ALL_SYMBOLS) { livePrices[s] = 0; lastDecisions[s] = null; lastR
 const serverStartTime = Date.now();
 
 
+// ── Helper: fire a decision to NT8 (shared by Gate 1 and Gate 2) ─────────────
+function _fireToNT8(d, symbol) {
+  try {
+    const acc     = getPortfolioState().accounts[symbol];
+    const linked  = (typeof getLinkedSymbols === 'function') ? getLinkedSymbols() : {};
+    const family  = symbol.replace('=F', '').replace(/^M(NQ|ES|CL|GC)$/, '$1');
+    const chartSym = linked[family];
+    if (!chartSym) {
+      eventBus.emit('BLOCKED', symbol, `🚫 LIVE blocked — no NT8 chart for ${family}`);
+      return;
+    }
+    if (chartSym !== symbol) {
+      eventBus.emit('BLOCKED', symbol, `🚫 symbol mismatch — bot wants ${symbol} but chart is ${chartSym}`);
+      return;
+    }
+    if (!acc || acc.enabled === false || acc.activePosition || acc.status === 'FAILED') {
+      eventBus.emit('BLOCKED', symbol,
+        `signal blocked — ${!acc ? 'no account' : acc.enabled === false ? 'symbol OFF' : acc.activePosition ? 'already in position' : 'account FAILED'}`);
+      return;
+    }
+    const direction = d.action === 'BUY' ? 'Long' : 'Short';
+    const gateTag   = d.gate === 'gate2' ? `[G2:${d.pattern || 'PAT'}] ` : '';
+    const _prof     = getActiveProfile();
+    const sessionRegime = {
+      ...getActiveSessionRegime(),
+      atrStopMultiplier:      _prof.slAtrMult    || 1.5,
+      atrTargetMultiplier:    _prof.tpAtrMult    || 2.7,
+      atrBreakevenMultiplier: 0.8,
+      atrTrailingMultiplier:  1.0
+    };
+    const strategy = `${gateTag}${d.regime} ${direction} (p=${(d.probability || 0).toFixed(2)})`;
+    const pos = enterTrade(symbol, direction, d.close, strategy, d.atr, sessionRegime);
+    if (pos) {
+      eventBus.emit('ENTRY', symbol,
+        `✓ LIVE ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
+        { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit, gate: d.gate || 'gate1' });
+      sendSignalToNT8(d.action, symbol, pos.qty, pos.entryPrice,
+        pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+      try {
+        const dirEmoji = d.action === 'BUY' ? '🟢' : '🔴';
+        const slPts = Math.abs(pos.entryPrice - pos.stopLoss).toFixed(1);
+        const tpPts = Math.abs(pos.takeProfit - pos.entryPrice).toFixed(1);
+        const gateNote = d.gate === 'gate2' ? ` | 📐 ${d.pattern || 'PATTERN'}` : '';
+        sendTelegramMessage(
+          `${dirEmoji} *${direction.toUpperCase()}* ${symbol.replace('=F','')} ×${pos.qty}\n` +
+          `📍 Entry: \`${pos.entryPrice.toFixed(2)}\`\n` +
+          `🛑 SL: \`${pos.stopLoss.toFixed(2)}\` (−${slPts} pts)\n` +
+          `🎯 TP: \`${pos.takeProfit.toFixed(2)}\` (+${tpPts} pts)\n` +
+          `📊 ${d.regime} | ${d.session}${gateNote}`,
+          { kind: 'open', header: `⚡ *Antigravity — Entry*` }
+        );
+      } catch (e) { /* non-fatal */ }
+    } else {
+      eventBus.emit('BLOCKED', symbol, 'enterTrade refused (sizer returned 0)');
+    }
+  } catch (e) {
+    console.error('[_fireToNT8]', e.message);
+  }
+}
+
 // ── Bar-push hook: NT8 closed a 5m bar → run decision engine ────────────────
 // NT8 charts always send mini symbols (NQ=F, ES=F, CL=F, GC=F) — even when
 // the chart is showing the micro contract, the price is identical. We work
@@ -100,16 +179,31 @@ function processBarUpdate(rawSymbol, candles) {
     `BAR close=${last.close} vol=${last.volume || 0}`,
     { close: last.close, time: last.time, family: familySym });
 
-  // Decision is family-level (uses mini model)
+  // ── GATE ROUTING ────────────────────────────────────────────────────────────
+  // Gate 1 always runs for display (regime events, BRAIN_STATE, dashboard cards).
+  // Gate 2 runs async for NT8 firing only when activeGate === 'gate2'.
+  // Shadow mode: Gate 2 runs in background and logs what it would have done.
+  const gateCfg    = _getGateConfig();
+  const activeGate = gateCfg.activeGate || 'gate1';
+
+  // Decision is family-level (uses mini model) — always Gate 1 for display
   const decision = decide(familySym, candles);
+
+  // Shadow mode: run Gate 2 in background, never blocks Gate 1
+  if (activeGate === 'gate1' && gateCfg.shadowGate2) {
+    decide2Shadow(familySym, candles, decision);
+  }
+
   // Store under BOTH mini and micro keys so dashboard renders consistently
   // regardless of which contract mode is currently selected
   lastDecisions[familySym] = decision;
   if (microSym) lastDecisions[microSym] = decision;
 
-  // LLM prefetch — fire async analysis NOW so the result is cached and ready
-  // for decide() on the NEXT bar close. Non-blocking: returns immediately.
-  // Must run AFTER decide() so we have the fresh featureSnapshot + probabilities.
+  // LLM prefetch — DISABLED 2026-05-28: gate always returned FLAT (conf=0.00 on
+  // 36/40 calls, conf=0.55 downgraded on remaining 4 — zero non-FLAT ever).
+  // Was adding ~2.2s latency + continuous API cost with no positive trade contribution.
+  // To re-enable: uncomment the block below.
+  /*
   try {
     const _fv = (decision && decision.featureSnapshot)
       ? decision.featureSnapshot
@@ -122,7 +216,8 @@ function processBarUpdate(rawSymbol, candles) {
       const _regime = decision.regime || lastRegimes[familySym] || 'UNKNOWN';
       llmAnalyst.prefetch(familySym, decision.session || 'ETH', last.time, _fv, candles, _gSig, _regime);
     }
-  } catch (_e) { /* LLM prefetch errors must never crash the bar handler */ }
+  } catch (_e) { }
+  */
 
   // Regime change tracked at the family level (avoids double-emit)
   if (decision.regime && decision.regime !== lastRegimes[familySym]) {
@@ -164,6 +259,8 @@ function processBarUpdate(rawSymbol, candles) {
     const _famContracts = (typeof getFamilyContracts === 'function') ? getFamilyContracts() : {};
     const _perFamContract = _famContracts[_fam] || getContractMode();
     const _perAcctMode = (acc && acc.tradingMode) || TRADING_MODE;
+    // CHOP is tradeable via dedicated CHOP_long/CHOP_short specialists — always
+    // send real probs and the specialist name regardless of regime.
     broadcastBrainState({
       symbol: targetSym,
       family: familySym,
@@ -174,9 +271,9 @@ function processBarUpdate(rawSymbol, candles) {
       action: decision ? decision.action : 'FLAT',
       longProb:  probs.long  !== undefined ? probs.long  : (decision && decision.action === 'BUY'  ? decision.probability : null),
       shortProb: probs.short !== undefined ? probs.short : (decision && decision.action === 'SELL' ? decision.probability : null),
-      longTh:  probs.longTh,
-      shortTh: probs.shortTh,
-      specialist: (decision && decision.regime && decision.regime !== 'CHOP')
+      longTh:  probs.longTh  !== undefined ? probs.longTh  : null,
+      shortTh: probs.shortTh !== undefined ? probs.shortTh : null,
+      specialist: (decision && decision.regime && decision.session)
         ? `${familyMiniSymbol(targetSym).replace('=F','')}_${decision.session}_${decision.regime}`
         : '—',
       positionDir: acc.activePosition ? acc.activePosition.direction : null,
@@ -188,6 +285,8 @@ function processBarUpdate(rawSymbol, candles) {
       contractMode: _perFamContract,   // per-family (was global)
       tradingMode: _perAcctMode,       // per-account (was global env)
       exitMode: decision ? decision.exitMode : null,
+      gate: activeGate,                // 'gate1' | 'gate2' — shows in Brain Panel
+      pattern: (decision && decision.pattern) || null,  // Gate 2 pattern name
       features: topFeatures,
       ts: Date.now()
     });
@@ -197,6 +296,24 @@ function processBarUpdate(rawSymbol, candles) {
 
   // All symbols are LIVE — decisions go straight to NT8 via the bridge.
   const symbol = targetSym;
+
+  // Gate 2 live: run async pattern engine, fire NT8 with Gate 2 decision instead of Gate 1.
+  // Gate 1 (default): fire NT8 with Gate 1 decision synchronously (unchanged behavior).
+  if (activeGate === 'gate2') {
+    decide2(familySym, candles).then(g2 => {
+      if (g2.action === 'BUY' || g2.action === 'SELL') {
+        // Use Gate 2 decision for NT8 firing — same logic as Gate 1 path below
+        _fireToNT8(g2, symbol, familySym, last);
+        eventBus.emit('DECISION', targetSym,
+          `[G2] ${g2.action} pattern=${g2.pattern} agree=${g2.agreeingCount} (${g2.regime})`,
+          { action: g2.action, pattern: g2.pattern, regime: g2.regime, session: g2.session, gate: 'gate2' });
+      }
+    }).catch(err => {
+      eventBus.emit('INFO', targetSym, `[Gate2] fire error: ${err.message}`);
+    });
+    return; // Skip Gate 1 NT8 fire below
+  }
+
   if (decision.action === 'BUY' || decision.action === 'SELL') {
     const acc = getPortfolioState().accounts[symbol];
 
@@ -443,10 +560,11 @@ const server = http.createServer((req, res) => {
           aggressivenessProfile: getActiveProfile(),
           retrainInProgress,
           nt8LinkedSymbols: (typeof getLinkedSymbols === 'function') ? getLinkedSymbols() : {},
-          decisionMode: (typeof getDecisionMode === 'function') ? getDecisionMode() : 'HYBRID',
           familyContracts: (typeof getFamilyContracts === 'function') ? getFamilyContracts() : {},
           tastytradeId: process.env.TASTYTRADE_CLIENT_ID,
-          llmAnalyst: llmAnalyst.getStatus()
+          llmAnalyst: llmAnalyst.getStatus(),
+          activeGate: _getGateConfig().activeGate || 'gate1',
+          shadowGate2: !!_getGateConfig().shadowGate2
         }));
       }
 
@@ -456,17 +574,6 @@ const server = http.createServer((req, res) => {
         const result = setFamilyContract(reqBody.family, reqBody.type);
         if (result.ok) {
           eventBus.emit('INFO', null, `${result.family} family contract → ${result.type}`);
-        }
-        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify(result));
-      }
-
-      // POST /api/decision-mode — flip between HYBRID and V2
-      // body: { mode: 'HYBRID' | 'V2' }
-      if (pathname === '/api/decision-mode' && req.method === 'POST') {
-        const result = setDecisionMode(reqBody && reqBody.mode);
-        if (result.ok) {
-          eventBus.emit('INFO', null, `Decision mode → ${result.mode}`);
         }
         res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(result));
@@ -515,6 +622,47 @@ const server = http.createServer((req, res) => {
         eventBus.emit('INFO', null, `Boost R:R ${enabled ? 'ENABLED' : 'disabled'} — live within 60s`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: 'success', active: result }));
+      }
+
+      // GET /api/gate — return active gate config
+      if (pathname === '/api/gate' && req.method === 'GET') {
+        const cfg = _getGateConfig();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          activeGate:  cfg.activeGate  || 'gate1',
+          shadowGate2: !!cfg.shadowGate2
+        }));
+      }
+
+      // POST /api/gate — switch active gate or toggle shadow mode
+      // body: { activeGate: 'gate1' | 'gate2' } or { shadowGate2: true | false }
+      // or both fields together
+      if (pathname === '/api/gate' && req.method === 'POST') {
+        const patch = {};
+        if (reqBody.activeGate && ['gate1', 'gate2'].includes(reqBody.activeGate)) {
+          patch.activeGate = reqBody.activeGate;
+        }
+        if (reqBody.shadowGate2 !== undefined) {
+          patch.shadowGate2 = !!reqBody.shadowGate2;
+        }
+        if (Object.keys(patch).length === 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'body must include activeGate (gate1|gate2) or shadowGate2 (bool)' }));
+        }
+        _setGateConfig(patch);
+        const cfg = _getGateConfig();
+        if (patch.activeGate) {
+          eventBus.emit('INFO', null, `Signal engine → ${cfg.activeGate.toUpperCase()} ${cfg.shadowGate2 ? '(shadow ON)' : ''}`);
+        }
+        if (patch.shadowGate2 !== undefined) {
+          eventBus.emit('INFO', null, `Gate 2 shadow mode → ${cfg.shadowGate2 ? 'ON' : 'OFF'}`);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          status:      'success',
+          activeGate:  cfg.activeGate,
+          shadowGate2: cfg.shadowGate2
+        }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config
@@ -976,6 +1124,42 @@ function _legacySettingsShim() {
   }
   return out;
 }
+
+// ── EOD force-close timer ────────────────────────────────────────────────────
+// Fires every 30s. Between 4:58–5:05 PM ET (1:58–2:05 PM PT), sends CLOSE for
+// any open position so nothing survives into the CME maintenance window.
+// A per-day latch (_eodClosedToday) prevents spamming repeated CLOSE signals.
+let _eodClosedToday = '';
+setInterval(() => {
+  const now    = new Date();
+  const month  = now.getUTCMonth();
+  const offset = (month >= 2 && month <= 10) ? 4 : 5;  // EDT or EST
+  const etH    = (now.getUTCHours() - offset + 24) % 24;
+  const etM    = now.getUTCMinutes();
+  const etTotal = etH * 60 + etM;
+  const todayKey = now.toISOString().slice(0, 10);
+  // Fire window: 4:58 PM – 5:05 PM ET
+  if (etTotal < 16 * 60 + 58 || etTotal >= 17 * 60 + 5) return;
+  if (_eodClosedToday === todayKey) return;  // already ran today
+  _eodClosedToday = todayKey;
+  const ps = getPortfolioState();
+  const symbols = Object.keys(ps.accounts);
+  let closedAny = false;
+  symbols.forEach(sym => {
+    const acc = ps.accounts[sym];
+    if (acc && acc.activePosition) {
+      console.log(`[EOD] Force-closing ${sym} @ 4:58 PM ET (${etH}:${String(etM).padStart(2,'0')} ET)`);
+      sendSignalToNT8('CLOSE', sym, 0, 0, 0, 0);
+      closedAny = true;
+    }
+  });
+  if (closedAny) {
+    sendTelegramMessage(`🛑 *EOD Force-Close* triggered at 4:58 PM ET — all positions closed before CME maintenance.`);
+    eventBus.emit('EOD_CLOSE', 'ALL', 'EOD force-close at 4:58 PM ET — CME maintenance in 2 min', {});
+  } else {
+    console.log(`[EOD] 4:58 PM ET check — no open positions, nothing to close.`);
+  }
+}, 30000);
 
 // ── Live-price ticker (low-frequency, mirrors NT8 reality) ──────────────────
 // Old code spammed Yahoo every 2s. New behavior: prices update only when NT8

@@ -288,119 +288,211 @@ def _gap_atr(df_slice: pd.DataFrame, atr_val: float) -> float:
 
 MIN_BARS = 220
 
-def build_features_row(df: pd.DataFrame, idx: int, symbol: str):
-    """Build one feature row from df[0:idx+1]. Returns numpy array or None."""
-    if idx < MIN_BARS:
-        return None
-    sl  = df.iloc[:idx+1]
-    c   = sl["close"].values
-    atr_v = _atr(sl, 14)
-    if atr_v is None or atr_v <= 0:
-        return None
+def build_features_matrix(df: pd.DataFrame, symbol: str):
+    """
+    Vectorized feature builder. Computes every indicator ONCE across the full
+    DataFrame (O(n) total), then assembles the feature matrix in a single pass.
+    Returns (X: np.ndarray[n_valid, 32], valid_idx: np.ndarray[n_valid]).
 
-    ema9   = _ema_series(c,   9)[-1]
-    ema21  = _ema_series(c,  21)[-1]
-    ema50  = _ema_series(c,  50)[-1]
-    ema200 = _ema_series(c, 200)[-1]
-    if any(np.isnan(v) for v in (ema9, ema21, ema50, ema200)):
-        return None
+    Replaces the old build_features_row which recomputed EMAs from scratch for
+    every bar (O(n²) — catastrophically slow on 200K+ row datasets).
+    """
+    n = len(df)
+    c = df["close"].values.astype(np.float64)
+    h = df["high"].values.astype(np.float64)
+    l = df["low"].values.astype(np.float64)
+    o = df["open"].values.astype(np.float64)
+    v = df["volume"].values.astype(np.float64)
 
-    rsi_v  = _rsi(c, 14)
-    macd_v = _macd(c, 12, 26, 9)
-    bb_v   = _bollinger(c, 20)
-    adx_v  = _adx(sl, 14)
-    if rsi_v is None or macd_v is None or bb_v is None:
-        return None
+    # ── EMAs — each called ONCE, O(n) ──────────────────────────────────────────
+    ema9   = _ema_series(c,   9)
+    ema12  = _ema_series(c,  12)
+    ema21  = _ema_series(c,  21)
+    ema26  = _ema_series(c,  26)
+    ema50  = _ema_series(c,  50)
+    ema200 = _ema_series(c, 200)
 
-    last  = sl.iloc[-1]
-    cls   = float(last["close"])
-    vols  = sl["volume"].values.astype(float)
+    # ── ATR (Wilder smoothing) ──────────────────────────────────────────────────
+    prev_c = np.empty_like(c); prev_c[0] = c[0]; prev_c[1:] = c[:-1]
+    tr     = np.maximum(h - l, np.maximum(np.abs(h - prev_c), np.abs(l - prev_c)))
+    atr    = np.full(n, np.nan)
+    if n > 14:
+        atr[13] = tr[1:15].mean()
+        for i in range(14, n):
+            atr[i] = (atr[i-1] * 13 + tr[i]) / 14
 
-    # ATR percentile over last 100 bars
-    recent_trs = []
-    for j in range(max(0, idx-99), idx+1):
-        if j < 1: continue
-        row_j = df.iloc[j]; row_jm1 = df.iloc[j-1]
-        tr = max(row_j["high"]-row_j["low"],
-                 abs(row_j["high"]-row_jm1["close"]),
-                 abs(row_j["low"] -row_jm1["close"]))
-        recent_trs.append(tr)
-    atr_pctile = sum(1 for v in recent_trs if v <= atr_v) / len(recent_trs) if recent_trs else 0.5
+    # ATR percentile (rolling 100-bar)
+    atr_pctile = np.full(n, 0.5)
+    for i in range(114, n):
+        w = tr[i-99:i+1]
+        atr_pctile[i] = float(np.mean(w <= atr[i]))
 
-    # Vol z-score (50-bar)
-    rv = vols[-50:] if len(vols) >= 50 else vols
-    vm, vs = rv.mean(), rv.std(ddof=0) or 1.0
-    vol_z = (float(last["volume"]) - vm) / vs
+    # ── RSI (Wilder smoothing) ──────────────────────────────────────────────────
+    diff   = np.diff(c, prepend=c[0])
+    gains  = np.where(diff > 0, diff, 0.0)
+    losses = np.where(diff < 0, -diff, 0.0)
+    rsi_arr = np.full(n, np.nan)
+    if n > 15:
+        ag = gains[1:15].mean(); al = losses[1:15].mean()
+        for i in range(14, n):
+            if i > 14:
+                ag = (ag * 13 + gains[i]) / 14
+                al = (al * 13 + losses[i]) / 14
+            rsi_arr[i] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
 
-    # Returns
-    ret1  = (c[-1] - c[-2]) / c[-2] if len(c) >= 2 else 0.0
-    ret5  = (c[-1] - c[-6]) / c[-6] if len(c) >= 6 else 0.0
-    ret20 = (c[-1] - c[-21]) / c[-21] if len(c) >= 21 else 0.0
+    # ── MACD ────────────────────────────────────────────────────────────────────
+    macd_line = ema12 - ema26
+    fv_list   = np.where(~np.isnan(macd_line))[0]
+    macd_sig  = np.full(n, np.nan)
+    macd_hist = np.full(n, np.nan)
+    if len(fv_list) > 0:
+        fv = fv_list[0]
+        sig = _ema_series(macd_line[fv:], 9)
+        macd_sig[fv:]  = sig
+        macd_hist[fv:] = macd_line[fv:] - sig
 
-    # Candle shape
-    rng   = float(last["high"] - last["low"]) or 1.0
-    body  = abs(float(last["close"]) - float(last["open"]))
-    uw    = float(last["high"]) - max(float(last["open"]), float(last["close"]))
-    lw    = min(float(last["open"]), float(last["close"])) - float(last["low"])
+    # ── Bollinger Bands (rolling 20) ────────────────────────────────────────────
+    bb_z  = np.full(n, np.nan)
+    bb_bw = np.full(n, np.nan)
+    for i in range(19, n):
+        sl = c[i-19:i+1]; mid = sl.mean(); sd = sl.std(ddof=0)
+        if sd > 0:
+            bb_z[i]  = (c[i] - mid) / sd
+            bb_bw[i] = (4 * sd) / mid
 
-    # Time
-    ts = str(last["time"])
-    try:
-        h_int = int(ts[11:13])
-    except Exception:
-        h_int = 0
-    sess = _session(ts, symbol)
+    # ── ADX (Wilder smoothing) ──────────────────────────────────────────────────
+    up  = h[1:] - h[:-1]; dn = l[:-1] - l[1:]
+    pdm = np.where((up > dn) & (up > 0), up, 0.0)
+    mdm = np.where((dn > up) & (dn > 0), dn, 0.0)
+    adx_arr = np.full(n, 20.0)
+    if n > 30:
+        atr14 = tr[1:15].mean(); pdm14 = pdm[:14].mean(); mdm14 = mdm[:14].mean()
+        dx_vals = []
+        for i in range(14, n-1):
+            atr14 = (atr14*13 + tr[i+1]) / 14
+            pdm14 = (pdm14*13 + pdm[i])  / 14
+            mdm14 = (mdm14*13 + mdm[i])  / 14
+            pdi   = 100*pdm14/atr14 if atr14 > 0 else 0
+            mdi   = 100*mdm14/atr14 if atr14 > 0 else 0
+            dx_vals.append(100 * abs(pdi - mdi) / ((pdi+mdi) or 1))
+        if len(dx_vals) >= 14:
+            adx14 = sum(dx_vals[:14]) / 14
+            for j, dxv in enumerate(dx_vals[14:]):
+                adx14 = (adx14*13 + dxv) / 14
+                adx_arr[j + 29] = adx14
 
-    # Instrument flags
-    fam  = symbol.replace("=F", "").upper()
-    fam  = fam[1:] if (fam.startswith("M") and len(fam) == 3) else fam
-    is_eq = 1 if fam in ("NQ", "ES") else 0
-    is_cl = 1 if fam == "CL" else 0
-    is_gc = 1 if fam == "GC" else 0
+    # ── Vol z-score (rolling 50) ────────────────────────────────────────────────
+    vol_z = np.zeros(n)
+    for i in range(50, n):
+        rv = v[i-49:i+1]; vm = rv.mean(); vs = rv.std(ddof=0)
+        vol_z[i] = (v[i] - vm) / (vs or 1.0)
 
-    # Day of week (0=Mon..4=Fri normalised 0.0..1.0)
-    try:
-        dow = datetime.strptime(ts[:10], "%Y-%m-%d").weekday()
-        dow_norm = dow / 4.0 if 0 <= dow <= 4 else 0.0
-    except Exception:
-        dow_norm = 0.0
+    # ── Candle shape ────────────────────────────────────────────────────────────
+    rng_arr  = np.maximum(h - l, 1e-9)
+    body_arr = np.abs(c - o) / rng_arr
+    uw_arr   = (h - np.maximum(o, c)) / rng_arr
+    lw_arr   = (np.minimum(o, c) - l) / rng_arr
+    wick_asy = uw_arr - lw_arr
 
-    # EIA window (CL, Wednesday, 7:30±90 min PT)
-    try:
-        wday = datetime.strptime(ts[:10], "%Y-%m-%d").weekday()
-        pt_mins = h_int * 60 + int(ts[14:16])
-        eia = 1 if (is_cl and wday == 2 and 360 <= pt_mins < 540) else 0
-    except Exception:
-        eia = 0
+    # ── Returns ─────────────────────────────────────────────────────────────────
+    ret1  = np.zeros(n); ret5  = np.zeros(n); ret20 = np.zeros(n)
+    ret1[1:]   = np.where(c[:-1]  != 0, (c[1:]  - c[:-1])  / c[:-1],  0)
+    ret5[5:]   = np.where(c[:-5]  != 0, (c[5:]  - c[:-5])  / c[:-5],  0)
+    ret20[20:] = np.where(c[:-20] != 0, (c[20:] - c[:-20]) / c[:-20], 0)
 
-    # London session
-    try:
-        pt_mins_ls = h_int * 60 + int(ts[14:16])
-        london = 1 if ((is_cl or is_gc) and (pt_mins_ls < 300 or pt_mins_ls >= 1380)) else 0
-    except Exception:
-        london = 0
+    # ── Time / instrument features ───────────────────────────────────────────────
+    fam  = symbol.replace("=F","").upper()
+    fam  = fam[1:] if (fam.startswith("M") and len(fam)==3) else fam
+    is_eq = 1.0 if fam in ("NQ","ES") else 0.0
+    is_cl = 1.0 if fam == "CL" else 0.0
+    is_gc = 1.0 if fam == "GC" else 0.0
 
-    # Track C features
-    vwap   = _rolling_vwap(sl, 80)
-    vwap_dev = (cls - vwap) / atr_v if vwap > 0 else 0.0
-    intra_mom = (cls - _first_bar_of_day_close(sl)) / atr_v
-    gap_v  = _gap_atr(sl, atr_v)
-    v5  = vols[-5:].mean()  if len(vols) >= 5  else vols.mean()
-    v20 = vols[-20:].mean() if len(vols) >= 20 else vols.mean()
-    vol_trend = v5 / (v20 or 1.0)
+    times    = df["time"].astype(str).values
+    hours    = np.zeros(n, dtype=np.float32)
+    sess_rth = np.zeros(n, dtype=np.float32)
+    dow_norm = np.zeros(n, dtype=np.float32)
+    eia_win  = np.zeros(n, dtype=np.float32)
+    london_f = np.zeros(n, dtype=np.float32)
+    dates    = np.array([ts[:10] for ts in times])
 
-    return np.array([
-        (cls-ema9)/cls, (cls-ema21)/cls, (cls-ema50)/cls, (cls-ema200)/cls,
-        (ema9-ema21)/cls, (ema21-ema50)/cls,
-        rsi_v, macd_v["hist"], macd_v["macd"], adx_v,
-        atr_v/cls, atr_pctile, bb_v["z"], bb_v["bandwidth"],
-        vol_z, ret1, ret5, ret20,
-        body/rng, (uw-lw)/rng,
-        h_int, 1.0 if sess == "RTH" else 0.0,
-        float(is_eq), float(is_cl), float(is_gc),
-        dow_norm, float(eia), float(london),
-        vwap_dev, intra_mom, gap_v, vol_trend,
-    ], dtype=np.float32)
+    for i in range(n):
+        ts = times[i]
+        try:
+            hi = int(ts[11:13]); mi = int(ts[14:16])
+            hours[i] = float(hi); pt = hi*60 + mi
+            day = datetime.strptime(ts[:10], "%Y-%m-%d").weekday()
+            if 0 <= day <= 4:
+                if is_cl and 360 <= pt < 690:      sess_rth[i] = 1.0
+                elif is_gc and 320 <= pt < 630:    sess_rth[i] = 1.0
+                elif 390 <= pt < 780:               sess_rth[i] = 1.0
+            dow_norm[i] = day/4.0 if 0 <= day <= 4 else 0.0
+            if is_cl and day == 2 and 360 <= pt < 540:          eia_win[i]  = 1.0
+            if (is_cl or is_gc) and (pt < 300 or pt >= 1380):   london_f[i] = 1.0
+        except Exception:
+            pass
+
+    # ── Track C: gap_atr + intraday_mom (group by day, O(n)) ────────────────────
+    gap_atr_arr   = np.zeros(n)
+    intra_mom_arr = np.zeros(n)
+    day_idx: dict = {}
+    for i, d in enumerate(dates):
+        day_idx.setdefault(d, []).append(i)
+    sorted_dates = sorted(day_idx.keys())
+    for di, d in enumerate(sorted_dates):
+        idxs   = day_idx[d]
+        first_c = c[idxs[0]]
+        for idx in idxs:
+            if not np.isnan(atr[idx]) and atr[idx] > 0:
+                intra_mom_arr[idx] = (c[idx] - first_c) / atr[idx]
+        if di > 0:
+            prev_idxs  = day_idx[sorted_dates[di-1]]
+            prev_close = c[prev_idxs[-1]]
+            a0 = atr[idxs[0]]
+            g  = (o[idxs[0]] - prev_close) / a0 if (not np.isnan(a0) and a0 > 0) else 0.0
+            for idx in idxs:
+                gap_atr_arr[idx] = g
+
+    # ── Rolling VWAP (80-bar) ────────────────────────────────────────────────────
+    vwap_arr = np.zeros(n)
+    for i in range(80, n):
+        sv = np.clip(v[i-79:i+1], 1, None)
+        tp = (h[i-79:i+1] + l[i-79:i+1] + c[i-79:i+1]) / 3
+        vwap_arr[i] = (tp * sv).sum() / sv.sum()
+
+    # ── Vol trend (5-bar avg / 20-bar avg) ──────────────────────────────────────
+    vol_trend = np.ones(n)
+    for i in range(20, n):
+        v5  = v[max(0,i-4):i+1].mean()
+        v20 = v[i-19:i+1].mean()
+        vol_trend[i] = v5 / (v20 or 1.0)
+
+    # ── Final pass: collect valid rows (O(n) indexing only) ─────────────────────
+    valid_idx: list = []
+    rows:      list = []
+    for i in range(MIN_BARS, n - 12):
+        if (np.isnan(ema200[i]) or np.isnan(rsi_arr[i]) or
+                np.isnan(macd_hist[i]) or np.isnan(bb_z[i]) or
+                np.isnan(atr[i]) or atr[i] <= 0):
+            continue
+        rows.append([
+            (c[i]-ema9[i])/c[i],    (c[i]-ema21[i])/c[i],
+            (c[i]-ema50[i])/c[i],   (c[i]-ema200[i])/c[i],
+            (ema9[i]-ema21[i])/c[i], (ema21[i]-ema50[i])/c[i],
+            rsi_arr[i], macd_hist[i], ema12[i]-ema26[i], adx_arr[i],
+            atr[i]/c[i], atr_pctile[i], bb_z[i], bb_bw[i],
+            vol_z[i], ret1[i], ret5[i], ret20[i],
+            body_arr[i], wick_asy[i],
+            hours[i], sess_rth[i],
+            is_eq, is_cl, is_gc,
+            dow_norm[i], eia_win[i], london_f[i],
+            (c[i]-vwap_arr[i])/atr[i] if vwap_arr[i] > 0 else 0.0,
+            intra_mom_arr[i], gap_atr_arr[i], vol_trend[i],
+        ])
+        valid_idx.append(i)
+
+    if not rows:
+        return np.empty((0, 32), dtype=np.float32), np.array([], dtype=np.int64)
+    return np.array(rows, dtype=np.float32), np.array(valid_idx, dtype=np.int64)
 
 
 # ── Label builder (mirrors walkforward.js triple-barrier labeling) ────────────
@@ -472,31 +564,24 @@ def pick_best_threshold(y_true: np.ndarray, y_prob: np.ndarray) -> tuple[float, 
 
 
 def train_bundle(df: pd.DataFrame, symbol: str, session: str, regime: str,
-                 direction: str, opts: dict) -> dict | None:
-    """Train one (symbol, session, regime, direction) bundle. Returns model dict or None."""
+                 direction: str,
+                 X_all: np.ndarray, all_idx: np.ndarray,
+                 sess_arr: np.ndarray, reg_arr: np.ndarray,
+                 opts: dict) -> dict | None:
+    """
+    Train one bundle from a precomputed feature matrix.
+    X_all/all_idx/sess_arr/reg_arr are computed once per symbol by the caller.
+    """
     t0 = time.time()
 
-    # Build feature matrix + labels for ALL bars matching session+regime
-    feat_rows, row_indices = [], []
-    for i in range(MIN_BARS, len(df) - 12):
-        row = build_features_row(df, i, symbol)
-        if row is None:
-            continue
-        ts   = str(df.iloc[i]["time"])
-        sess = _session(ts, symbol)
-        if sess != session:
-            continue
-        feat = dict(zip(FEATURE_NAMES, row.tolist()))
-        reg  = _regime(feat)
-        if reg != regime:
-            continue
-        feat_rows.append(row)
-        row_indices.append(i)
+    mask = (sess_arr == session) & (reg_arr == regime)
+    X    = X_all[mask]
+    row_indices = all_idx[mask]
 
-    if len(feat_rows) < 200:
+    if len(X) < 200:
+        print(f"  SKIP: only {len(X)} matching samples")
         return None
 
-    X  = np.stack(feat_rows)
     y  = build_labels(df, X, row_indices, direction)
     n  = len(X)
     n_folds = 4
@@ -541,10 +626,17 @@ def train_bundle(df: pd.DataFrame, symbol: str, session: str, regime: str,
         "sharpeRatio":      float(np.mean([m["sharpeRatio"]      for m in fold_metrics_list])),
     }
 
-    # Quality gate
-    wr_floor = opts.get("rthFloor", 0.55) if session == "RTH" else opts.get("ethFloor", 0.52)
-    if agg["winRate"] < wr_floor or agg["profitFactor"] < 1.25 or agg["totalTestTrades"] < 40:
-        print(f"  QUALITY FAIL: WR={agg['winRate']:.1%} PF={agg['profitFactor']:.2f} trades={agg['totalTestTrades']}")
+    # Quality gate — Phase 1 fix 2026-05-28: unified floors, PF 1.30, Sharpe gate
+    wr_floor     = opts.get("rthFloor",    0.60) if session == "RTH" else opts.get("ethFloor",    0.58)
+    pf_floor     = opts.get("pfFloor",     1.30)
+    sharpe_floor = opts.get("sharpeFloor", 0.80)
+    fails = []
+    if agg["winRate"]      < wr_floor:     fails.append(f"WR={agg['winRate']:.1%}<{wr_floor:.0%}")
+    if agg["profitFactor"] < pf_floor:     fails.append(f"PF={agg['profitFactor']:.2f}<{pf_floor:.2f}")
+    if agg["sharpeRatio"]  < sharpe_floor: fails.append(f"Sharpe={agg['sharpeRatio']:.2f}<{sharpe_floor:.2f}")
+    if agg["totalTestTrades"] < 40:        fails.append(f"trades={agg['totalTestTrades']}<40")
+    if fails:
+        print(f"  QUALITY FAIL: {', '.join(fails)}")
         return None
 
     # Train FINAL model on all data
@@ -553,7 +645,7 @@ def train_bundle(df: pd.DataFrame, symbol: str, session: str, regime: str,
     final_model.fit(X, y)
 
     elapsed = time.time() - t0
-    print(f"  DEPLOYED → WR={agg['winRate']:.1%} PF={agg['profitFactor']:.2f} "
+    print(f"  DEPLOYED -> WR={agg['winRate']:.1%} PF={agg['profitFactor']:.2f} "
           f"Sharpe={agg['sharpeRatio']:.1f} th={final_threshold:.2f} "
           f"trades={agg['totalTestTrades']} ({elapsed:.0f}s)")
 
@@ -579,15 +671,24 @@ def main():
     parser.add_argument("--symbols",      default="NQ,ES,CL,GC")
     parser.add_argument("--auto-rollback", action="store_true")
     parser.add_argument("--quick",         action="store_true")
-    parser.add_argument("--rth-floor",    type=float, default=0.55)
-    parser.add_argument("--eth-floor",    type=float, default=0.52)
+    parser.add_argument("--rth-floor",    type=float, default=0.60)
+    parser.add_argument("--eth-floor",    type=float, default=0.58)
+    parser.add_argument("--pf-floor",     type=float, default=1.30)
+    parser.add_argument("--sharpe-floor", type=float, default=0.80)
+    parser.add_argument("--skip-chop",    action="store_true", default=True,
+                        help="Skip CHOP bundle training (0W/9L live — permanently blocked)")
+    parser.add_argument("--no-skip-chop", dest="skip_chop", action="store_false",
+                        help="Force-train CHOP bundles (dangerous — use only for research)")
     args = parser.parse_args()
 
     symbols = [s.strip() + ("=F" if "=F" not in s else "") for s in args.symbols.split(",")]
     opts    = {
-        "quick":    args.quick,
-        "rthFloor": args.rth_floor,
-        "ethFloor": args.eth_floor,
+        "quick":       args.quick,
+        "rthFloor":    args.rth_floor,
+        "ethFloor":    args.eth_floor,
+        "pfFloor":     args.pf_floor,
+        "sharpeFloor": args.sharpe_floor,
+        "skipChop":    args.skip_chop,
     }
 
     ts_str = datetime.now().strftime("%Y%m%d_%H%M")
@@ -605,6 +706,10 @@ def main():
 
     logf   = open(logfile, "w", encoding="utf-8")
     orig   = sys.stdout
+    # Force UTF-8 on Windows where default stdout may be cp1252
+    if hasattr(sys.stdout, 'reconfigure'):
+        try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception: pass
     sys.stdout = Tee(orig, logf)  # type: ignore
 
     print("=" * 60)
@@ -629,14 +734,38 @@ def main():
             continue
         print(f"  {len(df):,} candles loaded")
 
+        # ── Precompute feature matrix once for this symbol ────────────────────
+        print(f"  Building feature matrix (vectorized)…")
+        t_feat = time.time()
+        X_all, all_idx = build_features_matrix(df, symbol)
+        print(f"  {len(X_all):,} valid feature rows  ({time.time()-t_feat:.1f}s)")
+        if len(X_all) == 0:
+            print("  No valid rows — skipping symbol")
+            continue
+
+        # Precompute session + regime label per row (O(n), done once)
+        times_sub = df["time"].astype(str).values
+        sess_arr  = np.array([_session(times_sub[i], symbol) for i in all_idx])
+        reg_arr   = np.array([
+            _regime(dict(zip(FEATURE_NAMES, X_all[j].tolist())))
+            for j in range(len(all_idx))
+        ])
+
         for session in SESSIONS:
             for regime in REGIMES:
+                # Skip CHOP by default — 0W/9L live record across all systems.
+                # CHOP permanently blocked in isTradeable(). Training it wastes
+                # compute and may accidentally lower overall WR averages.
+                # Re-enable only with --no-skip-chop flag + explicit research intent.
+                if opts.get("skipChop", True) and regime == "CHOP":
+                    print(f"  [SKIP] {session}_{regime} — CHOP permanently blocked (use --no-skip-chop to force)")
+                    continue
                 for direction in DIRECTIONS:
-                    key = f"{symbol.replace('=F','')}_lgbm_{session}_{regime}_{direction}"
                     out_path = MODEL_DIR / f"{symbol.replace('=F','')}_{session}_{regime}_{direction}.json"
                     print(f"\n[{symbol} {session}_{regime}_{direction}] Training…")
                     try:
-                        result = train_bundle(df, symbol, session, regime, direction, opts)
+                        result = train_bundle(df, symbol, session, regime, direction,
+                                              X_all, all_idx, sess_arr, reg_arr, opts)
                     except Exception as e:
                         print(f"  ERROR: {e}")
                         traceback.print_exc()
