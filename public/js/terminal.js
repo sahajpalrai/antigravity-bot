@@ -422,8 +422,6 @@
         ${probL}
         ${probS}
         ${posLine}
-        ${statsHtml}
-        ${gatesHtml}
         <div class="v6c-btns">
           <button class="v6c-btn buy"  onclick="manualFire('${sym}','BUY')">▲ BUY</button>
           <button class="v6c-btn sell" onclick="manualFire('${sym}','SELL')">▼ SELL</button>
