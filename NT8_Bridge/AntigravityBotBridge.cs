@@ -67,7 +67,12 @@ namespace NinjaTrader.NinjaScript.Strategies
         private TextBlock  brainTradesText     = null;
         private TextBlock  brainModeText       = null;
         private TextBlock  brainExitsText      = null;
+        private TextBlock  brainBarSentText    = null;   // "last bar sent to bot" indicator
         private const double PROB_BAR_WIDTH    = 220;
+
+        // Bar-feed tracking — updated every time a BAR message is sent to Node
+        private DateTime   _lastBarSentTime   = DateTime.MinValue;
+        private int        _barsSentTotal     = 0;
 
         // Counts entries since last session-open. Reset in OnStateChange to
         // State.Realtime so the panel always shows today's trade count.
@@ -97,6 +102,13 @@ namespace NinjaTrader.NinjaScript.Strategies
         // EnterShort there silently fails in NT8 (entry methods must be called from
         // within OnBarUpdate).  Instead we STORE the signal here and execute it on
         // the very next OnBarUpdate() tick, exactly how V6's ReadSignalFile() works.
+        //
+        // _entryInFlight: set to true when a pending entry is queued, cleared when
+        // the position fill is confirmed (OnPositionUpdate) or the entry is dropped.
+        // Prevents double-entries during the gap between EnterLong/Short submission
+        // and NT8's fill confirmation — a window where Position.MarketPosition can
+        // still read Flat even though an order is already pending.
+        private volatile bool _entryInFlight = false;
         private string _pendingAction      = null;  // "BUY" | "SELL" | null
         private int    _pendingQty         = 1;
         private double _pendingEntryPrice  = 0;
@@ -143,7 +155,7 @@ namespace NinjaTrader.NinjaScript.Strategies
                 Name                                         = "AntigravityBotBridge";
                 Calculate                                    = Calculate.OnEachTick;
                 EntriesPerDirection                          = 1;
-                EntryHandling                                = EntryHandling.AllEntries;
+                EntryHandling                                = EntryHandling.UniqueEntries;
                 IsExitOnSessionCloseStrategy                 = true;
                 ExitOnSessionCloseSeconds                    = 30;
                 IsFillLimitOnTouch                           = true;
@@ -271,16 +283,19 @@ namespace NinjaTrader.NinjaScript.Strategies
                         Print(string.Format("AntigravityBridge: Deferred BUY fired from OnBarUpdate. Qty={0} SL={1:F0}t TP={2:F0}t", _pendingQty, slTicks, tpTicks));
                         EnterLong(_pendingQty, "AntigravityLong");
                         BumpTodayTrades();
+                        // _entryInFlight stays true until OnPositionUpdate confirms the fill
                     }
                     else
                     {
                         Print(string.Format("AntigravityBridge: Deferred SELL fired from OnBarUpdate. Qty={0} SL={1:F0}t TP={2:F0}t", _pendingQty, slTicks, tpTicks));
                         EnterShort(_pendingQty, "AntigravityShort");
                         BumpTodayTrades();
+                        // _entryInFlight stays true until OnPositionUpdate confirms the fill
                     }
                 }
                 else
                 {
+                    _entryInFlight = false;  // entry dropped — clear so next signal can queue
                     Print(string.Format("AntigravityBridge: Deferred {0} DROPPED — tradingEnabled={1} eodHalt={2} pos={3}", act, isTradingEnabled, eodHaltApplied, Position.MarketPosition));
                 }
             }
@@ -325,6 +340,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         sym, Time[1], Open[1], High[1], Low[1], Close[1], (long)Volume[1]);
                     byte[] buf = Encoding.UTF8.GetBytes(barMsg);
                     stream.Write(buf, 0, buf.Length);
+                    _lastBarSentTime = DateTime.Now;
+                    _barsSentTotal++;
                 }
                 catch {}
             }
@@ -381,6 +398,20 @@ namespace NinjaTrader.NinjaScript.Strategies
             if (name.StartsWith("CL"))  return "CL=F";
             if (name.StartsWith("GC"))  return "GC=F";
             return "NQ=F";
+        }
+
+        // Clear the in-flight guard as soon as NT8 confirms the position fill.
+        // This is the earliest reliable moment: Position.MarketPosition has changed
+        // from Flat → Long/Short, meaning the entry order was accepted and filled.
+        // Any new signal that arrives after this point will see a non-Flat position
+        // and be correctly blocked by the existing position check.
+        protected override void OnPositionUpdate(Position position, double averagePrice,
+                                                  int quantity, MarketPosition marketPosition)
+        {
+            if (marketPosition != MarketPosition.Flat)
+            {
+                _entryInFlight = false;  // fill confirmed — allow next entry after exit
+            }
         }
 
         // Increment today's trade counter, auto-resetting at calendar-day rollover
@@ -714,6 +745,18 @@ namespace NinjaTrader.NinjaScript.Strategies
             brainExitsText = new TextBlock { Text = "Exits: ATR",   Foreground = COL_VAL,    FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold, Margin = new Thickness(6, 0, 0, 0) };
             root.Children.Add(MakeRow("Mode",  new UIElement[] { brainModeText }));
             root.Children.Add(MakeRow("Exits", new UIElement[] { brainExitsText }));
+
+            // ── Bar-feed health row ───────────────────────────────────────────
+            root.Children.Add(MakeDivider(6));
+            brainBarSentText = new TextBlock {
+                Text       = "● waiting for first bar…",
+                Foreground = COL_MUTED,
+                FontFamily = new FontFamily("Consolas"),
+                FontSize   = 12,
+                FontWeight = FontWeights.Bold,
+                Margin     = new Thickness(6, 0, 0, 0)
+            };
+            root.Children.Add(MakeRow("Bar→Bot", new UIElement[] { brainBarSentText }));
 
             return root;
         }
@@ -1261,6 +1304,32 @@ namespace NinjaTrader.NinjaScript.Strategies
                             brainExitsText.Text = "Exits: " + brainExitMode + (brainExitMode == "FIXED" ? "  (override active)" : "  (ATR-dynamic)");
                             brainExitsText.Foreground = brainExitMode == "FIXED" ? COL_AMBER : COL_VAL;
                         }
+                        // Bar→Bot feed health indicator
+                        if (brainBarSentText != null) {
+                            if (_lastBarSentTime == DateTime.MinValue) {
+                                brainBarSentText.Text       = "● waiting for first bar…";
+                                brainBarSentText.Foreground = COL_MUTED;
+                            } else {
+                                double secAgo = (DateTime.Now - _lastBarSentTime).TotalSeconds;
+                                string timeStr = _lastBarSentTime.ToString("HH:mm:ss");
+                                string countStr = " (#" + _barsSentTotal + ")";
+                                if (secAgo <= 90) {
+                                    // Live — bar within last 90 seconds
+                                    brainBarSentText.Text       = "● " + timeStr + countStr;
+                                    brainBarSentText.Foreground = COL_GREEN;
+                                } else if (secAgo <= 600) {
+                                    // Slightly stale — 1.5–10 min
+                                    int minAgo = (int)(secAgo / 60);
+                                    brainBarSentText.Text       = "◉ " + timeStr + "  (" + minAgo + "m ago)" + countStr;
+                                    brainBarSentText.Foreground = COL_AMBER;
+                                } else {
+                                    // Stale — over 10 min, data feed may be dead
+                                    int minAgo = (int)(secAgo / 60);
+                                    brainBarSentText.Text       = "✕ STALE  " + timeStr + "  (" + minAgo + "m ago)";
+                                    brainBarSentText.Foreground = COL_RED;
+                                }
+                            }
+                        }
                         // Border glow color — matches old behavior: green when in profit,
                         // red when losing, cyan when flat & connected, orange when halted,
                         // red when disconnected.
@@ -1678,15 +1747,18 @@ namespace NinjaTrader.NinjaScript.Strategies
                         Print("AntigravityBridge: " + action + " ignored — EOD halt active (after 4:45 PM ET).");
                         return;
                     }
-                    if (Position.MarketPosition != MarketPosition.Flat)
+                    if (_entryInFlight || Position.MarketPosition != MarketPosition.Flat)
                     {
-                        Print("AntigravityBridge: " + action + " ignored — already in position: " + Position.MarketPosition);
+                        Print(string.Format("AntigravityBridge: {0} ignored — {1}",
+                            action,
+                            _entryInFlight ? "entry already in flight (fill pending)" : "already in position: " + Position.MarketPosition));
                         return;
                     }
 
                     // Store signal — EnterLong/EnterShort MUST be called from OnBarUpdate
                     // (V6 pattern).  The dispatcher thread cannot submit entries directly;
                     // doing so causes NT8 to silently drop the order with no error.
+                    _entryInFlight     = true;   // arm — cleared by OnPositionUpdate on fill
                     _pendingAction     = action;
                     _pendingQty        = qty;
                     _pendingEntryPrice = entryPrice;
