@@ -92,6 +92,21 @@ namespace NinjaTrader.NinjaScript.Strategies
         private double currentAtr = 0.5;
         private bool isTradingEnabled = true;
 
+        // ── Pending signal (V6 pattern) ──────────────────────────────────────
+        // ExecuteSignal() runs on the WPF dispatcher thread — calling EnterLong/
+        // EnterShort there silently fails in NT8 (entry methods must be called from
+        // within OnBarUpdate).  Instead we STORE the signal here and execute it on
+        // the very next OnBarUpdate() tick, exactly how V6's ReadSignalFile() works.
+        private string _pendingAction      = null;  // "BUY" | "SELL" | null
+        private int    _pendingQty         = 1;
+        private double _pendingEntryPrice  = 0;
+        private double _pendingSl          = 0;
+        private double _pendingTp          = 0;
+        private string _pendingStrategy    = "";
+        private double _pendingBe          = 0;
+        private double _pendingTrail       = 0;
+        private bool   _pendingClose       = false; // CLOSE also deferred to OnBarUpdate
+
         // Brain Panel state (populated by BRAIN<TAB>json messages from Node)
         private string brainRegime       = "—";
         private string brainSession      = "—";
@@ -219,6 +234,54 @@ namespace NinjaTrader.NinjaScript.Strategies
                     if (Position.MarketPosition == MarketPosition.Long)  ExitLong();
                     if (Position.MarketPosition == MarketPosition.Short) ExitShort();
                     UpdateChartOverlay();
+                }
+            }
+
+            // ── Deferred CLOSE (V6 pattern — execute on NT8 thread) ──────────
+            if (_pendingClose)
+            {
+                _pendingClose = false;
+                if (Position.MarketPosition == MarketPosition.Long)  { ExitLong();  Print("AntigravityBridge: Deferred CLOSE — ExitLong fired from OnBarUpdate."); }
+                if (Position.MarketPosition == MarketPosition.Short) { ExitShort(); Print("AntigravityBridge: Deferred CLOSE — ExitShort fired from OnBarUpdate."); }
+            }
+
+            // ── Deferred BUY / SELL (V6 pattern — execute on NT8 thread) ────
+            // ExecuteSignal() only STORES the pending signal (dispatcher thread
+            // cannot call EnterLong/EnterShort).  We execute it here, on the next
+            // OnBarUpdate() tick — the only valid context for NT8 entry methods.
+            if (_pendingAction != null)
+            {
+                string act = _pendingAction;
+                _pendingAction = null;  // clear immediately — prevent double-fire
+
+                if (isTradingEnabled && !eodHaltApplied && Position.MarketPosition == MarketPosition.Flat)
+                {
+                    string entryTag = (act == "BUY") ? "AntigravityLong" : "AntigravityShort";
+                    double slTicks  = Math.Abs(_pendingEntryPrice - _pendingSl)  / TickSize;
+                    double tpTicks  = Math.Abs(_pendingTp - _pendingEntryPrice)  / TickSize;
+                    signalStopLoss       = _pendingSl;
+                    signalTakeProfit     = _pendingTp;
+                    signalBreakevenPrice = _pendingBe;
+                    signalTrailingPrice  = _pendingTrail;
+                    lastStrategy         = _pendingStrategy;
+                    SetStopLoss(entryTag,     CalculationMode.Ticks, slTicks,  false);
+                    SetProfitTarget(entryTag, CalculationMode.Ticks, tpTicks);
+                    if (act == "BUY")
+                    {
+                        Print(string.Format("AntigravityBridge: Deferred BUY fired from OnBarUpdate. Qty={0} SL={1:F0}t TP={2:F0}t", _pendingQty, slTicks, tpTicks));
+                        EnterLong(_pendingQty, "AntigravityLong");
+                        BumpTodayTrades();
+                    }
+                    else
+                    {
+                        Print(string.Format("AntigravityBridge: Deferred SELL fired from OnBarUpdate. Qty={0} SL={1:F0}t TP={2:F0}t", _pendingQty, slTicks, tpTicks));
+                        EnterShort(_pendingQty, "AntigravityShort");
+                        BumpTodayTrades();
+                    }
+                }
+                else
+                {
+                    Print(string.Format("AntigravityBridge: Deferred {0} DROPPED — tradingEnabled={1} eodHalt={2} pos={3}", act, isTradingEnabled, eodHaltApplied, Position.MarketPosition));
                 }
             }
 
@@ -1550,52 +1613,42 @@ namespace NinjaTrader.NinjaScript.Strategies
 
                 if (action == "CLOSE")
                 {
-                    Print("AntigravityBridge: Flattening active positions for " + symbol);
-                    
-                    lastSignal = "CLOSE (FLATTEN) Order Received";
+                    Print("AntigravityBridge: CLOSE received — deferring ExitLong/ExitShort to OnBarUpdate.");
+                    lastSignal   = "CLOSE (FLATTEN) Order Received";
                     lastStrategy = "Dashboard Forced Close / Halted";
-                    UpdateChartOverlay();
 
-                    // Cancel all active pending orders first on this instrument
+                    // Cancel pending bracket orders immediately (Account.Cancel is thread-safe).
                     if (Account != null)
                     {
                         foreach (var o in Account.Orders)
                         {
-                            if (o != null && o.Instrument != null && o.Instrument.FullName == Instrument.FullName &&
-                                (o.OrderState == OrderState.Working || o.OrderState == OrderState.Accepted || o.OrderState == OrderState.Submitted))
+                            if (o != null && o.Instrument != null &&
+                                o.Instrument.FullName == Instrument.FullName &&
+                                (o.OrderState == OrderState.Working ||
+                                 o.OrderState == OrderState.Accepted ||
+                                 o.OrderState == OrderState.Submitted))
                             {
                                 try { Account.Cancel(new[] { o }); }
                                 catch (Exception ex) { Print("Cancel order error: " + ex.Message); }
                             }
                         }
                     }
-                    
-                    // Exit open positions
-                    if (Position.MarketPosition == MarketPosition.Long)
-                    {
-                        ExitLong();
-                    }
-                    else if (Position.MarketPosition == MarketPosition.Short)
-                    {
-                        ExitShort();
-                    }
+
+                    // Defer ExitLong/ExitShort to OnBarUpdate — those calls must
+                    // run on NT8's strategy thread, not the WPF dispatcher.
+                    _pendingClose = true;
+                    UpdateChartOverlay();
                 }
                 else if (action == "BUY" || action == "SELL")
                 {
                     int rawQty = int.Parse(parts[2]);
 
                     // ─── AUTO QTY SCALING ─────────────────────────────────────
-                    // If signal is MICRO and chart is MINI → divide qty by 10
-                    //   (10 micros == 1 mini in point value)
-                    // If signal is MINI and chart is MICRO → multiply qty by 10
-                    //   (1 mini == 10 micros in point value)
-                    // Equal types → no change.
-                    // Minimum 1 contract floor (don't size down below 1).
                     int qty = rawQty;
                     if (signalIsMicro && !chartIsMicro)
                     {
                         qty = Math.Max(1, (int)Math.Round(rawQty / 10.0));
-                        Print(string.Format("AntigravityBridge: QTY SCALED — signal {0} micros → {1} mini contract(s) (chart={2})",
+                        Print(string.Format("AntigravityBridge: QTY SCALED — signal {0} micros → {1} mini(s) (chart={2})",
                               rawQty, qty, chartName));
                     }
                     else if (!signalIsMicro && chartIsMicro)
@@ -1606,81 +1659,45 @@ namespace NinjaTrader.NinjaScript.Strategies
                     }
 
                     double entryPrice = double.Parse(parts[3]);
-                    double stopLoss = double.Parse(parts[4]);
+                    double stopLoss   = double.Parse(parts[4]);
                     double takeProfit = double.Parse(parts[5]);
-                    
-                    signalStopLoss = stopLoss;
-                    signalTakeProfit = takeProfit;
-                    if (parts.Length >= 8)
-                    {
-                        double.TryParse(parts[7], out signalBreakevenPrice);
-                    }
-                    if (parts.Length >= 9)
-                    {
-                        double.TryParse(parts[8], out signalTrailingPrice);
-                    }
-                    
-                    if (parts.Length >= 7)
-                    {
-                        lastStrategy = parts[6];
-                    }
-                    else
-                    {
-                        lastStrategy = "Confluence Trigger";
-                    }
+                    string strat      = parts.Length >= 7 ? parts[6] : "Confluence Trigger";
+                    double bePrice    = 0; if (parts.Length >= 8) double.TryParse(parts[7], out bePrice);
+                    double trailPrice = 0; if (parts.Length >= 9) double.TryParse(parts[8], out trailPrice);
 
                     lastSignal = string.Format("{0} {1} Contract(s) @ {2}", action, qty, entryPrice.ToString("F2"));
-                    
+
                     if (!isTradingEnabled)
                     {
-                        Print("AntigravityBridge: BUY/SELL signal ignored. Strategy is suspended (OFF) on dashboard.");
+                        Print("AntigravityBridge: " + action + " ignored — trading is suspended (OFF).");
                         return;
                     }
-
-                    // EOD halt — no new entries after 4:45 PM ET
                     if (eodHaltApplied)
                     {
-                        Print("AntigravityBridge: BUY/SELL signal ignored. EOD halt is active (after 4:45 PM ET).");
+                        Print("AntigravityBridge: " + action + " ignored — EOD halt active (after 4:45 PM ET).");
                         return;
                     }
-                    
+                    if (Position.MarketPosition != MarketPosition.Flat)
+                    {
+                        Print("AntigravityBridge: " + action + " ignored — already in position: " + Position.MarketPosition);
+                        return;
+                    }
+
+                    // Store signal — EnterLong/EnterShort MUST be called from OnBarUpdate
+                    // (V6 pattern).  The dispatcher thread cannot submit entries directly;
+                    // doing so causes NT8 to silently drop the order with no error.
+                    _pendingAction     = action;
+                    _pendingQty        = qty;
+                    _pendingEntryPrice = entryPrice;
+                    _pendingSl         = stopLoss;
+                    _pendingTp         = takeProfit;
+                    _pendingStrategy   = strat;
+                    _pendingBe         = bePrice;
+                    _pendingTrail      = trailPrice;
+
+                    Print(string.Format("AntigravityBridge: {0} queued → will fire on next OnBarUpdate. Qty={1} entry={2:F2} SL={3:F2} TP={4:F2}",
+                          action, qty, entryPrice, stopLoss, takeProfit));
                     UpdateChartOverlay();
-
-                    // Calculate tick differences for NinjaTrader SL/TP order attachments
-                    double stopLossTicks = Math.Abs(entryPrice - stopLoss) / TickSize;
-                    double takeProfitTicks = Math.Abs(takeProfit - entryPrice) / TickSize;
-
-                    // BE/TRAIL FIX (2026-05-26): SetStopLoss/SetProfitTarget MUST use the
-                    // same signal name as the entry order ("AntigravityLong" / "AntigravityShort"),
-                    // otherwise NT8 treats the initial SL and the later BE/trail move as
-                    // separate slots — the chart shows the original SL while the BE move
-                    // sits in a different bracket that never reaches the broker.
-                    string entrySignal = (action == "BUY") ? "AntigravityLong" : "AntigravityShort";
-                    SetStopLoss(entrySignal, CalculationMode.Ticks, stopLossTicks, false);
-                    SetProfitTarget(entrySignal, CalculationMode.Ticks, takeProfitTicks);
-
-                    if (action == "BUY")
-                    {
-                        if (Position.MarketPosition != MarketPosition.Flat)
-                        {
-                            Print("AntigravityBridge: BUY signal ignored. Already in active position: " + Position.MarketPosition);
-                            return;
-                        }
-                        Print(string.Format("AntigravityBridge: Submitting BUY market order. Qty: {0}, SL: {1} ticks, TP: {2} ticks", qty, stopLossTicks, takeProfitTicks));
-                        EnterLong(qty, "AntigravityLong");
-                        BumpTodayTrades();
-                    }
-                    else if (action == "SELL")
-                    {
-                        if (Position.MarketPosition != MarketPosition.Flat)
-                        {
-                            Print("AntigravityBridge: SELL signal ignored. Already in active position: " + Position.MarketPosition);
-                            return;
-                        }
-                        Print(string.Format("AntigravityBridge: Submitting SELL market order. Qty: {0}, SL: {1} ticks, TP: {2} ticks", qty, stopLossTicks, takeProfitTicks));
-                        EnterShort(qty, "AntigravityShort");
-                        BumpTodayTrades();
-                    }
                 }
             }
             catch (Exception ex)
