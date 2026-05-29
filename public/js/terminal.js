@@ -35,7 +35,28 @@
     renderE2Cards(data);
     renderContractToggle(data);
     renderGateToggle(data);
+    renderNt8Badge(data);
   };
+
+  // ── NT8 connection badge ─────────────────────────────────────────────────
+  function renderNt8Badge(data) {
+    const badge = document.getElementById('nt8ConnBadge');
+    if (!badge) return;
+    const connected = !!data.nt8Connected;
+    if (connected) {
+      badge.textContent = '● NT8 ON';
+      badge.style.borderColor  = 'rgba(57,255,20,0.55)';
+      badge.style.background   = 'rgba(57,255,20,0.12)';
+      badge.style.color        = 'var(--neon-green, #39ff14)';
+      badge.title = 'NT8 bridge connected — signals will reach NinjaTrader';
+    } else {
+      badge.textContent = '● NT8 OFF';
+      badge.style.borderColor  = 'rgba(255,56,56,0.5)';
+      badge.style.background   = 'rgba(255,56,56,0.12)';
+      badge.style.color        = '#ff3838';
+      badge.title = 'NT8 not connected — open AntigravityBotBridge in NinjaTrader to enable live trading';
+    }
+  }
 
   window.setStreamFilter = function (filter) {
     streamFilter = filter;
@@ -449,7 +470,9 @@
         body: JSON.stringify({ symbol: sym, action })
       });
       const d = await res.json();
-      if (d.error) { alert(`⚠ Fire failed: ${d.error}`); }
+      if (!res.ok || d.error) {
+        alert(`⚠ ${action} failed on ${sym.replace('=F','')}\n\n${d.error || 'Unknown server error'}`);
+      }
     } catch (e) { console.warn('manualFire error', e); alert(`Network error: ${e.message}`); }
   };
 
@@ -463,7 +486,11 @@
         body: JSON.stringify({ symbol: sym })
       });
       const d = await res.json();
-      if (d.error) { alert(`⚠ Close failed: ${d.error}`); }
+      if (!res.ok || d.error) {
+        alert(`⚠ FLAT failed on ${label}\n\n${d.error || 'Unknown server error'}`);
+      } else if (d.nt8Sent === false) {
+        alert(`⚠ Paper position closed, but NT8 was not connected.\nClose the position manually in NinjaTrader.`);
+      }
     } catch (e) { console.warn('manualFlat error', e); alert(`Network error: ${e.message}`); }
   };
 

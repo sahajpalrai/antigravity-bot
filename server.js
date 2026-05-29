@@ -49,7 +49,7 @@ const {
 const { sendTelegramMessage } = require('./lib/telegram');
 const {
   startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
-  broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols
+  broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols, isNT8Connected
 } = require('./lib/nt8Bridge');
 const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8 } = require('./lib/decisionEngine');
 const { decide2, decide2Shadow } = require('./lib/gate2Engine');
@@ -564,7 +564,8 @@ const server = http.createServer((req, res) => {
           tastytradeId: process.env.TASTYTRADE_CLIENT_ID,
           llmAnalyst: llmAnalyst.getStatus(),
           activeGate: _getGateConfig().activeGate || 'gate1',
-          shadowGate2: !!_getGateConfig().shadowGate2
+          shadowGate2: !!_getGateConfig().shadowGate2,
+          nt8Connected: isNT8Connected()
         }));
       }
 
@@ -750,12 +751,23 @@ const server = http.createServer((req, res) => {
         }
         if (acc.activePosition) {
           res.writeHead(409, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'already in position — close first' }));
+          return res.end(JSON.stringify({ error: 'already in position — use FLAT first' }));
         }
         const px = livePrices[symbol] || livePrices[familyMiniSymbol(symbol)];
         if (!px) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'no live price yet — NT8 not streaming?' }));
+        }
+        // ── NT8 connection gate ─────────────────────────────────────────────
+        // Check BEFORE enterTrade so we don't record an internal paper position
+        // that has no matching NT8 order. Accounts default to tradingMode='live'
+        // so this check fires for almost every operator-initiated manual trade.
+        const acctMode = (acc.tradingMode || 'live');
+        if (acctMode === 'live' && !isNT8Connected()) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'NT8 not connected — open AntigravityBotBridge in NinjaTrader and wait for the bridge to connect, then retry'
+          }));
         }
         // Get ATR from last decision, fall back to 10 ticks
         const lastDec = lastDecisions[symbol] || lastDecisions[familyMiniSymbol(symbol)];
@@ -772,8 +784,14 @@ const server = http.createServer((req, res) => {
         const strategy = `Manual ${direction} (operator)`;
         const pos = enterTrade(symbol, direction, px, strategy, atr, sessionRegime);
         if (pos) {
-          sendSignalToNT8(fireAction, symbol, pos.qty, pos.entryPrice,
-            pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+          if (acctMode === 'live') {
+            // Pre-send STATUS 1 so NT8's isTradingEnabled is guaranteed true
+            // before the trade signal arrives — handles the case where a prior
+            // STOP or symbol-OFF sent STATUS 0 and the re-enable wasn't received.
+            sendSignalToNT8('STATUS', symbol, 1, 0, 0, 0);
+            sendSignalToNT8(fireAction, symbol, pos.qty, pos.entryPrice,
+              pos.stopLoss, pos.takeProfit, strategy, pos.beTriggerPrice, pos.trailTriggerPrice);
+          }
           eventBus.emit('ENTRY', symbol,
             `🖐 MANUAL ${direction} qty=${pos.qty} @${pos.entryPrice.toFixed(2)} SL=${pos.stopLoss.toFixed(2)} TP=${pos.takeProfit.toFixed(2)}`,
             { direction, qty: pos.qty, entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit });
@@ -781,11 +799,11 @@ const server = http.createServer((req, res) => {
           return res.end(JSON.stringify({
             status: 'fired', symbol, direction, qty: pos.qty,
             entry: pos.entryPrice, sl: pos.stopLoss, tp: pos.takeProfit,
-            atr: atr.toFixed(2)
+            atr: atr.toFixed(2), nt8Sent: acctMode === 'live'
           }));
         }
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'enterTrade returned null (sizer refused — DD cap?)' }));
+        return res.end(JSON.stringify({ error: `enterTrade refused — symbol may be disabled or DD floor hit (symbol=${symbol}, enabled=${acc.enabled}, balance=${acc.balance})` }));
       }
 
       // POST /api/close — force close a symbol's position
@@ -796,9 +814,22 @@ const server = http.createServer((req, res) => {
         if (acc && acc.activePosition) {
           const exitPrice = livePrices[symbol] || acc.activePosition.entryPrice;
           closeTrade(symbol, exitPrice, 'Forced Close via Dashboard');
-          sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
+          // Send CLOSE to NT8 only when connected — always close the paper
+          // position regardless (keeps internal state clean).
+          const acctModeClose = (acc.tradingMode || 'live');
+          if (acctModeClose === 'live') {
+            if (isNT8Connected()) {
+              sendSignalToNT8('CLOSE', symbol, 0, 0, 0, 0);
+            } else {
+              // Paper side closed; warn the operator NT8 didn't get it.
+              eventBus.emit('WARN', symbol, `⚠ FLAT sent but NT8 not connected — close the position manually in NT8`);
+            }
+          }
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ status: 'success' }));
+          return res.end(JSON.stringify({
+            status: 'success',
+            nt8Sent: acctModeClose === 'live' && isNT8Connected()
+          }));
         }
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: 'No active position to close' }));
