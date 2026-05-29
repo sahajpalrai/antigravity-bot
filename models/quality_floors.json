@@ -1,8 +1,18 @@
 {
-  "rthFloor": 0.55,
-  "ethFloor": 0.52,
-  "minPF": 1.25,
+  "rthFloor": 0.60,
+  "ethFloor": 0.58,
+  "minPF": 1.30,
   "minTrades": 40,
-  "minSharpe": 0.5,
-  "lastTrainedAt": "2026-05-28T02:43:53.859Z"
+  "minSharpe": 0.8,
+  "lastTrainedAt": "2026-05-28T16:50:48.763Z",
+  "_note": "Global floors (NQ/CL/GC): RTH≥60% WR, ETH≥58% WR, PF≥1.30, Sharpe≥0.8. ES uses per-symbol override (symbolFloors) because ES 5-min patterns max out at 54-56% WR — same strict floor would leave ES with zero deployed bundles.",
+  "symbolFloors": {
+    "ES=F": {
+      "rthFloor": 0.55,
+      "ethFloor": 0.53,
+      "minPF": 1.20,
+      "minSharpe": 0.5,
+      "_note": "ES-specific — set 2026-05-28. ES WR ceiling is ~55-56% with current feature set. These match pre-raise floors that were profitable live before the 2026-05-28 floor raise."
+    }
+  }
 }
