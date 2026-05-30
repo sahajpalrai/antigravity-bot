@@ -1850,6 +1850,7 @@ body {
 .tni-sep { opacity: 0.25; }
 .tni-sched { font-size: 10.5px; }
 .tni-sched strong { color: var(--text-primary, #f0f6fc); font-weight: 700; }
+.tni-sched-pt { color: #ffc947; opacity: 0.85; font-weight: 600; }
 
 /* Countdown pill */
 .tni-pill {

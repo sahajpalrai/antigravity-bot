@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Antigravity V3 — Unified Architecture Plan</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d0f14;
+    color: #e0e4ef;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 28px 20px 48px;
+    min-height: 100vh;
+  }
+  h1 {
+    text-align: center;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    color: #8b9ec7;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 11.5px;
+    color: #4a5880;
+    margin-bottom: 30px;
+    letter-spacing: 0.04em;
+  }
+
+  .outer {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 22px;
+  }
+
+  /* ─── pipeline column ─── */
+  .pipeline { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  .layer {
+    width: 100%;
+    border-radius: 9px;
+    padding: 14px 18px 16px;
+    border: 1px solid #252a3a;
+    position: relative;
+  }
+  .layer-label {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #4a5575;
+    margin-bottom: 8px;
+  }
+  .layer-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #c0ceee;
+    margin-bottom: 4px;
+  }
+  .layer-sub {
+    font-size: 11px;
+    color: #6a7899;
+    line-height: 1.55;
+  }
+
+  /* layer colors */
+  .l-infra   { background:#141720; border-color:#252a3a; }
+  .l-gate    { background:#1e2020; border-color:#2a3a30; }
+  .l-regime  { background:#181820; border-color:#30302a; }
+  .l-pattern { background:#141825; border-color:#2a3050; }
+  .l-ml      { background:#1a1a28; border-color:#303060; }
+  .l-confirm { background:#1a2020; border-color:#2a4030; }
+  .l-nt8     { background:#181a28; border-color:#2a3060; }
+
+  /* arrow */
+  .arrow {
+    width: 2px;
+    height: 18px;
+    background: #2e3550;
+    position: relative;
+    margin: 0 auto;
+    flex-shrink: 0;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: -4px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #2e3550;
+  }
+  .arrow.green  { background:#1e5a30; }
+  .arrow.green::after { border-top-color:#1e5a30; }
+
+  /* pattern grid */
+  .pattern-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .pat {
+    background: #1a2038;
+    border: 1px solid #2a3560;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .pat .pname { font-weight: 700; color: #7ab0f0; margin-bottom: 2px; }
+  .pat .pev   { font-size: 10px; color: #50c878; }
+  .pat .pmeta { font-size: 9.5px; color: #5a6880; margin-top: 1px; }
+  .pat.star   { border-color: #3a5a20; background: #141e10; }
+  .pat.star .pname { color: #5de890; }
+  .pat.watch  { border-color: #504020; background: #1e1a10; }
+  .pat.watch .pname { color: #d8b870; }
+
+  /* badge */
+  .badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+  .badge.proven  { background:#1a4a20; color:#50e870; }
+  .badge.small   { background:#4a3a10; color:#e8b850; }
+  .badge.fixed   { background:#1a3a4a; color:#50c8f0; }
+  .badge.blocked { background:#4a1a1a; color:#f05050; }
+  .badge.new     { background:#1a2a4a; color:#50a0f0; }
+
+  /* ─── right sidebar ─── */
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+  .side-card {
+    background: #141720;
+    border: 1px solid #252a3a;
+    border-radius: 9px;
+    padding: 14px 14px 16px;
+  }
+  .side-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #506090;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1e2235;
+  }
+
+  /* frequency table */
+  .freq-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 5px;
+    font-size: 11px;
+  }
+  .freq-label { color: #7090c0; font-weight: 600; }
+  .freq-bar-wrap { background: #1e2230; border-radius: 3px; height: 14px; position: relative; }
+  .freq-bar { height: 100%; border-radius: 3px; display: flex; align-items: center; padding-left: 5px; }
+  .freq-bar span { font-size: 9.5px; color: rgba(255,255,255,0.75); font-weight: 600; white-space: nowrap; }
+
+  /* phase table */
+  .phase { margin-bottom: 10px; }
+  .phase-header {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #90a8d8;
+    margin-bottom: 4px;
+  }
+  .phase-item {
+    font-size: 10.5px;
+    color: #6a7899;
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid #2a3050;
+    margin-bottom: 3px;
+    line-height: 1.4;
+  }
+
+  /* system source */
+  .source-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 10.5px;
+  }
+  .src-tag {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.07em;
+    margin-top: 1px;
+  }
+  .src-v4  { background:#2a1428; color:#d878f0; }
+  .src-v5  { background:#141a30; color:#6090f0; }
+  .src-v6  { background:#1a2814; color:#50d878; }
+  .src-ag  { background:#281e14; color:#f0a850; }
+  .src-new { background:#141828; color:#50c8f0; }
+  .src-desc { color: #7080a0; line-height: 1.45; }
+
+  /* discard */
+  .discard-row {
+    display: flex;
+    gap: 8px;
+    font-size: 10.5px;
+    margin-bottom: 5px;
+    align-items: flex-start;
+  }
+  .discard-x { color: #e05050; font-weight: 700; flex-shrink: 0; }
+  .discard-text { color: #6a7090; line-height: 1.4; }
+  .discard-text .why { color: #504060; font-size: 9.5px; }
+
+  .divider { width:100%; height:1px; background:#1e2235; margin: 6px 0; }
+  .note { font-size: 10px; color: #4a5570; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Antigravity V3 — Unified Architecture</h1>
+<div class="subtitle">V4 + V5 + V6 + AG v2 · Evidence-based · Every decision sourced from audit data</div>
+
+<div class="outer">
+
+  <!-- ══════════════ PIPELINE ══════════════ -->
+  <div class="pipeline">
+
+    <!-- L1 Data -->
+    <div class="layer l-infra">
+      <div class="layer-label">Layer 1 · Data (AG v2 — unchanged)</div>
+      <div class="layer-title">NT8 WebSocket → Node.js Bridge → 5-min Bars</div>
+      <div class="layer-sub">32 features: ADX · EMA stack (9/21/50) · RSI · MACD · ATR · BB-width · vol_z · VWAP dev · body shape · session clock · intraday momentum</div>
+    </div>
+    <div class="arrow green"></div>
+
+    <!-- L2 Gate -->
+    <div class="layer l-gate">
+      <div class="layer-label">Layer 2 · Session + News Gate</div>
+      <div class="layer-title">Time &amp; Event Blocks</div>
+      <div class="layer-sub">
+        <strong style="color:#e06060">DEAD ZONE 4:00–7:00 AM ET</strong> — hard block, zero signals<br>
+        <strong style="color:#e06060">FOMC / NFP / CPI</strong> — ±10 min blackout<br>
+        <strong style="color:#d8a850">EOD HALT</strong> — 4:45 PM ET stop new entries · 4:58 PM ET force-flat all
+      </div>
+    </div>
+    <div class="arrow green"></div>
+
+    <!-- L3 Regime -->
+    <div class="layer l-regime">
+      <div class="layer-label">Layer 3 · Regime Gate (AG v2 classifier · ADX mismatch fixed)</div>
+      <div class="layer-title">Regime Classifier — 3 Active · CHOP Blocked</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-top:10px;">
+        <div style="background:#1a2830;border:1px solid #284055;border-radius:5px;padding:7px 6px;text-align:center;font-size:10.5px;color:#70d0d8;font-weight:700;">TREND_UP<br><span style="font-size:9px;opacity:0.7;font-weight:400;">ADX≥22, EMA9>21>50</span></div>
+        <div style="background:#1a2830;border:1px solid #284055;border-radius:5px;padding:7px 6px;text-align:center;font-size:10.5px;color:#70d0d8;font-weight:700;">TREND_DOWN<br><span style="font-size:9px;opacity:0.7;font-weight:400;">ADX≥22, EMA9&lt;21&lt;50</span></div>
+        <div style="background:#1a2830;border:1px solid #284055;border-radius:5px;padding:7px 6px;text-align:center;font-size:10.5px;color:#70d0d8;font-weight:700;">VOL_EXPANSION<br><span style="font-size:9px;opacity:0.7;font-weight:400;">ATR spike+BB expand</span></div>
+        <div style="background:#1e1414;border:1px solid #5a2020;border-radius:5px;padding:7px 6px;text-align:center;font-size:10.5px;color:#e06060;font-weight:700;text-decoration:line-through;opacity:0.55;">CHOP ✗<br><span style="font-size:9px;font-weight:400;">0W/9L all systems</span></div>
+      </div>
+    </div>
+    <div class="arrow green"></div>
+
+    <!-- L4 Patterns -->
+    <div class="layer l-pattern">
+      <div class="layer-label">Layer 4 · Pattern Engine (NEW Python sidecar — ported from V4/V5)</div>
+      <div class="layer-title">7 Patterns · Each votes BUY / SELL / FLAT independently</div>
+      <div class="pattern-grid">
+
+        <div class="pat star">
+          <div class="pname">FVG — Fair Value Gap <span class="badge proven">PROVEN</span></div>
+          <div class="pev">60.4% WR · +$0.167/trade</div>
+          <div class="pmeta">V5 2yr · 1,279 trades · RTH+ETH · 2–4/day</div>
+        </div>
+
+        <div class="pat">
+          <div class="pname">ORB — Opening Range Breakout</div>
+          <div class="pev">V4 standard module</div>
+          <div class="pmeta">RTH 9:30–11:00 ET only · 1–2/day</div>
+        </div>
+
+        <div class="pat watch">
+          <div class="pname">EMA_RASCHKE <span class="badge small">SMALL SAMPLE</span></div>
+          <div class="pev">5W / 0L morning window</div>
+          <div class="pmeta">V5 · RTH morning · 2–3/day · monitor closely</div>
+        </div>
+
+        <div class="pat watch">
+          <div class="pname">RSI_REVERSAL <span class="badge small">SMALL SAMPLE</span></div>
+          <div class="pev">75% WR · 16 trades morning</div>
+          <div class="pmeta">V5 · RSI &lt;30 / &gt;70 · RTH · 1–2/day</div>
+        </div>
+
+        <div class="pat watch">
+          <div class="pname">DAILY_LEVEL <span class="badge small">SMALL SAMPLE</span></div>
+          <div class="pev">6W / 0L</div>
+          <div class="pmeta">V4/V5 · Prev-day H/L · RTH+ETH · 1–2/day</div>
+        </div>
+
+        <div class="pat">
+          <div class="pname">VWAP_REVERSION</div>
+          <div class="pev">V4 MR_VWAP — standard</div>
+          <div class="pmeta">Price &gt;1.5 ATR from VWAP · RTH · 2–4/day</div>
+        </div>
+
+        <div class="pat" style="grid-column:1/-1;">
+          <div class="pname">HTF_BREAK — 15-min High/Low Breakout</div>
+          <div class="pev">V4/V5 standard module</div>
+          <div class="pmeta">15-min H/L break on 5-min close · RTH+ETH · 1–2/day · requires ML agree in ETH</div>
+        </div>
+
+      </div>
+      <div style="margin-top:10px;font-size:10.5px;color:#506080;">
+        Output per bar: <strong style="color:#80a0d0">strongest_signal</strong> (BUY/SELL/FLAT) + <strong style="color:#80a0d0">agreeing_count</strong> (how many patterns agree on that direction)
+      </div>
+    </div>
+    <div class="arrow green"></div>
+
+    <!-- L5 ML -->
+    <div class="layer l-ml">
+      <div class="layer-label">Layer 5 · ML Confidence Filter (V6 T1 thresholds — FILTER ONLY, not signal generator)</div>
+      <div class="layer-title">LightGBM Dual Output — long_prob / short_prob</div>
+      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:#141828;border:1px solid #2a3860;border-radius:6px;padding:8px 10px;font-size:10.5px;">
+          <div style="color:#5080e0;font-weight:700;margin-bottom:4px;">RTH Threshold: 0.55</div>
+          <div style="color:#5a6880;">long_prob ≥ 0.55 → PASS<br>0.50–0.55 + 2 patterns → PASS<br>long_prob &lt; 0.50 → BLOCK</div>
+        </div>
+        <div style="background:#141828;border:1px solid #2a3860;border-radius:6px;padding:8px 10px;font-size:10.5px;">
+          <div style="color:#4070c8;font-weight:700;margin-bottom:4px;">ETH Threshold: 0.53</div>
+          <div style="color:#5a6880;">Same logic at lower floor<br>HTF_BREAK ETH: ML agree required<br>No T2/T3 drought escalation</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:10.5px;color:#507050;background:#141e10;border:1px solid #2a4020;border-radius:5px;padding:6px 10px;">
+        <strong style="color:#50d870">FVG Autonomy Rule:</strong> after 100+ live trades at ≥60% WR, FVG bypasses ML filter — pattern has proven itself live
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:#4a5570;">V6 proved: T1@0.55 was the only profitable tier. T2@0.50 and T3@0.47 were coin-flips. No drought mode.</div>
+    </div>
+    <div class="arrow green"></div>
+
+    <!-- L6 Confirm -->
+    <div class="layer l-confirm">
+      <div class="layer-label">Layer 6 · Direction + Cooldown Gate (V4 proven)</div>
+      <div class="layer-title">Regime Direction Enforcement</div>
+      <div style="margin-top:8px;font-size:10.5px;line-height:1.6;color:#6a7899;">
+        <strong style="color:#70d8d0">TREND_UP:</strong> LONG → free pass &nbsp;·&nbsp; SHORT → requires 2+ patterns agree<br>
+        <strong style="color:#70d8d0">TREND_DOWN:</strong> SHORT → free pass &nbsp;·&nbsp; LONG → requires 2+ patterns agree<br>
+        <strong style="color:#70d8d0">VOL_EXP:</strong> either direction → ML agree required<br>
+        <strong style="color:#d8a850">Cooldown:</strong> 2 min after any trade &nbsp;&nbsp;
+        <strong style="color:#d8a850">Direction lock:</strong> 10 min (V4 default)<br>
+        <strong style="color:#d8a850">Max open positions:</strong> 2 simultaneous
+      </div>
+    </div>
+    <div class="arrow green"></div>
+
+    <!-- NT8 -->
+    <div class="layer l-nt8">
+      <div class="layer-label">Execution · NT8 C# (V6-style — upgraded from AG v2 Bridge)</div>
+      <div class="layer-title">NT8 TCP Bridge — Dynamic TP/SL + EOD Safety</div>
+      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:10.5px;">
+        <div style="color:#6a7899;line-height:1.5;">
+          <strong style="color:#90a8d8">Dynamic TP/SL:</strong> 2×ATR target · 1×ATR stop<br>
+          <strong style="color:#90a8d8">Trail stage 1:</strong> BE when 50% of TP hit<br>
+          <strong style="color:#90a8d8">Trail stage 2:</strong> lock 50% profit at 75% TP
+        </div>
+        <div style="color:#6a7899;line-height:1.5;">
+          <strong style="color:#90a8d8">EOD halt:</strong> 4:45 PM ET stop entries<br>
+          <strong style="color:#90a8d8">Force-flat:</strong> 4:58 PM ET<br>
+          <strong style="color:#90a8d8">Prop gate:</strong> daily loss &gt;$500 suspend
+        </div>
+      </div>
+      <div style="margin-top:7px;font-size:10px;color:#405060;background:#101418;border:1px solid #202830;border-radius:4px;padding:5px 8px;">
+        Bug fixes: symbol == exact match (MNQ safe) · atomic file writes (temp→rename) · TCP buffer handles fragmented packets
+      </div>
+    </div>
+
+  </div><!-- /pipeline -->
+
+  <!-- ══════════════ SIDEBAR ══════════════ -->
+  <div class="sidebar">
+
+    <!-- Trade frequency -->
+    <div class="side-card">
+      <div class="side-title">Expected Trades / Day</div>
+
+      <div class="freq-row">
+        <div class="freq-label">Raw patterns</div>
+        <div class="freq-bar-wrap">
+          <div class="freq-bar" style="width:85%;background:linear-gradient(90deg,#2a4060,#3a5070);"><span>11–20</span></div>
+        </div>
+      </div>
+      <div class="freq-row">
+        <div class="freq-label">After regime</div>
+        <div class="freq-bar-wrap">
+          <div class="freq-bar" style="width:65%;background:linear-gradient(90deg,#284050,#385060);"><span>8–14</span></div>
+        </div>
+      </div>
+      <div class="freq-row">
+        <div class="freq-label">After ML filter</div>
+        <div class="freq-bar-wrap">
+          <div class="freq-bar" style="width:50%;background:linear-gradient(90deg,#1e5030,#2a6040);"><span>7–12</span></div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="note">
+        <strong style="color:#90c870">Tuning dial:</strong> ML threshold 0.55 → 0.52 pushes toward 12–15/day. Raise to 0.58 for higher precision, fewer trades. Adjust after first 2 weeks of live data.
+      </div>
+    </div>
+
+    <!-- Source map -->
+    <div class="side-card">
+      <div class="side-title">What Comes From Where</div>
+
+      <div class="source-row">
+        <span class="src-tag src-ag">AG v2</span>
+        <span class="src-desc">Node.js infra · web dashboard · NT8 TCP bridge · 32-feature engine · regime classifier</span>
+      </div>
+      <div class="source-row">
+        <span class="src-tag src-v5">V5</span>
+        <span class="src-desc">FVG (1,279t 60.4%) · EMA_RASCHKE · RSI_REVERSAL · DAILY_LEVEL</span>
+      </div>
+      <div class="source-row">
+        <span class="src-tag src-v4">V4</span>
+        <span class="src-desc">ORB · VWAP_REVERSION · HTF_BREAK · direction lock 10 min · cooldown gate</span>
+      </div>
+      <div class="source-row">
+        <span class="src-tag src-v6">V6</span>
+        <span class="src-desc">T1 ML thresholds (0.55/0.53) · V6-style C# execution · EOD safety · atomic writes · prop firm gate</span>
+      </div>
+      <div class="source-row">
+        <span class="src-tag src-new">NEW</span>
+        <span class="src-desc">Pattern engine Python sidecar · single dual-output LightGBM (replaces 48-specialist GBDT)</span>
+      </div>
+    </div>
+
+    <!-- Discards -->
+    <div class="side-card">
+      <div class="side-title">Discarded — Evidence Required</div>
+
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">CHOP regime <div class="why">0W/9L across V4+V5+V6+AG v2</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">48 GBDT specialists <div class="why">Only 4 of 62 pass quality gates → ~4 trades/day</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">NQ_PRO as signal <div class="why">V5 morning: 36% WR, -$916</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">ML as primary signal <div class="why">V5 ML_BRAIN morning: 50% WR, -$2,009</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">T2/T3 drought mode <div class="why">V6 live T3@0.47: near-random</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">VER module <div class="why">63% WR but -$3,215 EV — TP half of SL</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">LLM analyst <div class="why">Always returned FLAT, added latency</div></span>
+      </div>
+      <div class="discard-row">
+        <span class="discard-x">✗</span>
+        <span class="discard-text">ETH threshold discount <div class="why">AG v2: auto-lowered −0.05 = lower quality ETH</div></span>
+      </div>
+    </div>
+
+    <!-- Build order -->
+    <div class="side-card">
+      <div class="side-title">Build Order — 4 Phases</div>
+
+      <div class="phase">
+        <div class="phase-header">Phase 1 · Fix Existing (2–3 h)</div>
+        <div class="phase-item">Fix regime mismatch: ADX 22 in trainer + live</div>
+        <div class="phase-item">Fix nightly retrain floors (RTH 60% / ETH 58% / PF 1.30 / Sharpe 0.8)</div>
+        <div class="phase-item">Skip CHOP model training</div>
+        <div class="phase-item">Smoke test: regime distribution matches training</div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-header">Phase 2 · Pattern Engine (4–6 h)</div>
+        <div class="phase-item">Build scripts/pattern_engine.py (Flask, port 3100)</div>
+        <div class="phase-item">Port 7 patterns from V4/V5 Python logic</div>
+        <div class="phase-item">Unit test each on last 30 days of bar data</div>
+        <div class="phase-item">Wire Node.js decision engine → HTTP call</div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-header">Phase 3 · ML Filter Rebuild (2–3 h)</div>
+        <div class="phase-item">Replace 48 GBDT specialists with single dual LightGBM</div>
+        <div class="phase-item">Triple-barrier labels: 2×ATR / 1×ATR / 12-bar</div>
+        <div class="phase-item">Retrain on 90 days of data</div>
+        <div class="phase-item">Wire as filter (Layer 5)</div>
+      </div>
+
+      <div class="phase">
+        <div class="phase-header">Phase 4 · NT8 Upgrade (3–4 h)</div>
+        <div class="phase-item">Port V6-style C# into AG Bridge</div>
+        <div class="phase-item">Fix MNQ Contains → == bug</div>
+        <div class="phase-item">Dynamic TP/SL + EOD + atomic writes</div>
+        <div class="phase-item">Sim test 1 day before live</div>
+      </div>
+
+      <div class="note" style="margin-top:4px;">Total estimate: ~11–16 h dev. Phase 1 goes live immediately (regime fixes). Phases 2–4 go live together after full smoke test.</div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+</div><!-- /outer -->
+
+<!-- legend -->
+<div style="max-width:1200px;margin:20px auto 0;display:flex;gap:20px;flex-wrap:wrap;justify-content:center;font-size:11px;">
+  <span style="color:#50d878;">■ green = proven positive EV (audit-confirmed)</span>
+  <span style="color:#d8b850;">■ yellow = small sample, monitor live</span>
+  <span style="color:#e06060;">■ red = permanently discarded (evidence-based)</span>
+  <span style="color:#50a0f0;">■ blue = fixed/upgraded from existing</span>
+  <span style="color:#5080e0;">■ purple = new component</span>
+</div>
+
+</body>
+</html>

@@ -58,3 +58,20 @@ models/exit_overrides.legacy_backup.json
 models/highwr_train_log.txt
 # User UI state — flips whenever user clicks an Aggressiveness preset card
 models/aggressiveness_profile.json
+
+# Secrets — telegram/tastytrade/openai/alpaca tokens. NEVER commit.
+models/credentials.json
+
+# Runtime startup capture (stdout/stderr of run_bot.bat)
+startup_out.txt
+startup_err.txt
+
+# Historical server stderr dumps in logs/ — noise, not source
+logs/*.err
+
+# Compiled Python bytecode
+scripts/__pycache__/
+__pycache__/
+
+# NT8 backup files generated during hot-fixes
+NT8_Bridge/*.bak*

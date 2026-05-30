@@ -1,0 +1,6 @@
+{
+  "activeGate": "gate1",
+  "shadowGate2": true,
+  "_note": "activeGate: 'gate1' | 'gate2'. shadowGate2: run gate2 in background and log to gate2/shadow_log.json without trading. Flip to gate2 only after shadow validation.",
+  "updatedAt": "2026-05-28T00:00:00.000Z"
+}

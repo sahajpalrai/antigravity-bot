@@ -26,10 +26,12 @@ echo ======================================                         >> "%LOG_FIL
 
 cd /d "%PROJECT_DIR%"
 
-REM Run the trainer with auto-rollback + hybrid per-session WR floors.
-REM RTH (NY hours): require ≥60% WR — balanced for full session coverage
-REM ETH (overnight): require ≥55% WR — realistic for low-volume sessions
-node scripts\train.js --auto-rollback --rth-floor=0.60 --eth-floor=0.55  >> "%LOG_FILE%" 2>&1
+REM Run the LightGBM trainer with auto-rollback + quality floors.
+REM Floors raised 2026-05-28: CHOP models were 0-for-5 live (all SL).
+REM RTH: require >=60% WR, PF>=1.30, Sharpe>=0.8
+REM ETH: require >=58% WR, PF>=1.30, Sharpe>=0.8
+REM LightGBM replaces the old node scripts\train.js (was hours; now ~7 min).
+python scripts\train_lgbm.py --auto-rollback --rth-floor=0.60 --eth-floor=0.58 >> "%LOG_FILE%" 2>&1
 set RETRAIN_RC=%ERRORLEVEL%
 
 echo.                                                               >> "%LOG_FILE%"

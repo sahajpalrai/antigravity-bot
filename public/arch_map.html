@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Antigravity v2 — Architecture Before vs Now</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d0f14;
+    color: #e0e4ef;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 28px 20px 40px;
+    min-height: 100vh;
+  }
+  h1 {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #8b9ec7;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .panel {
+    background: #141720;
+    border-radius: 10px;
+    padding: 20px 18px 24px;
+    border: 1px solid #252a3a;
+  }
+  .panel-title {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 6px;
+    margin-bottom: 22px;
+  }
+  .before .panel-title { background: #2a1a1a; color: #e07070; border: 1px solid #5a2a2a; }
+  .after  .panel-title { background: #142a1e; color: #5de89a; border: 1px solid #1e5a36; }
+
+  /* ── flow nodes ── */
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  .node {
+    width: 100%;
+    border-radius: 7px;
+    padding: 9px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: center;
+    position: relative;
+  }
+  .node .sub {
+    display: block;
+    font-size: 10.5px;
+    font-weight: 400;
+    opacity: 0.72;
+    margin-top: 2px;
+    letter-spacing: 0.01em;
+  }
+
+  /* node colors */
+  .nd-source   { background:#1c2035; border:1px solid #3a4060; color:#9aaee8; }
+  .nd-engine   { background:#18263a; border:1px solid #2a4a6a; color:#6ab8f0; }
+  .nd-regime   { background:#1e2230; border:1px solid #3a4060; color:#b0c4e8; }
+  .nd-bundle   { background:#1a2830; border:1px solid #284055; color:#70d0d8; }
+  .nd-gbdt     { background:#1a2a20; border:1px solid #284535; color:#70d895; }
+  .nd-gate     { background:#28251a; border:1px solid #504530; color:#d8b870; }
+  .nd-dead     { background:#1e1a1a; border:1px solid #3a2a2a; color:#e07070; text-decoration:line-through; opacity:0.55; }
+  .nd-warn     { background:#2e1f10; border:1px solid #6a3a14; color:#f0a060; }
+  .nd-decision { background:#1e2e1a; border:1px solid #3a5a30; color:#88e890; font-size:13.5px; }
+  .nd-nt8      { background:#1e1a2e; border:1px solid #4a3a6a; color:#b890f0; }
+  .nd-new      { background:#14281e; border:1px solid #2a6a40; color:#5de8a0; }
+  .nd-chop-ok  { background:#282010; border:1px solid #5a4010; color:#d8a040; }
+  .nd-chop-no  { background:#1e1414; border:1px solid #5a2020; color:#e06060; }
+
+  /* arrows between nodes */
+  .arrow {
+    width: 2px;
+    height: 14px;
+    background: #2e3550;
+    position: relative;
+    margin: 0 auto;
+    flex-shrink: 0;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: -4px;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #2e3550;
+  }
+  .arrow.red    { background:#5a2020; }
+  .arrow.red::after { border-top-color:#5a2020; }
+  .arrow.green  { background:#1e5a30; }
+  .arrow.green::after { border-top-color:#1e5a30; }
+
+  /* regime fork row */
+  .regime-fork {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 4px;
+    width: 100%;
+    margin: 0;
+  }
+  .regime-fork .node { font-size: 10.5px; padding: 6px 4px; }
+
+  .regime-fork-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+    width: 100%;
+  }
+  .regime-fork-3 .node { font-size: 10.5px; padding: 6px 4px; }
+
+  /* layer 2 strip */
+  .layer2-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    width: 100%;
+  }
+  .layer2-strip .node { font-size: 10px; padding: 5px 3px; }
+
+  /* badge */
+  .badge {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 5px;
+  }
+  .badge.removed { background:#5a1a1a; color:#ff8080; }
+  .badge.raised  { background:#1a4a28; color:#60e890; }
+  .badge.new     { background:#1a3a4a; color:#60c8f0; }
+  .badge.blocked { background:#4a1a1a; color:#f08080; }
+
+  .section-label {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #4a5575;
+    text-align: center;
+    margin: 8px 0 4px;
+  }
+
+  .divider {
+    width: 100%;
+    height: 1px;
+    background: #1e2235;
+    margin: 6px 0;
+  }
+
+  .eod-note {
+    font-size: 10px;
+    color: #6a7a9a;
+    text-align: center;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Antigravity v2 — Architecture Map · Before vs Now (2026-05-28)</h1>
+
+<div class="cols">
+
+  <!-- ════════════ BEFORE ════════════ -->
+  <div class="panel before">
+    <div class="panel-title">⚠ BEFORE — This Morning</div>
+    <div class="flow">
+
+      <div class="node nd-nt8">NT8 WebSocket
+        <span class="sub">Bar push every 5 min → Node.js bridge</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-engine">Feature Engineering
+        <span class="sub">~40 features: ADX, EMA gaps, RSI, MACD, ATR, BB-width, vol_z …</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-regime">Regime Classifier
+        <span class="sub">Rule-based: ADX + EMA stack + slope tiebreaker</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="section-label">4 active regimes</div>
+      <div class="regime-fork">
+        <div class="node nd-bundle" style="font-size:10px;padding:5px 3px;">TREND_UP</div>
+        <div class="node nd-bundle" style="font-size:10px;padding:5px 3px;">TREND_DOWN</div>
+        <div class="node nd-bundle" style="font-size:10px;padding:5px 3px;">VOL_EXP</div>
+        <div class="node nd-chop-ok" style="font-size:10px;padding:5px 3px;">CHOP ✓</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-bundle">GBDT Bundle Loader
+        <span class="sub">24 models: 4 sym × 2 sess × 3 reg × 2 dir — quality gate RTH≥55% ETH≥52%</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-gbdt">LightGBM Inference
+        <span class="sub">long_prob / short_prob + trained threshold</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="section-label">Layer 2 — runs every bar (display only)</div>
+      <div class="layer2-strip">
+        <div class="node nd-dead">FVG</div>
+        <div class="node nd-dead">NQ_PRO</div>
+        <div class="node nd-dead">VER</div>
+        <div class="node nd-dead">HTF_BREAK</div>
+        <div class="node nd-dead">DAILY_LEVEL</div>
+        <div class="node nd-dead">EMA_RASCHKE</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-warn">LLM Analyst (OpenAI)
+        <span class="sub">Pre-fetched every bar — could BLOCK long/short/both</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-gate">Threshold Check
+        <span class="sub">ETH threshold auto-lowered −0.05 below trained level</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-dead" style="text-decoration:none;opacity:1;background:#1e1a2e;border:1px dashed #4a3a6a;color:#9080d0;">HYBRID / V2 Mode Toggle
+        <span class="sub" style="text-decoration:none;">Wired to deleted /api/decision-mode endpoint</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-decision">Decision → BUY / SELL / FLAT
+        <span class="sub">No EOD halt · No force-close</span>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node nd-nt8">NT8 executes via ATM
+        <span class="sub">AntigravityBotBridge.cs reads signal JSON</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════ NOW ════════════ -->
+  <div class="panel after">
+    <div class="panel-title">✓ NOW — Clean Architecture</div>
+    <div class="flow">
+
+      <div class="node nd-nt8">NT8 WebSocket
+        <span class="sub">Bar push every 5 min → Node.js bridge</span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-engine">Feature Engineering
+        <span class="sub">~40 features: ADX, EMA gaps, RSI, MACD, ATR, BB-width, vol_z …</span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-regime">Regime Classifier
+        <span class="sub">Rule-based: ADX + EMA stack + slope tiebreaker</span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="section-label">3 active regimes · CHOP permanently blocked</div>
+      <div style="width:100%;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;">
+        <div class="node nd-bundle" style="font-size:10px;padding:5px 3px;">TREND_UP</div>
+        <div class="node nd-bundle" style="font-size:10px;padding:5px 3px;">TREND_DOWN</div>
+        <div class="node nd-bundle" style="font-size:10px;padding:5px 3px;">VOL_EXP</div>
+        <div class="node nd-chop-no" style="font-size:10px;padding:5px 3px;">CHOP ✗<br><span style="font-size:9px;opacity:0.7;">0W/5L live</span></div>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-bundle">GBDT Bundle Loader
+        <span class="sub">Quality gate raised: RTH≥60% &nbsp;ETH≥58% &nbsp;PF≥1.30 &nbsp;Sharpe≥0.8 <span class="badge raised">RAISED</span></span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-gbdt">LightGBM Inference
+        <span class="sub">long_prob / short_prob + trained threshold (no ETH discount) <span class="badge raised">FIXED</span></span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-dead" style="opacity:0.35;padding:6px 14px;">Layer 2 Confluence
+        <span class="sub">REMOVED — FVG / NQ_PRO / VER / HTF_BREAK / DAILY_LEVEL / EMA_RASCHKE <span class="badge removed">REMOVED</span></span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-dead" style="opacity:0.35;padding:6px 14px;">LLM Analyst (OpenAI)
+        <span class="sub">DISABLED — always returned FLAT, added latency, wasted API calls <span class="badge removed">DISABLED</span></span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-gate">Threshold Check
+        <span class="sub">Uniform RTH + ETH · no session discount · +0.02 margin above trained threshold</span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-new">EOD Safety <span class="badge new">NEW</span>
+        <span class="sub">4:45 PM ET — halt new trades &nbsp;|&nbsp; 4:58 PM ET — force-close all positions</span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-decision">Decision → BUY / SELL / FLAT
+        <span class="sub">Single clean path — no mode toggles, no committees</span>
+      </div>
+      <div class="arrow green"></div>
+
+      <div class="node nd-nt8">NT8 executes via ATM
+        <span class="sub">AntigravityBotBridge.cs reads signal JSON</span>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- legend -->
+<div style="max-width:1100px;margin:22px auto 0;display:flex;gap:18px;flex-wrap:wrap;justify-content:center;">
+  <div style="font-size:11px;color:#e07070;"><span style="opacity:0.55;text-decoration:line-through;">strikethrough</span> = dead code removed</div>
+  <div style="font-size:11px;color:#f0a060;">■ orange node = was a problem</div>
+  <div style="font-size:11px;color:#5de89a;">■ green node = active + clean</div>
+  <div style="font-size:11px;color:#e06060;">■ red node = permanently blocked</div>
+  <div style="font-size:11px;color:#9aaee8;">■ blue node = infrastructure (unchanged)</div>
+</div>
+
+</body>
+</html>
