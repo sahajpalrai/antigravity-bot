@@ -53,6 +53,8 @@ models/monitor_logs/
 models/retrain_logs/
 models/reports/
 models/simulation_*.json
+models/backtest_gate*.json
+models/bt_gate*.out
 models/paper_trades.json
 models/exit_overrides.legacy_backup.json
 models/highwr_train_log.txt
