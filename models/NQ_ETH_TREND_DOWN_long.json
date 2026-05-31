@@ -13202,7 +13202,7 @@
       }
     }
   ],
-  "threshold": 0.68,
+  "threshold": 0.5,
   "aggregate": {
     "folds": 4,
     "totalTestTrades": 262,
@@ -13274,5 +13274,11 @@
   "symbol": "NQ=F",
   "session": "ETH",
   "regime": "TREND_DOWN",
-  "direction": "long"
+  "direction": "long",
+  "thresholdPatched": {
+    "reason": "30d-live-dist-patch",
+    "originalThreshold": 0.68,
+    "patchedAt": "2026-05-28T03:11:21.136Z",
+    "note": "Live ETH probs max ~0.52; retrain will recalibrate properly"
+  }
 }

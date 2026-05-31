@@ -10979,5 +10979,8 @@
   "symbol": "ES=F",
   "session": "RTH",
   "regime": "TREND_UP",
-  "direction": "long"
+  "direction": "long",
+  "disabled": true,
+  "disabled_reason": "Killed 2026-05-26 — backtest WR 28.6%%, PF 0.53 (LOSING money). No edge. Re-evaluate after next retrain.",
+  "disabled_at": "2026-05-26T17:46:57.277Z"
 }

@@ -1,16 +1,82 @@
 {
-  "lastLossAt": {},
-  "lastLossPrice": {},
-  "lossStreak": {},
-  "winStreak": {},
+  "lastLossAt": {
+    "MES=F_ETH_CHOP_long": 1779935912484,
+    "MES=F_RTH_TREND_UP_long": 1779953215182,
+    "MNQ=F_RTH_TREND_DOWN_short": 1779967351083,
+    "MNQ=F_RTH_CHOP_short": 1779970056612,
+    "MES=F_ETH_TREND_UP_short": 1779973227244,
+    "MES=F_ETH_TREND_UP_long": 1779975182949,
+    "MNQ=F_ETH_CHOP_long": 1780034440643,
+    "MNQ=F_ETH_CHOP_short": 1780084323572,
+    "MNQ=F_ETH_TREND_UP_long": 1780036088341,
+    "MES=F_RTH_CHOP_long": 1780036751403,
+    "MNQ=F_RTH_CHOP_long": 1780038858152
+  },
+  "lastLossPrice": {
+    "MES=F_ETH_CHOP_short": null,
+    "MNQ=F_ETH_TREND_DOWN_short": null,
+    "MES=F_ETH_CHOP_long": 7540.75,
+    "MES=F_ETH_TREND_UP_long": 7537.25,
+    "MES=F_RTH_TREND_UP_long": 7532.75,
+    "MNQ=F_RTH_TREND_UP_short": null,
+    "MNQ=F_RTH_TREND_DOWN_short": null,
+    "MNQ=F_RTH_CHOP_short": 29921.25,
+    "MES=F_ETH_TREND_UP_short": 7535.5,
+    "MNQ=F_ETH_CHOP_long": null,
+    "MNQ=F_ETH_CHOP_short": 30412.25,
+    "MNQ=F_ETH_TREND_UP_long": 30333.5,
+    "MNQ=F_RTH_TREND_UP_long": null,
+    "MES=F_RTH_CHOP_long": 7589.75,
+    "MNQ=F_RTH_CHOP_long": 30340.75,
+    "MES=F_RTH_VOL_EXPANSION_long": null,
+    "MNQ=F_ETH_TREND_UP_short": null
+  },
+  "lossStreak": {
+    "MES=F_ETH_CHOP_short": 0,
+    "MNQ=F_ETH_TREND_DOWN_short": 0,
+    "MES=F_ETH_CHOP_long": 1,
+    "MES=F_ETH_TREND_UP_long": 1,
+    "MES=F_RTH_TREND_UP_long": 1,
+    "MNQ=F_RTH_TREND_UP_short": 0,
+    "MNQ=F_RTH_TREND_DOWN_short": 0,
+    "MNQ=F_RTH_CHOP_short": 1,
+    "MES=F_ETH_TREND_UP_short": 1,
+    "MNQ=F_ETH_CHOP_long": 1,
+    "MNQ=F_ETH_CHOP_short": 2,
+    "MNQ=F_ETH_TREND_UP_long": 1,
+    "MNQ=F_RTH_TREND_UP_long": 0,
+    "MES=F_RTH_CHOP_long": 1,
+    "MNQ=F_RTH_CHOP_long": 2,
+    "MES=F_RTH_VOL_EXPANSION_long": 0,
+    "MNQ=F_ETH_TREND_UP_short": 0
+  },
+  "winStreak": {
+    "MES=F_ETH_CHOP_short": 2,
+    "MNQ=F_ETH_TREND_DOWN_short": 12,
+    "MES=F_ETH_CHOP_long": 0,
+    "MES=F_ETH_TREND_UP_long": 0,
+    "MES=F_RTH_TREND_UP_long": 0,
+    "MNQ=F_RTH_TREND_UP_short": 1,
+    "MNQ=F_RTH_TREND_DOWN_short": 2,
+    "MNQ=F_RTH_CHOP_short": 0,
+    "MES=F_ETH_TREND_UP_short": 0,
+    "MNQ=F_ETH_CHOP_long": 1,
+    "MNQ=F_ETH_CHOP_short": 0,
+    "MNQ=F_ETH_TREND_UP_long": 0,
+    "MNQ=F_RTH_TREND_UP_long": 7,
+    "MES=F_RTH_CHOP_long": 0,
+    "MNQ=F_RTH_CHOP_long": 0,
+    "MES=F_RTH_VOL_EXPANSION_long": 1,
+    "MNQ=F_ETH_TREND_UP_short": 1
+  },
   "dailyPnL": {
     "MNQ=F": {
-      "date": "2026-05-27",
-      "pnl": -277.45
+      "date": "2026-05-29",
+      "pnl": 247.2999999999999
     },
     "MES=F": {
-      "date": "2026-05-27",
-      "pnl": -853.75
+      "date": "2026-05-29",
+      "pnl": 98.75
     }
   }
 }

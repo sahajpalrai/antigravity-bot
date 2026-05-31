@@ -14615,7 +14615,7 @@
       }
     }
   ],
-  "threshold": 0.75,
+  "threshold": 0.52,
   "aggregate": {
     "folds": 4,
     "totalTestTrades": 276,
@@ -14687,5 +14687,10 @@
   "symbol": "ES=F",
   "session": "ETH",
   "regime": "TREND_UP",
-  "direction": "short"
+  "direction": "short",
+  "thresholdPatched": {
+    "reason": "30d-live-dist-patch",
+    "originalThreshold": 0.75,
+    "patchedAt": "2026-05-28T03:12:54.713Z"
+  }
 }

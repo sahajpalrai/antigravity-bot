@@ -1,0 +1,146 @@
+{
+  "buckets": {
+    "NQ=F|ETH|TREND_UP|long": {
+      "symbol": "NQ=F",
+      "session": "ETH",
+      "regime": "TREND_UP",
+      "direction": "long",
+      "trades": [
+        {
+          "symbol": "NQ=F",
+          "session": "ETH",
+          "regime": "TREND_UP",
+          "direction": "long",
+          "entryTime": "2026-05-25 23:20:00-07:00",
+          "exitTime": "2026-05-25 23:25:00-07:00",
+          "entryPrice": 29826.75,
+          "exitPrice": 29808.375,
+          "featureSnapshot": {},
+          "modelProbability": 0.7609589375289382,
+          "threshold": 0.75,
+          "pnl": -371.5,
+          "pnlR": -1,
+          "exitReason": "SL"
+        }
+      ],
+      "stats": {
+        "total": 1,
+        "wins": 0,
+        "losses": 1,
+        "netR": -1,
+        "lastReviewed": null
+      }
+    },
+    "ES=F|RTH|CHOP|long": {
+      "symbol": "ES=F",
+      "session": "RTH",
+      "regime": "CHOP",
+      "direction": "long",
+      "trades": [
+        {
+          "symbol": "ES=F",
+          "session": "RTH",
+          "regime": "CHOP",
+          "direction": "long",
+          "entryTime": "2026-05-26 08:25:00-07:00",
+          "exitTime": "2026-05-26 08:35:00-07:00",
+          "entryPrice": 7532.5,
+          "exitPrice": 7527.232142857143,
+          "featureSnapshot": {},
+          "modelProbability": 0.5570323600382685,
+          "threshold": 0.55,
+          "pnl": -267.39285714284415,
+          "pnlR": -0.9999999999999506,
+          "exitReason": "SL"
+        },
+        {
+          "symbol": "ES=F",
+          "session": "RTH",
+          "regime": "CHOP",
+          "direction": "long",
+          "entryTime": "2026-05-26 08:40:00-07:00",
+          "exitTime": "2026-05-26 08:50:00-07:00",
+          "entryPrice": 7527.75,
+          "exitPrice": 7522.071428571428,
+          "featureSnapshot": {},
+          "modelProbability": 0.5597384243786775,
+          "threshold": 0.55,
+          "pnl": -287.9285714285779,
+          "pnlR": -1.0000000000000229,
+          "exitReason": "SL"
+        },
+        {
+          "symbol": "ES=F",
+          "session": "RTH",
+          "regime": "CHOP",
+          "direction": "long",
+          "entryTime": "2026-05-26 09:00:00-07:00",
+          "exitTime": "2026-05-26 09:05:00-07:00",
+          "entryPrice": 7527.5,
+          "exitPrice": 7521.589285714285,
+          "featureSnapshot": {},
+          "modelProbability": 0.5501627722985458,
+          "threshold": 0.55,
+          "pnl": -299.5357142857338,
+          "pnlR": -1.000000000000066,
+          "exitReason": "SL"
+        },
+        {
+          "symbol": "ES=F",
+          "session": "RTH",
+          "regime": "CHOP",
+          "direction": "long",
+          "entryTime": "2026-05-26 09:30:00-07:00",
+          "exitTime": "2026-05-26 09:40:00-07:00",
+          "entryPrice": 7532.5,
+          "exitPrice": 7527.285714285715,
+          "featureSnapshot": {},
+          "modelProbability": 0.5851193639739266,
+          "threshold": 0.55,
+          "pnl": -264.7142857142662,
+          "pnlR": -0.9999999999999252,
+          "exitReason": "SL"
+        }
+      ],
+      "stats": {
+        "total": 4,
+        "wins": 0,
+        "losses": 4,
+        "netR": -3.9999999999999645,
+        "lastReviewed": null
+      }
+    },
+    "NQ=F|RTH|VOL_EXPANSION|short": {
+      "symbol": "NQ=F",
+      "session": "RTH",
+      "regime": "VOL_EXPANSION",
+      "direction": "short",
+      "trades": [
+        {
+          "symbol": "NQ=F",
+          "session": "RTH",
+          "regime": "VOL_EXPANSION",
+          "direction": "short",
+          "entryTime": "2026-05-26 08:20:00-07:00",
+          "exitTime": "2026-05-26 08:45:00-07:00",
+          "entryPrice": 30000.25,
+          "exitPrice": 29958.35714285714,
+          "featureSnapshot": {},
+          "modelProbability": 0.6063364442325575,
+          "threshold": 0.55,
+          "pnl": 833.857142857174,
+          "pnlR": 1.2000000000000446,
+          "exitReason": "TP"
+        }
+      ],
+      "stats": {
+        "total": 1,
+        "wins": 1,
+        "losses": 0,
+        "netR": 1.2000000000000446,
+        "lastReviewed": null
+      }
+    }
+  },
+  "schema": 2
+}
