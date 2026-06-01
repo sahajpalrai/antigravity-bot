@@ -1,6 +1,6 @@
-// Antigravity v2 — morning trading resume
-// Re-enables NQ + ES (the symbols paused overnight) so the bot trades the RTH
-// session. Scheduled 6:00 AM PT (30 min before the 6:30 AM RTH open).
+// Antigravity v2 — premarket trading resume
+// Re-enables NQ + ES (the symbols paused overnight) so the bot trades the
+// PREMARKET session. Scheduled 5:30 AM PT (1 hr before the 6:30 AM RTH open).
 // Safe: only flips the enable flag; if the server/NT8 link is down it just logs.
 'use strict';
 const http = require('http');
