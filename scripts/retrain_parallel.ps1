@@ -1,11 +1,11 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # ============================================================================
 # Antigravity v2 -- LightGBM Retrain Orchestrator
 # Usage: .\retrain_parallel.ps1 [-Quick] [-DryRun]
 #
 # Runs a single Python LightGBM trainer for all 4 symbols (sequential
 # inside the trainer, but each symbol only takes ~1-2 min).
-# Total runtime: ~7 min full / ~3 min quick — no parallelism needed.
+# Total runtime: ~7 min full / ~3 min quick - no parallelism needed.
 #
 # Replaced the old 4x parallel node train.js approach:
 #   Old: 4 node processes, 1.75h full / 20min quick  (O(n^2) JS GBDT)
@@ -84,7 +84,7 @@ $proc = Start-Process `
     -PassThru `
     -WindowStyle      Hidden
 
-Log ("PID " + $proc.Id + " — waiting for completion...")
+Log ("PID " + $proc.Id + " - waiting for completion...")
 $proc.WaitForExit()
 
 $elapsedMin = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 1)
