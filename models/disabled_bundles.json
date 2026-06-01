@@ -4,7 +4,7 @@
     "GC_RTH_TREND_UP_long": "Disabled 2026-05-30 from 3yr backtest: 1068 trades (21% of ALL trades) @ 38.9% WR, PF 1.06, avg +$12/trade — near-zero edge churning commission, contributing only 2% of total profit. Disabling lifts portfolio PF 1.80->2.16 and WR 50.4%->53.5% while giving up just $12k of $538k. Its stored training WR was inflated (overfit on the train window) so the WR quality gate never caught it. Reversible.",
     "ES_RTH_TREND_UP_short": "Disabled 2026-06-01 (live loss audit): counter-trend churner — 4166t @ 40.4% WR, PF 1.09, avg +$10/trade. Dropping it lifts portfolio PF 1.40->1.43 for ~nothing given up. Reversible.",
     "ES_ETH_TREND_UP_short": "Disabled 2026-06-01 (live loss audit): counter-trend churner — 4166t @ 40.4% WR, PF 1.09, avg +$10/trade. Dropping it lifts portfolio PF 1.40->1.43 for ~nothing given up. Reversible.",
-    "NQ_RTH_TREND_UP_long": "Disabled 2026-06-01 (live loss audit): NQ longs into down/chop moves bled -$1165 today; 3970t @ 41.6% WR, PF 1.17 — a coin-flip surviving on R:R. Cut for profitability per owner. Reversible.",
-    "NQ_ETH_TREND_UP_long": "Disabled 2026-06-01 (live loss audit): NQ longs into down/chop moves bled -$1165 today; 3970t @ 41.6% WR, PF 1.17 — a coin-flip surviving on R:R. Cut for profitability per owner. Reversible."
+    "NQ_RTH_TREND_UP_long": "Re-disabled 2026-06-01: dir-guard A/B proved re-enabling adds 2400 trades for $0 extra profit and drops PF 1.74->1.61. Net-zero churn + drawdown. Stays OFF.",
+    "NQ_ETH_TREND_UP_long": "Re-disabled 2026-06-01: dir-guard A/B proved re-enabling adds 2400 trades for $0 extra profit and drops PF 1.74->1.61. Net-zero churn + drawdown. Stays OFF."
   }
 }

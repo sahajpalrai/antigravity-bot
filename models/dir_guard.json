@@ -1,0 +1,4 @@
+{
+  "_note": "Directional guard: block TREND_UP longs when close<=EMA9 (falling) and TREND_DOWN shorts when close>=EMA9 (rising). Stops trend-following entries against short-term price direction. CHOP/VOL_EXP exempt. Hot-reloaded 10s.",
+  "enabled": false
+}
