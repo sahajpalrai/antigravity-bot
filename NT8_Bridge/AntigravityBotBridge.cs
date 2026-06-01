@@ -200,18 +200,15 @@ namespace NinjaTrader.NinjaScript.Strategies
                 DateTime etNow  = utcNow.AddHours(-offsetHrs);
                 int etMins      = etNow.Hour * 60 + etNow.Minute;
 
-                // 4:45 PM ET = 16*60+45 = 1005 — halt new entries
-                if (!eodHaltApplied && etMins >= 1005)
+                // EOD-halt SET disabled 2026-05-31 — the Node brain's market-hours gate
+                // (Sun 3 PM PT → Fri 2 PM PT) is the sole timing authority, so the .cs
+                // never self-halts entries. eodHaltApplied stays false (no misleading
+                // EOD HALT label on the panel). The daily force-flat below is preserved.
+
+                // Reset the daily force-flat latch each morning (4:00 AM ET = 240 mins)
+                if (etMins < 240)
                 {
-                    eodHaltApplied = true;
-                    Print("AntigravityBridge: EOD halt triggered (4:45 PM ET). No new entries until next session.");
-                }
-                // Reset halt flag early next morning (4:00 AM ET = 240 mins)
-                if (eodHaltApplied && etMins < 240)
-                {
-                    eodHaltApplied    = false;
-                    forceFlatApplied  = false;
-                    Print("AntigravityBridge: EOD halt reset (4:00 AM ET).");
+                    forceFlatApplied = false;
                 }
 
                 // 4:58 PM ET = 16*60+58 = 1018 — force-flat all positions
@@ -1745,11 +1742,8 @@ namespace NinjaTrader.NinjaScript.Strategies
                         Print("AntigravityBridge: " + action + " ignored — trading is suspended (OFF).");
                         return;
                     }
-                    if (eodHaltApplied)
-                    {
-                        Print("AntigravityBridge: " + action + " ignored — EOD halt active (after 4:45 PM ET).");
-                        return;
-                    }
+                    // EOD-halt entry gate removed 2026-05-31 — the Node brain's market-hours
+                    // gate is the sole timing authority; the .cs no longer self-blocks here.
                     if (_entryInFlight || Position.MarketPosition != MarketPosition.Flat)
                     {
                         Print(string.Format("AntigravityBridge: {0} ignored — {1}",
