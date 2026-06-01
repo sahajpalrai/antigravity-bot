@@ -266,7 +266,10 @@ namespace NinjaTrader.NinjaScript.Strategies
                 string act = _pendingAction;
                 _pendingAction = null;  // clear immediately — prevent double-fire
 
-                if (isTradingEnabled && !eodHaltApplied && Position.MarketPosition == MarketPosition.Flat)
+                // EOD-halt entry block removed 2026-05-31 — the Node brain's market-hours
+                // gate (Sun 3 PM PT → Fri 2 PM PT, ex-maintenance) is now the ONLY timing
+                // authority. The .cs is a pure executor: fire whatever the brain sends.
+                if (isTradingEnabled && Position.MarketPosition == MarketPosition.Flat)
                 {
                     string entryTag = (act == "BUY") ? "AntigravityLong" : "AntigravityShort";
                     double slTicks  = Math.Abs(_pendingEntryPrice - _pendingSl)  / TickSize;
