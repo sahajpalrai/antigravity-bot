@@ -1,0 +1,5 @@
+{
+  "_note": "Chop guard: skip TREND_UP/TREND_DOWN entries when Kaufman efficiency ratio (20-bar) < erFloor (choppy two-way). VOL_EXPANSION + CHOP bundles exempt. Hot-reloaded 10s.",
+  "enabled": false,
+  "erFloor": 0.34
+}
