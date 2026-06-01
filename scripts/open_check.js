@@ -40,10 +40,12 @@ function snap(state) {
     const a = (state.accounts && state.accounts[s]) || {};
     const dec = (state.lastDecisions && state.lastDecisions[s]) || null;
     const price = (state.livePrices && state.livePrices[s]) || a.lastPrice || 0;
+    const ap = a.activePosition;
     out.sym[s] = {
       price,
       regime: dec ? dec.regime : null,
       action: dec ? dec.action : null,
+      pos: ap ? `${ap.direction} ${ap.qty} @${ap.entryPrice}` : null,
       lastUpdateMs: a.lastNt8Update || 0
     };
   }
@@ -75,7 +77,8 @@ async function main() {
       if (live) liveCount++;
       const tag = live ? '✅' : '⚠️';
       const beatAge = b.lastUpdateMs ? Math.round((now - b.lastUpdateMs) / 1000) + 's' : 'never';
-      lines.push(`${tag} ${s.replace('=F','')}: px=${b.price || '—'} regime=${b.regime || '—'}${b.action && b.action!=='FLAT' ? ' ('+b.action+')' : ''} | beat ${beatAge}${moved ? ' | px moving' : ''}${!hasDecision ? ' | NO decision yet' : ''}`);
+      const posStr = b.pos ? ` | 📈 IN TRADE: ${b.pos}` : ' | flat';
+      lines.push(`${tag} ${s.replace('=F','')}: px=${b.price || '—'} ${b.regime || '—'}${b.action && b.action!=='FLAT' ? ' ('+b.action+')' : ''}${posStr} | beat ${beatAge}${moved ? ' | px moving' : ''}${!hasDecision ? ' | NO decision yet' : ''}`);
     }
 
     const header = liveCount === SYMS.length
