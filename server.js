@@ -819,7 +819,7 @@ const server = http.createServer((req, res) => {
         };
         const direction = fireAction === 'BUY' ? 'Long' : 'Short';
         const strategy = `Manual ${direction} (operator)`;
-        const pos = prepareEntry(symbol, direction, px, strategy, atr, sessionRegime, 1); // manualQty=1: bypass DD sizer
+        const pos = prepareEntry(symbol, direction, px, strategy, atr, sessionRegime); // use sizer -> honors userMaxContracts
         if (pos) {
           // Pre-send STATUS 1 so NT8's isTradingEnabled is guaranteed true
           // before the trade signal arrives — handles the case where a prior
