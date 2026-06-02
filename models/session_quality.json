@@ -1,0 +1,4 @@
+{
+  "_note": "Extra probability margin required per symbol_session. Raises the firing bar for weak buckets (NQ overnight) so the bot concentrates on high-edge windows. Hot-reloaded 10s. 0 = no change. Set after backtest validation.",
+  "NQ=F_ETH": 0
+}

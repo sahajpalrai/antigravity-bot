@@ -45,6 +45,12 @@ const CONTRACT_SPECS = {
   'GC=F': { tickSize: 0.10, pointVal:  100, comm: 4 }
 };
 
+// Realistic execution: slippage in ticks applied AGAINST you on entry and on
+// stop-loss exits (market orders slip), while take-profit (limit) fills at the
+// level. Default 0 preserves the old idealized backtest; SLIP_TICKS=1 models a
+// liquid-futures 1-tick/side fill. This is the gap that makes live < backtest.
+const SLIP_TICKS = parseFloat(process.env.SLIP_TICKS || '0');
+
 // ─── args ───
 const args = process.argv.slice(2);
 const opts = { gate: 1, days: 'ALL', symbols: ALL_SYMBOLS };
@@ -118,7 +124,12 @@ async function simulateSymbol(symbol, gateNum) {
         else if (bar.low  <= openPos.takeProfit) hit = { px: openPos.takeProfit, reason: 'TP' };
       }
       if (hit) {
-        const pts = (hit.px - openPos.entryPrice) * (openPos.direction === 'Long' ? 1 : -1);
+        // Slippage: stops (market) slip against you; TP (limit) fills at level.
+        const slip = SLIP_TICKS * spec.tickSize;
+        const exitFill = hit.reason === 'SL'
+          ? (openPos.direction === 'Long' ? hit.px - slip : hit.px + slip)
+          : hit.px;
+        const pts = (exitFill - openPos.entryFill) * (openPos.direction === 'Long' ? 1 : -1);
         const netPnl = pts * spec.pointVal - spec.comm;
         trades.push({
           symbol, direction: openPos.direction,
@@ -153,8 +164,10 @@ async function simulateSymbol(symbol, gateNum) {
         const slDist = decision.slDistance;
         const tpDist = decision.tpDistance;
         if (slDist > 0 && tpDist > 0) {
+          const slip = SLIP_TICKS * spec.tickSize;
           openPos = {
             direction, entryTime: bar.time, entryPrice: entry,
+            entryFill: direction === 'Long' ? entry + slip : entry - slip,  // pay slippage on entry
             stopLoss:   direction === 'Long' ? entry - slDist : entry + slDist,
             takeProfit: direction === 'Long' ? entry + tpDist : entry - tpDist,
             slDistance: slDist, tpDistance: tpDist,
