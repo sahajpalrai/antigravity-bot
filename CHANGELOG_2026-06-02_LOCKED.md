@@ -38,6 +38,27 @@ Disable-ScheduledTask -TaskName 'NQ V5 Sunday Pre-Open Restart 255PM'
 
 ---
 
+## B5. NQ EXECUTION FIX (the "NQ decides but doesn't trade in NT8" bug)
+
+**Root cause (two layers):** (1) NQ's quality floor benched its specialists →
+fixed in B4. (2) Then the **position sizer returned 0 for NQ** because the NQ
+sim account (`SimHA candles`) had ratcheted its trailing drawdown floor up,
+leaving only ~$398 of room — less than one NQ contract's stop. The bot mirrors
+the real NT8 account, so it correctly refused (one trade could breach the floor).
+
+**Fix:** Per-symbol account reset (`/api/reset-accounts` scope=symbol) on NQ + ES.
+Re-bases the drawdown floor at the current balance → fresh room (~$52k buffer on
+the sim/eval accounts). **PROVEN:** manual test-fire → `BUY,NQ=F,1` broadcast →
+NT8 filled `Long 1 @ 30751.25`. NQ now executes on the chart.
+
+- **Mini:** NQ + ES both trade now (ES always did; NQ fixed). ✅
+- **Micro:** MNQ/MES have full room but are disabled in MINI mode. To use micros,
+  switch contract mode to MICRO **and** attach MNQ/MES charts in NT8.
+- **NOTE:** the reset left a LOOSE drawdown buffer (peak didn't re-ratchet, floor
+  ~$47.5k). Fine for sim evaluation (won't halt on drawdown). To restore a strict
+  trailing-$2,500 DD, ask — it's a one-line re-base, but it can re-lock NQ on a
+  bad run.
+
 ## C. BUILT BUT LEFT OFF (data rejected them — do not enable without re-validation)
 
 | File | State | Why off |
