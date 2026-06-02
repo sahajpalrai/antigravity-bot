@@ -1,6 +1,5 @@
 {
-  "_note": "Extra prob margin per symbol_session. Validated 2026-06-02 (3yr backtest, 1-tick slippage). NQ=F_ETH +0.06: suppress overnight churn. *_RTH -0.02: drop the safety margin to the trained edge so the strong daytime buckets (PF 3.0+) take more trades. Combined: PF 2.04, +1213 trades, +$100k vs the +0.06-only config. Hot-reloaded 10s. Reversible.",
-  "NQ=F_ETH": 0.06,
+  "_note": "Extra prob margin per symbol_session. UPDATED 2026-06-02 (live audit): REMOVED the NQ=F_ETH +0.06 penalty — the audit proved NQ overnight is the system best engine (+$644k, holds the top bucket +$1139/trade), NOT churn; the penalty was throttling it. RTH -0.02 keeps the validated daytime edge. The real overnight bleeder (ES TREND_UP short) is handled by exhaust_guard.json, not here.",
   "NQ=F_RTH": -0.02,
   "ES=F_RTH": -0.02,
   "CL=F_RTH": -0.02,
