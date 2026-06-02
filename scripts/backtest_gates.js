@@ -51,6 +51,15 @@ const CONTRACT_SPECS = {
 // liquid-futures 1-tick/side fill. This is the gap that makes live < backtest.
 const SLIP_TICKS = parseFloat(process.env.SLIP_TICKS || '0');
 
+// Live-exit modeling: the NT8 strategy moves the stop to breakeven at BE_ATR and
+// then ratchet-trails at TRAIL_ATR (ATR derived from slDistance/SL_ATR_MULT).
+// EXIT_MODEL=betrail turns it on; default 'static' = pure SL/TP bracket (old behavior).
+// No look-ahead: the trail set from prior bars' extremes is what the next bar tests.
+const EXIT_MODEL  = process.env.EXIT_MODEL || 'static';
+const BE_ATR      = parseFloat(process.env.BE_ATR      || '0.8');
+const TRAIL_ATR   = parseFloat(process.env.TRAIL_ATR   || '1.0');
+const SL_ATR_MULT = parseFloat(process.env.SL_ATR_MULT || '1.4');
+
 // ─── args ───
 const args = process.argv.slice(2);
 const opts = { gate: 1, days: 'ALL', symbols: ALL_SYMBOLS };
@@ -142,6 +151,27 @@ async function simulateSymbol(symbol, gateNum) {
         });
         if (hit.reason === 'SL') exitsSL++; else exitsTP++;
         openPos = null;
+      } else if (EXIT_MODEL === 'betrail') {
+        // No exit this bar — ratchet breakeven + trailing stop using THIS bar's
+        // favorable extreme (tested on the NEXT bar, so no intrabar look-ahead).
+        const slD = openPos.slDistance;
+        const beTrig = (BE_ATR    / SL_ATR_MULT) * slD;  // favorable move that arms breakeven
+        const trailD = (TRAIL_ATR / SL_ATR_MULT) * slD;  // trailing distance
+        if (openPos.direction === 'Long') {
+          openPos.maxFav = Math.max(openPos.maxFav, bar.high);
+          if (!openPos.beActive && (openPos.maxFav - openPos.entryPrice) >= beTrig) {
+            openPos.stopLoss = Math.max(openPos.stopLoss, openPos.entryPrice); openPos.beActive = true;
+          }
+          const ts = openPos.maxFav - trailD;
+          if (ts > openPos.stopLoss) openPos.stopLoss = ts;   // ratchet up only
+        } else {
+          openPos.minFav = Math.min(openPos.minFav, bar.low);
+          if (!openPos.beActive && (openPos.entryPrice - openPos.minFav) >= beTrig) {
+            openPos.stopLoss = Math.min(openPos.stopLoss, openPos.entryPrice); openPos.beActive = true;
+          }
+          const ts = openPos.minFav + trailD;
+          if (ts < openPos.stopLoss) openPos.stopLoss = ts;   // ratchet down only
+        }
       }
     }
 
@@ -171,6 +201,7 @@ async function simulateSymbol(symbol, gateNum) {
             stopLoss:   direction === 'Long' ? entry - slDist : entry + slDist,
             takeProfit: direction === 'Long' ? entry + tpDist : entry - tpDist,
             slDistance: slDist, tpDistance: tpDist,
+            maxFav: entry, minFav: entry, beActive: false,  // BE/trail state (EXIT_MODEL=betrail)
             regime: decision.regime, session: decision.session
           };
           entries++;
