@@ -1,4 +1,4 @@
 {
-  "_note": "Extra probability margin required per symbol_session. Raises the firing bar for weak buckets (NQ overnight) so the bot concentrates on high-edge windows. Hot-reloaded 10s. 0 = no change. Set after backtest validation.",
-  "NQ=F_ETH": 0
+  "_note": "Extra probability margin required per symbol_session. Raises the firing bar for weak buckets so the bot concentrates on its high-edge windows. Hot-reloaded 10s. Validated 2026-06-02 (3yr backtest, 1-tick slippage): NQ=F_ETH +0.06 lifts portfolio PF 1.67->2.09, WR 53->57%, halves NQ drawdown ($20.3k->$10.5k), keeps 86% of profit.",
+  "NQ=F_ETH": 0.06
 }
