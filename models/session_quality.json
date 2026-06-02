@@ -1,4 +1,8 @@
 {
-  "_note": "Extra probability margin required per symbol_session. Raises the firing bar for weak buckets so the bot concentrates on its high-edge windows. Hot-reloaded 10s. Validated 2026-06-02 (3yr backtest, 1-tick slippage): NQ=F_ETH +0.06 lifts portfolio PF 1.67->2.09, WR 53->57%, halves NQ drawdown ($20.3k->$10.5k), keeps 86% of profit.",
-  "NQ=F_ETH": 0.06
+  "_note": "Extra prob margin per symbol_session. Validated 2026-06-02 (3yr backtest, 1-tick slippage). NQ=F_ETH +0.06: suppress overnight churn. *_RTH -0.02: drop the safety margin to the trained edge so the strong daytime buckets (PF 3.0+) take more trades. Combined: PF 2.04, +1213 trades, +$100k vs the +0.06-only config. Hot-reloaded 10s. Reversible.",
+  "NQ=F_ETH": 0.06,
+  "NQ=F_RTH": -0.02,
+  "ES=F_RTH": -0.02,
+  "CL=F_RTH": -0.02,
+  "GC=F_RTH": -0.02
 }
