@@ -11,6 +11,30 @@ named commit or restoring the named file.
 
 ---
 
+## ⭐ LIVE-AUDIT FIXES (PM session 2026-06-02 — owner-approved, all PERMANENT)
+
+Two read-only workflows (ES-fix + full live audit, 12 agents) → owner authorized
+these. None can be reverted by the retrain (it only writes bundle model JSONs).
+
+| # | File | Change | Validated (3yr, slippage) |
+|---|---|---|---|
+| **★1** | `server.js` (3 fire sites) | **`atrTrailingMultiplier` 1.0 → 2.0** | **Biggest win.** Live exits were PF 1.37/+$1.84M (1.0 trail cut winners). 2.0 → **PF 1.58 / +$2.40M (+$560k) + lower drawdown.** Commit `7ca423b`. |
+| 2 | `lib/decisionEngine.js` + `models/exhaust_guard.json` (enabled) | ES exhaustion gate: ES TREND_UP shorts only fire at ADX≥30 & ≥4 ATR over VWAP | ES_TREND_UP_short −$46k/PF0.92 → +$24k/PF1.21, positive every year. Commit `d206577`/`a393f9d`. |
+| 3 | `models/session_quality.json` | REMOVED the +0.06 NQ_ETH penalty (it was throttling the +$644k best engine) | un-throttles NQ overnight; +$481k portfolio combined w/ #2. |
+| 4 | `lib/decisionEngine.js` | daily −$1500 cap MICRO-mode key bug (familyMiniSymbol on read+write) | restores the circuit breaker in MICRO mode. |
+
+**Bigger-3 investigation results (env-gated tooling in `backtest_gates.js` + `decisionEngine.js`):**
+- dir_guard → no benefit, **stays OFF**.
+- threshold-cap → raising it cuts profit, **stays 0.58** (audit hypothesis disproved).
+- chop_guard → PF 1.49→1.65 but −$430k = **OWNER DECISION PENDING** (efficiency vs dollars).
+- BE/trail modeling → built into the harness so PF is now a true live mirror (led to ★1).
+
+**Honest baseline:** the real live-exit number (post all fixes) is **PF ~1.58 / +$2.40M** with the 2.0 trail — earlier static-bracket figures (1.5-1.74) were optimistic.
+
+**Still OPEN (owner action):** CL + GC get zero live bars → add those 2 charts in NinjaTrader to bring online your 2 best symbols (PF 2.44 / 2.37).
+
+---
+
 ## A. RELIABILITY (the "feed/retrain keeps dying" fixes)
 
 | # | File | Change | Why |
