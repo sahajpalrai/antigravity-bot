@@ -127,7 +127,7 @@ function _fireToNT8(d, symbol) {
       atrStopMultiplier:      _prof.slAtrMult    || 1.5,
       atrTargetMultiplier:    _prof.tpAtrMult    || 2.7,
       atrBreakevenMultiplier: 0.8,
-      atrTrailingMultiplier:  1.0
+      atrTrailingMultiplier:  2.0
     };
     const strategy = `${gateTag}${d.regime} ${direction} (p=${(d.probability || 0).toFixed(2)})`;
     const pos = prepareEntry(symbol, direction, d.close, strategy, d.atr, sessionRegime);
@@ -368,7 +368,7 @@ function processBarUpdate(rawSymbol, candles) {
           atrStopMultiplier:      _prof.slAtrMult    || 1.5,
           atrTargetMultiplier:    _prof.tpAtrMult    || 2.7,
           atrBreakevenMultiplier: 0.8,
-          atrTrailingMultiplier:  1.0
+          atrTrailingMultiplier:  2.0
         };
         const strategy = `${decision.regime} ${direction} (p=${decision.probability.toFixed(2)})`;
         const pos = prepareEntry(symbol, direction, decision.close, strategy, decision.atr, sessionRegime);
@@ -815,7 +815,7 @@ const server = http.createServer((req, res) => {
           atrStopMultiplier:      _profM.slAtrMult    || 1.5,
           atrTargetMultiplier:    _profM.tpAtrMult    || 2.7,
           atrBreakevenMultiplier: 0.8,
-          atrTrailingMultiplier:  1.0
+          atrTrailingMultiplier:  2.0
         };
         const direction = fireAction === 'BUY' ? 'Long' : 'Short';
         const strategy = `Manual ${direction} (operator)`;
