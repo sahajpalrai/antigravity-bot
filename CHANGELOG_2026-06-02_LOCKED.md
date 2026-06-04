@@ -1,3 +1,32 @@
+# 🚨 2026-06-04 — EMERGENCY REVERT (owner-authorized after NQ −$4,445 live loss)
+
+**Owner (mrrai) authorized this revert directly:** _"we have very big loss please
+fix the issue... if you need to revert the code yesterday do it and find what code
+is causing the loss... revert it to make it profitable."_
+
+**Root cause found:** NQ realized −$4,445 (ES fine at +$25). The single NQ entry on
+2026-06-04 was `TREND_UP Long` = `NQ_TREND_UP_long`, **the proven bleeder (PF ~1.17)
+that got re-enabled when restrictions were cleared** on the owner's "no restrictions"
+request — fired at **2 contracts** into a choppy reversing tape. −$1,803 that day on
+top of −$2,642 the day before. The daily −$1,500 cap worked (blocked further NQ
+entries) but at 2 contracts the last open trade overshot to −$1,803.
+
+**Reverted (both PERMANENT — survive restart + retrain):**
+| What | From | To | Where it lives |
+|---|---|---|---|
+| Restrictions (kill-switch) | EMPTY (bleeders ON) | **5 bleeders re-disabled** = the proven PF-1.74 SELECTIVE config | `models/disabled_bundles.json` (hot-reloaded, retrain never touches it) |
+| NQ contract size | 2 | **1** (halves per-trade risk + tightens cap overshoot) | `portfolio_state.json` on disk (field persists; backfill won't override) |
+
+Re-disabled bundles: `NQ_RTH_TREND_UP_long`, `NQ_ETH_TREND_UP_long`,
+`ES_RTH_TREND_UP_short`, `ES_ETH_TREND_UP_short`, `GC_RTH_TREND_UP_long`.
+
+**Left intact (validated-profitable, NOT the loss cause):** trail 2.0, ES exhaust
+gate, session_quality, daily cap, NQ DD buffer, NQ floor 0.50. ES stays at 2 contracts
+(profitable). To re-enable any bleeder or raise NQ back to 2, a fresh backtest with
+current fixes must prove it — and the owner must re-validate.
+
+---
+
 # 🔒 CHANGE RECORD — 2026-06-02 (OWNER-LOCKED)
 
 **These changes were validated with the owner (mrrai) on 2026-06-02.**

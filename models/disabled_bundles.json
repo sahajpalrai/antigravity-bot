@@ -1,4 +1,10 @@
 {
-  "_note": "CLEARED 2026-06-02 at owner request: NO manual restrictions. Every symbol trades both directions in all regimes. The quality floor (quality_floors.json) is the only gatekeeper. ES_TREND_UP_short kept ON despite PF 0.92 pending the root-cause workflow fix.",
-  "disabled": {}
+  "_note": "SELECTIVE config restored 2026-06-04 (PF 1.74). Bleeders cut. Do not clear without re-validation — clearing them caused the NQ -$4,445 loss.",
+  "disabled": {
+    "NQ_RTH_TREND_UP_long": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config.",
+    "NQ_ETH_TREND_UP_long": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config.",
+    "ES_RTH_TREND_UP_short": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config.",
+    "ES_ETH_TREND_UP_short": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config.",
+    "GC_RTH_TREND_UP_long": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config."
+  }
 }
