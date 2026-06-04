@@ -1166,6 +1166,12 @@ function renderEngineStatus(lastDecisions, livePrices, tradingMode) {
     const shortP = probs.short !== undefined ? (probs.short * 100).toFixed(0) + '%' : '—';
     const px = livePrices[sym] ? livePrices[sym].toFixed(2) : '—';
     const actionColor = action === 'BUY' ? 'var(--neon-green)' : (action === 'SELL' ? 'var(--neon-red)' : 'var(--text-secondary)');
+    // Read-only chop indicator (informational — never blocks a trade)
+    const lf = d.liveFeatures || {};
+    const chopER = (typeof lf.chopER === 'number') ? lf.chopER.toFixed(2) : '—';
+    const chopStatus = lf.chopStatus || '—';
+    const chopColor = chopStatus === 'CHOPPY' ? 'var(--neon-red)' : (chopStatus === 'MIXED' ? '#e0a500' : 'var(--neon-green)');
+    const atrP = (typeof lf.atrPctile === 'number') ? Math.round(lf.atrPctile * 100) + '%' : '—';
     cards.push(`
       <div class="glass-card" style="padding:14px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1174,6 +1180,7 @@ function renderEngineStatus(lastDecisions, livePrices, tradingMode) {
         </div>
         <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">${session} • ${regime}</div>
         <div style="font-size:11px; margin-top:8px;">px <strong>${px}</strong> · L <strong>${longP}</strong> · S <strong>${shortP}</strong></div>
+        <div style="font-size:11px; margin-top:6px;" title="Live 20-bar efficiency ratio (0=whipsaw, 1=clean trend). Informational only — does NOT block trades.">market <strong style="color:${chopColor};">${chopStatus}</strong> <small style="opacity:0.7;">ER ${chopER} · vol ${atrP}</small></div>
       </div>
     `);
   }

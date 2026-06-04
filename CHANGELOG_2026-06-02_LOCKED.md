@@ -26,7 +26,23 @@ these. None can be reverted by the retrain (it only writes bundle model JSONs).
 **Bigger-3 investigation results (env-gated tooling in `backtest_gates.js` + `decisionEngine.js`):**
 - dir_guard → no benefit, **stays OFF**.
 - threshold-cap → raising it cuts profit, **stays 0.58** (audit hypothesis disproved).
-- chop_guard → PF 1.49→1.65 but −$430k = **OWNER DECISION PENDING** (efficiency vs dollars).
+- chop_guard → **DECIDED 2026-06-03: KEEP OFF — DO NOT RE-TRY.** A 4-agent validation workflow
+  (incl. adversarial check) proved the guarded TREND set is **+$1.24M / PF 1.385 PROFITABLE** and
+  **every** floor (fixed 0.30/0.40/0.45 AND every forward proxy: recent-SL streak, regime-flip count,
+  entry-ER, per-day circuit breaker) **cuts net-POSITIVE trades**. The blunt 0.34 cost −$430k for
+  +0.16 PF. It fights the owner's "more trades on the profit side" goal, so it stays OFF. The AUTO
+  vol-scaled floor (`base 0.34 + 0.30×(atr_pctile−0.5)`, clamp 0.22–0.42) is the right *design* but its
+  benefit is UNPROVEN (no dataset carries true live per-entry ER) — only build if a live-ER backtest
+  confirms the high-vol-chop band is net-negative. The −$1,500 cap (below) is the real disaster-day
+  protection and cuts ZERO normal trades.
+
+## ⭐⭐ 2026-06-03 — SAFETY FIXES (after the NQ −$2,642 whipsaw day)
+
+| File | Change | Why |
+|---|---|---|
+| `lib/decisionEngine.js` | **Daily −$1,500 cap now mirrors NT8's REAL realized P&L** (was the bot's reconstructed ledger which under-counted by $836, letting the cap overshoot to −$2,642). `seedDailyPnLFromNt8` runs every METRICS, tracks `nt8Realized − dayAnchor`, persisted. | Caps every disaster day at −$1,500 accurately. Commit `8d036ab`. |
+| `lib/paperEngine.js` | **NQ trailing-DD buffer 2,500 → 6,000** (`DD_BY_SYMBOL`). NQ "won itself into a lockout": a winning run ratcheted the floor up, a pullback left $263 room < its stop, sizer returned 0. | NQ trades reliably; reset-proof. Commit `9ca3541`. |
+| `lib/decisionEngine.js` + `public/js/app.js` | **Read-only CHOP INDICATOR** on dashboard cards (live 20-bar efficiency ratio + CHOPPY/MIXED/CLEAN + vol rank). | Eyes-only visibility — NEVER blocks a trade. |
 - BE/trail modeling → built into the harness so PF is now a true live mirror (led to ★1).
 
 **Honest baseline:** the real live-exit number (post all fixes) is **PF ~1.58 / +$2.40M** with the 2.0 trail — earlier static-bracket figures (1.5-1.74) were optimistic.
