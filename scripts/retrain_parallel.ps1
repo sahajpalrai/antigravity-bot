@@ -75,8 +75,13 @@ if ($DryRun) {
 }
 
 # -- Launch single Python process (all 4 symbols, ~7 min full / ~3 min quick) -
+# PIN the interpreter to the full path that HAS lightgbm. Under the Task Scheduler
+# context bare 'python' resolved to a different interpreter without lightgbm, which
+# silently broke the retrain for 3 days (2026-06-02..04, ModuleNotFoundError:
+# lightgbm) while the task still reported exit 0. Fallback to bare python if absent.
+$pythonExe = if (Test-Path 'C:\Python314\python.exe') { 'C:\Python314\python.exe' } else { 'python' }
 $proc = Start-Process `
-    -FilePath         'python' `
+    -FilePath         $pythonExe `
     -ArgumentList     $pyArgs `
     -WorkingDirectory $projectDir `
     -RedirectStandardOutput $outLog `
