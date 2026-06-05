@@ -75,27 +75,98 @@ if ($DryRun) {
 }
 
 # -- Launch single Python process (all 4 symbols, ~7 min full / ~3 min quick) -
-# PIN the interpreter to the full path that HAS lightgbm. Under the Task Scheduler
-# context bare 'python' resolved to a different interpreter without lightgbm, which
-# silently broke the retrain for 3 days (2026-06-02..04, ModuleNotFoundError:
-# lightgbm) while the task still reported exit 0. Fallback to bare python if absent.
-$pythonExe = if (Test-Path 'C:\Python314\python.exe') { 'C:\Python314\python.exe' } else { 'python' }
+# ============================================================================
+# BULLETPROOF PREFLIGHT -- self-healing so the retrain can NEVER silently die.
+# ============================================================================
+# History: nightly retrain failed 2026-06-02..05 from TWO stacked root causes:
+#   (1) bare 'python' in the task context resolved to an interpreter w/o lightgbm;
+#   (2) the ML deps (lightgbm/numpy/pandas/sklearn) live in the PER-USER site-packages
+#       (...Roaming\Python\Python314\site-packages), which a 1 AM Scheduled Task does
+#       NOT auto-add to sys.path (profile/%APPDATA% not loaded). Manual runs worked,
+#       masking it for days. The task even reported exit 0 (false success).
+# Defense-in-depth: (a) force the user-site dir onto PYTHONPATH; (b) try MULTIPLE
+# Python 3.14 interpreters; (c) VERIFY all 4 deps import BEFORE the real run; (d) if
+# none work, AUTO-INSTALL them (--user) and retry; (e) if that ALSO fails, hard-fail
+# LOUD (non-zero exit -> watchdog Telegrams). The last-good models are always left
+# intact, so a failed retrain never degrades live behavior.
 
-# CRITICAL (root cause of the 2026-06-02..05 nightly failures): the ML deps
-# (lightgbm, numpy, pandas, scikit-learn) are installed in the PER-USER site-packages,
-# NOT the system site:  C:\Users\mrrai\AppData\Roaming\Python\Python314\site-packages
-# When a Scheduled Task fires at 1 AM, Python does NOT auto-add that per-user dir to
-# sys.path (the user profile / %APPDATA% isn't fully loaded in the task context), so
-# `import lightgbm` died every night with ModuleNotFoundError -- while every MANUAL run
-# (profile loaded) worked, which masked it. Force the user-site dir onto PYTHONPATH so
-# the pinned interpreter finds the deps regardless of logon/profile state. (Installing
-# the deps into the system site would also fix it, but C:\Python314\Lib\site-packages
-# needs admin to write.) Child Start-Process inherits this env var.
 $userSite = 'C:\Users\mrrai\AppData\Roaming\Python\Python314\site-packages'
 if (Test-Path $userSite) {
     $env:PYTHONPATH = if ($env:PYTHONPATH) { "$userSite;$env:PYTHONPATH" } else { $userSite }
-    Log ("PYTHONPATH pinned to user-site: " + $userSite)
+    Log ("PYTHONPATH -> user-site: " + $userSite)
 }
+
+# Candidate interpreters (all must be Python 3.14 to load the 3.14-built deps), priority order.
+$candidates = @(
+    'C:\Python314\python.exe',
+    'C:\Users\mrrai\AppData\Local\Python\pythoncore-3.14-64\python.exe'
+)
+$pc = Get-Command python -ErrorAction SilentlyContinue
+if ($pc -and $pc.Source) { $candidates += $pc.Source }
+
+$REQUIRED = "import importlib`n[importlib.import_module(m) for m in ['lightgbm','numpy','pandas','sklearn']]`nprint('DEPS_OK')"
+
+function Test-PyDeps([string]$exe) {
+    try {
+        $out = & $exe -c $REQUIRED 2>&1
+        return (($LASTEXITCODE -eq 0) -and ($out -match 'DEPS_OK'))
+    } catch { return $false }
+}
+
+$pythonExe = $null
+foreach ($c in ($candidates | Select-Object -Unique)) {
+    if (-not (Test-Path $c)) { continue }
+    if (Test-PyDeps $c) { $pythonExe = $c; Log ("Interpreter OK (all 4 deps import): " + $c); break }
+    Log ("  candidate missing deps, skipping: " + $c)
+}
+
+# Self-heal: no interpreter had the deps -> install them (--user) with the best 3.14 exe, retry.
+if (-not $pythonExe) {
+    $installer = @($candidates) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($installer) {
+        Log ("!! No interpreter had the ML deps -- AUTO-INSTALLING (--user) via " + $installer)
+        & $installer -m pip install --user --upgrade lightgbm numpy pandas scikit-learn 2>&1 |
+            ForEach-Object { Log ("   pip: " + $_) }
+        if (Test-PyDeps $installer) { $pythonExe = $installer; Log ("Self-heal OK -- deps installed, using " + $installer) }
+    }
+}
+
+# Hard-fail LOUD if we still cannot import the deps (never silently no-op again).
+if (-not $pythonExe) {
+    Log ("!! RETRAIN ABORTED: no Python 3.14 interpreter can import lightgbm/numpy/pandas/sklearn")
+    Log ("!! even after auto-install. Models NOT touched (last-good preserved). Watchdog will alert.")
+    exit 3
+}
+
+# -- BACKUP last-good models BEFORE retraining (restore point if a retrain goes bad) --
+# The trainer has per-bundle --auto-rollback, but a full timestamped snapshot also
+# protects against systemic failures (trainer crash mid-write, bad floor config, disk
+# error). Zipped (JSON compresses ~10x); keep the newest 10. Restore via restore_models.ps1.
+try {
+    $backupRoot = "$projectDir\models\_model_backups"
+    if (-not (Test-Path $backupRoot)) { New-Item -ItemType Directory -Force $backupRoot | Out-Null }
+    $stage = "$backupRoot\_stage_$ts"
+    New-Item -ItemType Directory -Force $stage | Out-Null
+    $bundles = Get-ChildItem "$projectDir\models" -Filter '*.json' |
+        Where-Object { $_.Name -match '^(NQ|ES|CL|GC)_(RTH|ETH)_' }
+    foreach ($b in $bundles) { Copy-Item $b.FullName $stage -Force }
+    # also snapshot the owner-locked config jsons so a restore brings back the whole state
+    foreach ($cfg in 'disabled_bundles.json','quality_floors.json','session_quality.json','exhaust_guard.json','dir_guard.json','chop_guard.json') {
+        $p = "$projectDir\models\$cfg"; if (Test-Path $p) { Copy-Item $p $stage -Force }
+    }
+    if ($bundles.Count -gt 0) {
+        $zip = "$backupRoot\models_backup_$ts.zip"
+        Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
+        Log ("Backed up " + $bundles.Count + " bundle models + configs -> " + (Split-Path $zip -Leaf))
+    } else {
+        Log ("  !! backup skipped: 0 bundle models found (nothing to snapshot)")
+    }
+    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+    # prune: keep newest 10 snapshots
+    Get-ChildItem $backupRoot -Filter 'models_backup_*.zip' -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -Skip 10 |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+} catch { Log ("  !! backup step failed (non-fatal, retrain continues): " + $_.Exception.Message) }
 
 $proc = Start-Process `
     -FilePath         $pythonExe `
@@ -111,6 +182,7 @@ $proc.WaitForExit()
 
 $elapsedMin = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 1)
 $rc         = $proc.ExitCode
+if ($null -eq $rc) { $rc = 1 }   # null ExitCode = treat as FAILURE, never as silent success
 
 # -- Parse SUMMARY line from LightGBM log ------------------------------------
 $deployed = 0; $rejected = 0; $rolledBack = 0
@@ -131,13 +203,23 @@ if ($internalLog) {
 }
 
 # -- Results summary ---------------------------------------------------------
+# A Python traceback in stderr = hard failure even if the exit code lies (the trainer
+# has historically reported exit 0 while crashing on import). Never report a false PASS.
+$stderrHasError = $false
+if (Test-Path $errLog) {
+    $errTxt = Get-Content $errLog -Raw -ErrorAction SilentlyContinue
+    if ($errTxt -and ($errTxt -match 'Traceback|ModuleNotFoundError|ImportError')) { $stderrHasError = $true }
+}
+$failed = ($rc -ne 0) -or $stderrHasError
+if ($failed -and $rc -eq 0) { $rc = 1 }   # make the exit code agree with reality
+
 Log ""
 Log ("=== Results (elapsed: " + $elapsedMin + " min) ===")
-$status = if ($rc -eq 0) { 'PASS' } else { ("FAIL rc=" + $rc) }
+$status = if (-not $failed) { 'PASS' } else { ("FAIL rc=" + $rc + $(if ($stderrHasError) { ' (python traceback)' } else { '' })) }
 Log ("{0,-12} deployed={1,2}  rejected={2,2}  rolled_back={3,2}" `
     -f $status, $deployed, $rejected, $rolledBack)
 
-# Check stderr
+# Surface stderr details
 if (Test-Path $errLog) {
     $errSize = (Get-Item $errLog).Length
     if ($errSize -eq 0) {

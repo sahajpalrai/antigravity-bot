@@ -77,3 +77,6 @@ __pycache__/
 
 # NT8 backup files generated during hot-fixes
 NT8_Bridge/*.bak*
+
+# Model backup snapshots (auto-created before each retrain; large, local-only)
+models/_model_backups/
