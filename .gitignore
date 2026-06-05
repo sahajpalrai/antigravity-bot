@@ -80,3 +80,9 @@ NT8_Bridge/*.bak*
 
 # Model backup snapshots (auto-created before each retrain; large, local-only)
 models/_model_backups/
+
+# Gate 2 shadow runtime data (accumulating ledger + scorecard, local-only)
+gate2/shadow_log.json
+gate2/shadow_trades.json
+gate2/shadow_scorecard.json
+gate2/shadow_watchdog_state.json
