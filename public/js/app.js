@@ -24,7 +24,7 @@ async function updateDashboard() {
     safe('renderNews',         () => renderNews(data.news));
     safe('renderYahooNews',    () => renderYahooNews(data.yahooNews));
     safe('renderTradeHistory', () => renderTradeHistory(data.history));
-    safe('renderDailyStats',   () => renderDailyStats(data.history));
+    safe('renderDailyStats',   () => renderDailyStats(data.history, data.dailyRealized));
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -1035,7 +1035,7 @@ document.addEventListener('DOMContentLoaded', _wireBoostCheckbox);
 
 // Render Daily Stats Card — shows today's trade count, win rate, and P&L
 // with per-symbol breakdown when more than one symbol traded.
-function renderDailyStats(history) {
+function renderDailyStats(history, dailyRealized) {
   const body = document.getElementById('daily-stats-body');
   if (!body) return;
 
@@ -1048,6 +1048,34 @@ function renderDailyStats(history) {
   });
 
   if (today.length === 0) {
+    // No per-trade records yet today. NT8 only streams aggregate P&L, so the
+    // per-trade list builds up as trades close — but today's NET realized is known
+    // from the daily ledger. Show that real number instead of "No trades".
+    const dr = dailyRealized || {};
+    const syms = Object.keys(dr).filter(k => Math.abs(dr[k]) > 0.001);
+    if (syms.length > 0) {
+      const total = syms.reduce((s, k) => s + (dr[k] || 0), 0);
+      const tColor = total >= 0 ? 'var(--neon-green)' : '#ff4444';
+      const rows = syms.map(k => {
+        const sym = k.replace('=F', ''); const v = dr[k];
+        const c = v >= 0 ? 'var(--neon-green)' : '#ff4444';
+        return `<div style="display:flex; justify-content:space-between; align-items:center;
+                    padding:6px 0; border-top:1px solid rgba(255,255,255,0.05);">
+          <span style="font-size:12px; font-weight:700; color:var(--cyan-glow);">${sym}</span>
+          <span style="font-size:13px; font-weight:800; color:${c};">${v >= 0 ? '+' : ''}$${Math.abs(v).toFixed(2)}</span>
+        </div>`;
+      }).join('');
+      body.innerHTML = `
+        <div style="text-align:center; background:rgba(0,240,255,0.07); border:1px solid rgba(0,240,255,0.12);
+                    border-radius:8px; padding:12px 8px; margin-bottom:8px;">
+          <div style="font-size:30px; font-weight:900; color:${tColor}; line-height:1;">${total >= 0 ? '+' : ''}$${Math.abs(total).toFixed(2)}</div>
+          <div style="font-size:9px; color:var(--text-secondary); margin-top:5px;
+                      text-transform:uppercase; letter-spacing:1.2px;">Today's Net P&amp;L (realized)</div>
+        </div>
+        ${rows}
+        <div style="font-size:9px; color:var(--text-secondary); text-align:center; margin-top:8px;">Per-trade breakdown appears as trades close</div>`;
+      return;
+    }
     body.innerHTML = `<div class="text-muted text-center" style="padding: 12px 0; font-size: 12px;">No trades today yet.</div>`;
     return;
   }

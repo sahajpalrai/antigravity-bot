@@ -559,8 +559,24 @@ const server = http.createServer((req, res) => {
           }
         } catch (e) { /* non-fatal */ }
 
+        // Today's realized P&L per symbol, straight from the daily-loss ledger
+        // (mirrors NT8's true realized). This feeds "Today's Performance" so it
+        // shows real net even before a per-trade close is recorded — NT8 only
+        // streams aggregate P&L, so the per-trade list builds up going forward.
+        let dailyRealized = {};
+        try {
+          const todayET = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+          const dp = getSafetyState().dailyPnL || {};
+          for (const k of Object.keys(dp)) {
+            if (dp[k] && dp[k].date === todayET && Math.abs(dp[k].pnl || 0) > 0.001) {
+              dailyRealized[k] = +(dp[k].pnl).toFixed(2);
+            }
+          }
+        } catch (e) { /* non-fatal */ }
+
         return res.end(JSON.stringify({
           ...portfolioState,
+          dailyRealized,
           livePrices,
           lastDecisions,
           schedule,
