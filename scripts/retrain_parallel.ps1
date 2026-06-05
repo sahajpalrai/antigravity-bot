@@ -80,6 +80,23 @@ if ($DryRun) {
 # silently broke the retrain for 3 days (2026-06-02..04, ModuleNotFoundError:
 # lightgbm) while the task still reported exit 0. Fallback to bare python if absent.
 $pythonExe = if (Test-Path 'C:\Python314\python.exe') { 'C:\Python314\python.exe' } else { 'python' }
+
+# CRITICAL (root cause of the 2026-06-02..05 nightly failures): the ML deps
+# (lightgbm, numpy, pandas, scikit-learn) are installed in the PER-USER site-packages,
+# NOT the system site:  C:\Users\mrrai\AppData\Roaming\Python\Python314\site-packages
+# When a Scheduled Task fires at 1 AM, Python does NOT auto-add that per-user dir to
+# sys.path (the user profile / %APPDATA% isn't fully loaded in the task context), so
+# `import lightgbm` died every night with ModuleNotFoundError -- while every MANUAL run
+# (profile loaded) worked, which masked it. Force the user-site dir onto PYTHONPATH so
+# the pinned interpreter finds the deps regardless of logon/profile state. (Installing
+# the deps into the system site would also fix it, but C:\Python314\Lib\site-packages
+# needs admin to write.) Child Start-Process inherits this env var.
+$userSite = 'C:\Users\mrrai\AppData\Roaming\Python\Python314\site-packages'
+if (Test-Path $userSite) {
+    $env:PYTHONPATH = if ($env:PYTHONPATH) { "$userSite;$env:PYTHONPATH" } else { $userSite }
+    Log ("PYTHONPATH pinned to user-site: " + $userSite)
+}
+
 $proc = Start-Process `
     -FilePath         $pythonExe `
     -ArgumentList     $pyArgs `
