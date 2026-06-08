@@ -574,9 +574,18 @@ const server = http.createServer((req, res) => {
           }
         } catch (e) { /* non-fatal */ }
 
+        // Exhaustion-guard state (which symbols' TREND_UP shorts are guarded) — drives
+        // the per-symbol guard checkboxes in Settings.
+        let exhaustGuard = { enabled: false, symbols: ['ES'] };
+        try {
+          const eg = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'exhaust_guard.json'), 'utf-8'));
+          exhaustGuard = { enabled: !!eg.enabled, symbols: Array.isArray(eg.symbols) && eg.symbols.length ? eg.symbols : ['ES'] };
+        } catch (e) { /* non-fatal */ }
+
         return res.end(JSON.stringify({
           ...portfolioState,
           dailyRealized,
+          exhaustGuard,
           livePrices,
           lastDecisions,
           schedule,
@@ -696,6 +705,31 @@ const server = http.createServer((req, res) => {
           activeGate:  cfg.activeGate,
           shadowGate2: cfg.shadowGate2
         }));
+      }
+
+      // POST /api/exhaust-guard — toggle the TREND_UP short exhaustion guard for a
+      // symbol (add/remove from models/exhaust_guard.json symbols[]). Hot-reloads.
+      // Body: { symbol: 'NQ'|'ES'|..., enabled: true|false }
+      if (pathname === '/api/exhaust-guard' && req.method === 'POST') {
+        const sym = (reqBody.symbol || '').replace('=F', '').toUpperCase();
+        const enabled = !!reqBody.enabled;
+        const gf = path.join(__dirname, 'models', 'exhaust_guard.json');
+        let ok = false, symbols = ['ES'];
+        try {
+          const eg = JSON.parse(fs.readFileSync(gf, 'utf-8'));
+          symbols = Array.isArray(eg.symbols) && eg.symbols.length ? eg.symbols : ['ES'];
+          if (sym) {
+            const has = symbols.includes(sym);
+            if (enabled && !has) symbols.push(sym);
+            if (!enabled && has) symbols = symbols.filter(s => s !== sym);
+            eg.symbols = symbols;
+            fs.writeFileSync(gf, JSON.stringify(eg, null, 2));
+            ok = true;
+            eventBus.emit('INFO', null, `Exhaustion guard ${sym} TREND_UP shorts → ${enabled ? 'ON (guarded)' : 'OFF (raw)'}`);
+          }
+        } catch (e) { /* non-fatal */ }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', symbol: sym, enabled, symbols }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config

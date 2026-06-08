@@ -621,6 +621,20 @@
               </div>
             </label>
 
+            <!-- NQ TREND_UP exhaustion-guard checkbox -->
+            <label id="nq-guard-row" style="display: flex; align-items: flex-start; gap: 14px; padding: 14px; margin-top: 12px; background: rgba(5,7,12,0.45); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; cursor: pointer; transition: all 0.2s ease;">
+              <input type="checkbox" id="nq-guard-checkbox" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer; accent-color: var(--neon-green);">
+              <div style="flex: 1;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                  <div style="font-size: 13px; font-weight: 800; color: var(--text-primary);">NQ TREND_UP Short Guard <span style="font-weight: 600; color: var(--text-secondary);">(exhaustion filter)</span></div>
+                  <span id="nq-guard-status" style="font-size: 10px; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.5px;">○ OFF (raw)</span>
+                </div>
+                <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px;">
+                  ON = NQ only shorts <strong style="color: var(--text-primary);">over-extended</strong> up-trends (ADX≥30 &amp; ≥4 ATR over VWAP). Backtest: <strong style="color: var(--neon-green);">PF 2.45</strong>, fewer big losers, but ~$20k/yr less profit. OFF = raw (PF 1.42, +$72k/yr, more trades). <strong>TREND_DOWN is never guarded.</strong> Hot-reloads ≤10 sec.
+                </div>
+              </div>
+            </label>
+
             <!-- Phase 1 button (placeholder — will be implemented after AUTO mode validates baseline) -->
             <div style="margin-top: 12px; padding: 14px; background: rgba(5,7,12,0.25); border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; opacity: 0.6;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -762,7 +776,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260605trades"></script>
+  <script src="js/app.js?v=20260607nqguard"></script>
   <script src="js/terminal.js?v=20260529v1"></script>
 </body>
 </html>
