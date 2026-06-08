@@ -4,7 +4,6 @@
   "adxMin": 30,
   "vwapMin": 4,
   "symbols": [
-    "ES",
-    "NQ"
+    "ES"
   ]
 }
