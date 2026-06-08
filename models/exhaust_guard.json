@@ -1,9 +1,7 @@
 {
-  "_note": "Counter-trend short EXHAUSTION gate. Applies to symbols listed (ES only — NQ was backtested 2026-06-07 and LEFT RAW because the guard cut its profit $72k->$52k/yr). Only fire TREND_UP shorts when ADX>=adxMin AND price>=vwapMin ATR above VWAP. Validated 365d: ES guarded PF 1.47 / +$22k-yr, both years +$11k. Hot-reloaded 10s. env EXHAUST_GUARD=1/0 + EXHAUST_SYMBOLS override for A/B.",
+  "_note": "Counter-trend short EXHAUSTION gate. Applies to symbols[] listed. Currently EMPTY = both NQ & ES short RAW (owner choice 2026-06-07). Per-symbol toggles in Settings. Validated: ES guarded PF 1.47/+$22k-yr robust (raw fragile, 2025 +$210); NQ raw better (PF 1.42/+$72k-yr). enabled+symbols=[] = guard nobody. env EXHAUST_GUARD/EXHAUST_SYMBOLS override for A/B.",
   "enabled": true,
   "adxMin": 30,
   "vwapMin": 4,
-  "symbols": [
-    "ES"
-  ]
+  "symbols": []
 }

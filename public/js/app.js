@@ -25,7 +25,7 @@ async function updateDashboard() {
     safe('renderYahooNews',    () => renderYahooNews(data.yahooNews));
     safe('renderTradeHistory', () => renderTradeHistory(data.history));
     safe('renderDailyStats',   () => renderDailyStats(data.history, data.dailyRealized));
-    safe('syncNqGuard',        () => { if (data.exhaustGuard && Array.isArray(data.exhaustGuard.symbols)) _syncNqGuardUI(data.exhaustGuard.symbols.includes('NQ')); });
+    safe('syncGuards',         () => { if (data.exhaustGuard && Array.isArray(data.exhaustGuard.symbols)) { _syncNqGuardUI(data.exhaustGuard.symbols.includes('NQ')); _syncEsGuardUI(data.exhaustGuard.symbols.includes('ES')); } });
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -1065,6 +1065,35 @@ function _syncNqGuardUI(on) {
   if (row) row.style.borderColor = on ? 'rgba(0,230,118,0.4)' : 'rgba(255,255,255,0.06)';
 }
 document.addEventListener('DOMContentLoaded', _wireNqGuardCheckbox);
+
+// ─── ES TREND_UP exhaustion-guard checkbox (mirrors NQ) ─────────────────────
+function _wireEsGuardCheckbox() {
+  const cb = document.getElementById('es-guard-checkbox');
+  if (!cb) return;
+  cb.addEventListener('change', async () => {
+    const enabled = cb.checked;
+    try {
+      const r = await fetch('/api/exhaust-guard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: 'ES', enabled })
+      });
+      if (r.ok) { const d = await r.json(); _syncEsGuardUI((d.symbols || []).includes('ES')); }
+    } catch (e) { console.warn('ES guard toggle failed', e); cb.checked = !enabled; }
+  });
+}
+function _syncEsGuardUI(on) {
+  const cb = document.getElementById('es-guard-checkbox');
+  const status = document.getElementById('es-guard-status');
+  const row = document.getElementById('es-guard-row');
+  if (cb) cb.checked = !!on;
+  if (status) {
+    status.textContent = on ? '● ON (guarded)' : '○ OFF (raw)';
+    status.style.color = on ? 'var(--neon-green)' : 'var(--text-secondary)';
+  }
+  if (row) row.style.borderColor = on ? 'rgba(0,230,118,0.4)' : 'rgba(255,255,255,0.06)';
+}
+document.addEventListener('DOMContentLoaded', _wireEsGuardCheckbox);
 
 // Render Daily Stats Card — shows today's trade count, win rate, and P&L
 // with per-symbol breakdown when more than one symbol traded.

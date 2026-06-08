@@ -579,7 +579,7 @@ const server = http.createServer((req, res) => {
         let exhaustGuard = { enabled: false, symbols: ['ES'] };
         try {
           const eg = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'exhaust_guard.json'), 'utf-8'));
-          exhaustGuard = { enabled: !!eg.enabled, symbols: Array.isArray(eg.symbols) && eg.symbols.length ? eg.symbols : ['ES'] };
+          exhaustGuard = { enabled: !!eg.enabled, symbols: Array.isArray(eg.symbols) ? eg.symbols : ['ES'] };
         } catch (e) { /* non-fatal */ }
 
         return res.end(JSON.stringify({
@@ -717,7 +717,7 @@ const server = http.createServer((req, res) => {
         let ok = false, symbols = ['ES'];
         try {
           const eg = JSON.parse(fs.readFileSync(gf, 'utf-8'));
-          symbols = Array.isArray(eg.symbols) && eg.symbols.length ? eg.symbols : ['ES'];
+          symbols = Array.isArray(eg.symbols) ? eg.symbols : ['ES'];
           if (sym) {
             const has = symbols.includes(sym);
             if (enabled && !has) symbols.push(sym);
