@@ -1,3 +1,38 @@
+# 🔬 2026-06-07 — ROOT-CAUSE FIX (owner: "fix the root cause not to disable")
+
+**Owner pushed back on band-aid disables and on ES not trading. Did a data-driven
+audit + backtest (no assumptions) for NQ & ES TREND_UP shorts. Two assumptions died.**
+
+**Findings (365-day backtest, by year, 1 contract, $4 RT comm):**
+| Bundle | Trades | WR | PF | Net/yr | 2025 | 2026 | Verdict |
+|---|---|---|---|---|---|---|---|
+| NQ short RAW (live) | 507 | 48% | 1.42 | +$72,372 | +$14.8k | +$57.6k | **KEEP RAW** |
+| NQ short guarded | 165 | 58% | 2.45 | +$52,186 | +$13.4k | +$38.8k | guard cuts $20k |
+| ES short RAW | 1530 | 40% | 1.10 | +$17,958 | +$210 ⚠️ | +$17.7k | fragile |
+| ES short GUARDED | 453 | 44% | 1.47 | +$22,470 | +$11.1k | +$11.3k | **WINNER** |
+
+- **NQ: left RAW.** Its TREND_UP shorts are robustly profitable both years (the live
+  −$1,363 on 2026-06-07 was normal variance — same size as backtest SL stops). The
+  exhaustion guard would *cut* profit, so it is NOT applied to NQ. No change to NQ.
+- **ES: the DISABLE was the bug.** `ES_*_TREND_UP_short` was BOTH disabled AND guarded
+  — the disable nullified the guard, so ES never shorted up-trends → ES sat flat in
+  every up-trend (owner's "ES takes no trade"). **Fix = REMOVE the disable** so the
+  already-validated exhaustion guard runs. Guarded ES short is robust (+$22k/yr, both
+  years +$11k) vs raw (2025 only +$210).
+
+**Changes (all live, hot-reloaded — no restart):**
+| File | Change |
+|---|---|
+| `models/disabled_bundles.json` | **Removed** `ES_RTH_TREND_UP_short` + `ES_ETH_TREND_UP_short`. (NQ_TREND_UP_long + GC_TREND_UP_long stay disabled — separate.) |
+| `models/exhaust_guard.json` | Added explicit `symbols:['ES']` (NQ tested + excluded). |
+| `lib/decisionEngine.js` | Guard scope now symbol-configurable (`_eg.symbols`, env `EXHAUST_SYMBOLS`); backtest-only `IGNORE_DISABLED=1` to measure disabled bundles. Behavior unchanged for the live (ES) path. |
+
+**Net effect:** ES trades up-trends again (guarded, robust). NQ untouched (already
+profitable). ZERO new disables — the fix removed one. Do not re-add the ES short
+disable; it silences ES and nullifies the guard.
+
+---
+
 # 🚨 2026-06-04 — EMERGENCY REVERT (owner-authorized after NQ −$4,445 live loss)
 
 **Owner (mrrai) authorized this revert directly:** _"we have very big loss please

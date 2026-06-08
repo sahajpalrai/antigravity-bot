@@ -1,6 +1,9 @@
 {
-  "_note": "ES counter-trend short exhaustion gate (audit 2026-06-02). Only fire ES TREND_UP shorts when ADX>=adxMin AND price>=vwapMin ATR above VWAP (fade only the most over-extended legs). Validated: ES_TREND_UP_short PF 0.92->1.21, -$46k->+$25k, positive every year. Hot-reloaded 10s. env EXHAUST_GUARD overrides.",
+  "_note": "Counter-trend short EXHAUSTION gate. Applies to symbols listed (ES only — NQ was backtested 2026-06-07 and LEFT RAW because the guard cut its profit $72k->$52k/yr). Only fire TREND_UP shorts when ADX>=adxMin AND price>=vwapMin ATR above VWAP. Validated 365d: ES guarded PF 1.47 / +$22k-yr, both years +$11k. Hot-reloaded 10s. env EXHAUST_GUARD=1/0 + EXHAUST_SYMBOLS override for A/B.",
   "enabled": true,
   "adxMin": 30,
-  "vwapMin": 4
+  "vwapMin": 4,
+  "symbols": [
+    "ES"
+  ]
 }
