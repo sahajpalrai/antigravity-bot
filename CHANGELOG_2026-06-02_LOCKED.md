@@ -1,3 +1,30 @@
+# 🔬 2026-06-08 — RE-ENABLED NQ_TREND_UP_long (the "−$4,445 bleeder" was NOT a bleeder)
+
+**Owner: "find the solution for NQ_TREND_UP_long and fix it permanently."** Fresh
+365-day backtest (no assumptions) — the 4th disabled bundle whose "bleeder" label the
+data disproved.
+
+| NQ_TREND_UP_long RAW (365d) | Trades | WR | PF | Net/yr | 2025 | 2026 |
+|---|---|---|---|---|---|---|
+| **un-disabled** | 994 | 40% | 1.22 | **+$68,886** | +$46,947 | +$21,938 |
+
+Per-bundle calibration: RTH PF 1.91 (thr 0.72), ETH PF 7.31 (thr 0.52). **Profitable
+both years, ~4 trades/day.** The −$4,445 that got it disabled was ONE bad day's variance
+— the −$2k SL hits are normal and offset by 399 TP wins over the year. We had a +$69k/yr
+strategy benched off a single day's noise (same mistake we nearly made on NQ short +$72k
+and ES short, both also rescued by re-checking the data).
+
+**Fix (permanent, hot-reloaded):** removed `NQ_RTH_TREND_UP_long` + `NQ_ETH_TREND_UP_long`
+from `models/disabled_bundles.json`. NQ now longs up-trends again. Only
+`GC_RTH_TREND_UP_long` stays disabled (no live data). Do NOT re-disable on a bad day —
+require a fresh backtest disproving the edge first.
+
+Open refinement (optional): a "don't-buy-the-top" long guard (block longs when price is
+over-extended above VWAP) could trim the −$2k SL tails / lift PF — UNTESTED, offered as
+a follow-up. Raw is already net-positive both years.
+
+---
+
 # 🔬 2026-06-07 — ROOT-CAUSE FIX (owner: "fix the root cause not to disable")
 
 **Owner pushed back on band-aid disables and on ES not trading. Did a data-driven

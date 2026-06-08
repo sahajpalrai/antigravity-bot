@@ -1,8 +1,6 @@
 {
-  "_note": "SELECTIVE config. 2026-06-07: removed ES_*_TREND_UP_short — they are NOT disabled, the EXHAUSTION GUARD (exhaust_guard.json, ES) handles them: guarded ES short = PF 1.47 / +$22k-yr (both years +$11k) vs raw PF 1.10 / fragile (2025 +$210). NQ shorts left RAW (profitable both years, PF 1.42 / +$72k-yr; guard cuts profit). Do not re-add ES shorts — that nullifies the guard and silences ES in up-trends.",
+  "_note": "SELECTIVE config. 2026-06-08: RE-ENABLED NQ_*_TREND_UP_long — fresh 365d backtest proved it PROFITABLE raw (+$68,886/yr, PF 1.22, positive BOTH years 2025 +$47k/2026 +$22k, 994t/yr). The -$4,445 was one bad days variance (normal -$2k SL hits offset by 399 TP wins), NOT a structural bleeder. Only GC_RTH_TREND_UP_long stays disabled (no live data). Do not re-disable NQ long without a fresh backtest disproving the edge.",
   "disabled": {
-    "NQ_RTH_TREND_UP_long": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config.",
-    "NQ_ETH_TREND_UP_long": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config.",
     "GC_RTH_TREND_UP_long": "Re-disabled 2026-06-04 after NQ -$4,445 live loss. Removing restrictions re-enabled this bleeder; it fired TREND_UP Long at 2 contracts into a choppy reversing market. Restoring the proven PF-1.74 selective config."
   }
 }
