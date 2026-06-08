@@ -125,9 +125,13 @@ if (-not $pythonExe) {
     $installer = @($candidates) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if ($installer) {
         Log ("!! No interpreter had the ML deps -- AUTO-INSTALLING (--user) via " + $installer)
-        & $installer -m pip install --user --upgrade lightgbm numpy pandas scikit-learn 2>&1 |
+        # NO --upgrade: it re-resolves/rebuilds numpy+pandas+sklearn (slow, can hang the
+        # 1 AM task before training ever starts, as on 2026-06-08). Install only what's
+        # MISSING, non-interactive, fast. --no-input avoids any prompt hang.
+        & $installer -m pip install --user --no-input --disable-pip-version-check lightgbm numpy pandas scikit-learn 2>&1 |
             ForEach-Object { Log ("   pip: " + $_) }
         if (Test-PyDeps $installer) { $pythonExe = $installer; Log ("Self-heal OK -- deps installed, using " + $installer) }
+        else { Log ("!! Self-heal re-test still failed right after install (deps may finish installing async) — next scheduled run will pick them up") }
     }
 }
 
