@@ -1,4 +1,7 @@
 {
   "_note": "Force-enable list — vetted bundles that bypass the WR quality gate (the 60% WR floor wrongly rejects profitable low-WR/high-PF bundles at the 1:2 R:R). Key = bundle stem {MINI}_{SESSION}_{REGIME}_{direction}, value = reason. STARTUP-ONLY: read once per server boot, so additions take effect only on the next restart (the user's control point). The disable list always wins. Populated by scripts/morning_review.js after the honest (purged) retrain when a bucket clears the guardrails (PF>=1.5, WR>=0.45, trades>=40).",
-  "enabled": {}
+  "enabled": {
+    "ES_ETH_TREND_DOWN_long": "test 2026-06-08: enable ETH TREND_DOWN so ES trades down-trends overnight (PF 1.27, marginal)",
+    "ES_ETH_TREND_DOWN_short": "test 2026-06-08: PF 2.30 bundle wrongly benched by 50% WR floor (WR 47%)"
+  }
 }
