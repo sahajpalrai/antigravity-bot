@@ -1,0 +1,4 @@
+{
+  "enabled": false,
+  "_note": "When true, RTH uses the ETH session model+threshold+floors (RTH trades like ETH). OFF by default = selective RTH. Toggle via Settings checkbox. env RTH_MIRROR_ETH overrides for backtest."
+}

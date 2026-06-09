@@ -612,6 +612,7 @@ const server = http.createServer((req, res) => {
           exhaustGuard,
           stopCap,
           sessionTrading: _loadSessionTrading(),
+          rthMirrorEth: (() => { try { return !!JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'rth_mirror_eth.json'), 'utf-8')).enabled; } catch (e) { return false; } })(),
           livePrices,
           lastDecisions,
           schedule,
@@ -795,6 +796,22 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', sessionTrading: cfg }));
+      }
+
+      // POST /api/rth-mirror — toggle "RTH uses ETH settings". Body: { enabled: bool }.
+      // Hot-reloads. WARNING surfaced in UI: backtest shows ON costs ~$181k/yr.
+      if (pathname === '/api/rth-mirror' && req.method === 'POST') {
+        const rf = path.join(__dirname, 'models', 'rth_mirror_eth.json');
+        let ok = false, cfg = { enabled: false };
+        try {
+          try { cfg = JSON.parse(fs.readFileSync(rf, 'utf-8')); } catch (e) {}
+          if (typeof reqBody.enabled === 'boolean') cfg.enabled = reqBody.enabled;
+          fs.writeFileSync(rf, JSON.stringify(cfg, null, 2));
+          ok = true;
+          eventBus.emit('INFO', null, `RTH-mirrors-ETH → ${cfg.enabled ? 'ON ⚠️ (backtest: -$181k/yr)' : 'OFF (selective RTH kept)'}`);
+        } catch (e) { /* non-fatal */ }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', rthMirrorEth: cfg.enabled }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config

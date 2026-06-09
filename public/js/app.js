@@ -28,6 +28,7 @@ async function updateDashboard() {
     safe('syncGuards',         () => { if (data.exhaustGuard && Array.isArray(data.exhaustGuard.symbols)) { _syncNqGuardUI(data.exhaustGuard.symbols.includes('NQ')); _syncEsGuardUI(data.exhaustGuard.symbols.includes('ES')); } });
     safe('syncStopCap',        () => { if (data.stopCap) _syncStopCapUI(data.stopCap); });
     safe('sessionTrading',     () => { if (data.sessionTrading) _renderSessionTrading(data.sessionTrading); });
+    safe('rthMirror',          () => { _syncRthMirror(!!data.rthMirrorEth); });
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -1169,6 +1170,31 @@ function _renderSessionTrading(st) {
     if (warn) warn.style.display = (!s.RTH && !s.ETH) ? '' : 'none';
   });
 }
+
+// ─── RTH-mirrors-ETH checkbox (data-warned, default OFF) ────────────────────
+function _wireRthMirror() {
+  const cb = document.getElementById('rthmirror-checkbox');
+  if (!cb) return;
+  cb.addEventListener('change', async () => {
+    if (cb.checked && !confirm('Backtest says this LOSES ~$181k/yr (turns RTH from +$163k to -$18k).\n\nThe ETH model is trained on overnight data and bleeds in the day session.\n\nAre you sure you want RTH to use ETH settings?')) {
+      cb.checked = false; return;
+    }
+    const enabled = cb.checked;
+    try {
+      const r = await fetch('/api/rth-mirror', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
+      if (r.ok) { const d = await r.json(); _syncRthMirror(d.rthMirrorEth); }
+    } catch (e) { cb.checked = !enabled; }
+  });
+}
+function _syncRthMirror(on) {
+  const cb = document.getElementById('rthmirror-checkbox');
+  const status = document.getElementById('rthmirror-status');
+  const row = document.getElementById('rthmirror-row');
+  if (cb) cb.checked = !!on;
+  if (status) { status.textContent = on ? '● ON ⚠️' : '○ OFF'; status.style.color = on ? '#ff4444' : 'var(--text-secondary)'; }
+  if (row) row.style.borderColor = on ? 'rgba(255,68,68,0.6)' : 'rgba(255,68,68,0.25)';
+}
+document.addEventListener('DOMContentLoaded', _wireRthMirror);
 
 // Render Daily Stats Card — shows today's trade count, win rate, and P&L
 // with per-symbol breakdown when more than one symbol traded.
