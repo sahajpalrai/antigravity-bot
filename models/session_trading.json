@@ -1,0 +1,19 @@
+{
+  "_note": "Per-symbol session trading gate. {SYM:{RTH:bool,ETH:bool}}. false = that symbol will NOT fire new trades in that session (existing positions still manage out). Default both true (data: NQ ETH alone = +$394k/yr). Hot-reloaded. Toggle via Settings checkboxes.",
+  "NQ": {
+    "RTH": true,
+    "ETH": true
+  },
+  "ES": {
+    "RTH": true,
+    "ETH": true
+  },
+  "CL": {
+    "RTH": true,
+    "ETH": true
+  },
+  "GC": {
+    "RTH": true,
+    "ETH": true
+  }
+}

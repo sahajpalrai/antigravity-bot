@@ -72,6 +72,22 @@ function _setGateConfig(patch) {
   _gateCache = cfg; _gateCacheMs = Date.now();
   return cfg;
 }
+
+// ── Per-symbol session trading gate (models/session_trading.json, hot-reload 3s) ──
+// {SYM:{RTH:bool,ETH:bool}}. false = symbol won't fire NEW entries that session.
+const SESSION_TRADING_FILE = path.join(__dirname, 'models', 'session_trading.json');
+let _stCache = null, _stCacheMs = 0;
+function _loadSessionTrading() {
+  if (_stCache && (Date.now() - _stCacheMs) < 3000) return _stCache;
+  try { _stCache = JSON.parse(fs.readFileSync(SESSION_TRADING_FILE, 'utf-8')); }
+  catch (e) { _stCache = {}; }
+  _stCacheMs = Date.now();
+  return _stCache;
+}
+function _sessionTradingOff(family, session) {
+  const st = _loadSessionTrading()[family];
+  return !!(st && session && st[session] === false);
+}
 // paperHarness removed — all symbols run LIVE via NT8
 const { recordTrade, getBucketStats, getRetrainFlags, topLossFeatures } = require('./lib/lossAuditor');
 const eventBus = require('./lib/eventBus');
@@ -357,6 +373,8 @@ function processBarUpdate(rawSymbol, candles) {
     } else if (!acc || acc.enabled === false || acc.activePosition || acc.status === 'FAILED') {
       eventBus.emit('BLOCKED', symbol,
         `signal blocked — ${!acc ? 'no account' : acc.enabled === false ? 'symbol OFF' : acc.activePosition ? 'already in position' : 'account FAILED'}`);
+    } else if (_sessionTradingOff(family, decision.session)) {
+      eventBus.emit('BLOCKED', symbol, `⏸ ${decision.session} trading is OFF for ${family} (Settings → Session Trading)`);
     } else {
       {
         const direction = decision.action === 'BUY' ? 'Long' : 'Short';
@@ -593,6 +611,7 @@ const server = http.createServer((req, res) => {
           dailyRealized,
           exhaustGuard,
           stopCap,
+          sessionTrading: _loadSessionTrading(),
           livePrices,
           lastDecisions,
           schedule,
@@ -754,6 +773,28 @@ const server = http.createServer((req, res) => {
         } catch (e) { /* non-fatal */ }
         res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', stopCap: cfg }));
+      }
+
+      // POST /api/session-trading — per-symbol RTH/ETH on/off.
+      // Body: { symbol: 'NQ', session: 'RTH'|'ETH', enabled: true|false }. Hot-reloads.
+      if (pathname === '/api/session-trading' && req.method === 'POST') {
+        const sym = (reqBody.symbol || '').replace('=F', '').toUpperCase();
+        const sess = (reqBody.session || '').toUpperCase();
+        const enabled = !!reqBody.enabled;
+        let ok = false, cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(SESSION_TRADING_FILE, 'utf-8')); } catch (e) {}
+        if (sym && (sess === 'RTH' || sess === 'ETH')) {
+          if (!cfg[sym] || typeof cfg[sym] !== 'object') cfg[sym] = { RTH: true, ETH: true };
+          cfg[sym][sess] = enabled;
+          try {
+            fs.writeFileSync(SESSION_TRADING_FILE, JSON.stringify(cfg, null, 2));
+            _stCache = null;  // force reload
+            ok = true;
+            eventBus.emit('INFO', null, `${sym} ${sess} trading → ${enabled ? 'ON' : 'OFF'}`);
+          } catch (e) { /* non-fatal */ }
+        }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', sessionTrading: cfg }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config

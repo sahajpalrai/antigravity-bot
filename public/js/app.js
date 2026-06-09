@@ -27,6 +27,7 @@ async function updateDashboard() {
     safe('renderDailyStats',   () => renderDailyStats(data.history, data.dailyRealized));
     safe('syncGuards',         () => { if (data.exhaustGuard && Array.isArray(data.exhaustGuard.symbols)) { _syncNqGuardUI(data.exhaustGuard.symbols.includes('NQ')); _syncEsGuardUI(data.exhaustGuard.symbols.includes('ES')); } });
     safe('syncStopCap',        () => { if (data.stopCap) _syncStopCapUI(data.stopCap); });
+    safe('sessionTrading',     () => { if (data.sessionTrading) _renderSessionTrading(data.sessionTrading); });
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -1127,6 +1128,47 @@ function _syncStopCapUI(sc) {
   if (row) row.style.borderColor = sc.enabled ? 'rgba(255,152,0,0.4)' : 'rgba(255,255,255,0.06)';
 }
 document.addEventListener('DOMContentLoaded', _wireStopCapCheckbox);
+
+// ─── Per-symbol Session Trading (RTH/ETH) checkboxes ────────────────────────
+function _renderSessionTrading(st) {
+  const grid = document.getElementById('session-trading-grid');
+  if (!grid || !st) return;
+  const symbols = ['NQ', 'ES', 'CL', 'GC'];
+  if (!grid.dataset.built) {
+    grid.innerHTML = symbols.map(sym => `
+      <div style="display:flex; align-items:center; gap:18px; padding:8px 4px; border-top:1px solid rgba(255,255,255,0.05);">
+        <span style="font-size:13px; font-weight:800; color:var(--cyan-glow); min-width:38px;">${sym}</span>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--text-secondary);">
+          <input type="checkbox" class="sess-cb" data-sym="${sym}" data-sess="RTH" style="width:16px;height:16px;accent-color:var(--neon-green);cursor:pointer;"> RTH <span style="opacity:0.55;">day</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--text-secondary);">
+          <input type="checkbox" class="sess-cb" data-sym="${sym}" data-sess="ETH" style="width:16px;height:16px;accent-color:var(--neon-green);cursor:pointer;"> ETH <span style="opacity:0.55;">overnight</span>
+        </label>
+        <span class="sess-off" data-sym="${sym}" style="display:none; font-size:10px; font-weight:800; color:#ff4444;">⚠️ FULLY OFF</span>
+      </div>`).join('');
+    grid.dataset.built = '1';
+    grid.querySelectorAll('.sess-cb').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        try {
+          const r = await fetch('/api/session-trading', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: cb.dataset.sym, session: cb.dataset.sess, enabled: cb.checked })
+          });
+          if (r.ok) { const d = await r.json(); _renderSessionTrading(d.sessionTrading); }
+        } catch (e) { cb.checked = !cb.checked; }
+      });
+    });
+  }
+  symbols.forEach(sym => {
+    const s = st[sym] || { RTH: true, ETH: true };
+    const rth = grid.querySelector(`.sess-cb[data-sym="${sym}"][data-sess="RTH"]`);
+    const eth = grid.querySelector(`.sess-cb[data-sym="${sym}"][data-sess="ETH"]`);
+    if (rth) rth.checked = !!s.RTH;
+    if (eth) eth.checked = !!s.ETH;
+    const warn = grid.querySelector(`.sess-off[data-sym="${sym}"]`);
+    if (warn) warn.style.display = (!s.RTH && !s.ETH) ? '' : 'none';
+  });
+}
 
 // Render Daily Stats Card — shows today's trade count, win rate, and P&L
 // with per-symbol breakdown when more than one symbol traded.
