@@ -669,16 +669,16 @@
               <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;">Per-symbol RTH (day) / ETH (overnight) on/off. Uncheck a session to stop NEW entries there (open positions still manage out). Data: NQ ETH alone = +$394k/yr, so both ON is the default.</div>
               <div id="session-trading-grid"></div>
 
-              <!-- RTH mirrors ETH checkbox (data-warned) -->
-              <label id="rthmirror-row" style="display: flex; align-items: flex-start; gap: 14px; padding: 14px; margin-top: 14px; background: rgba(40,10,10,0.4); border: 1px solid rgba(255,68,68,0.25); border-radius: 10px; cursor: pointer;">
-                <input type="checkbox" id="rthmirror-checkbox" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer; accent-color: #ff4444;">
+              <!-- RTH at ETH thresholds checkbox (validated) -->
+              <label id="rthmirror-row" style="display: flex; align-items: flex-start; gap: 14px; padding: 14px; margin-top: 14px; background: rgba(5,7,12,0.45); border: 1px solid rgba(0,240,255,0.15); border-radius: 10px; cursor: pointer;">
+                <input type="checkbox" id="rthmirror-checkbox" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer; accent-color: var(--cyan-glow);">
                 <div style="flex: 1;">
                   <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                    <div style="font-size: 13px; font-weight: 800; color: var(--text-primary);">RTH uses ETH settings <span style="font-weight:600;color:var(--text-secondary);">(run the ETH brain in the day session)</span></div>
+                    <div style="font-size: 13px; font-weight: 800; color: var(--text-primary);">RTH at ETH thresholds <span style="font-weight:600;color:var(--text-secondary);">(more day trades)</span></div>
                     <span id="rthmirror-status" style="font-size: 10px; font-weight: 800; color: var(--text-secondary);">○ OFF</span>
                   </div>
                   <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px;">
-                    <strong style="color:#ff4444;">⚠️ Backtest says DON'T.</strong> The ETH model is trained on overnight behavior — run it in RTH and it churns daytime noise at a loss. ON would turn <strong>NQ +$101k→−$5.6k</strong> and <strong>ES +$61k→−$12.9k</strong> (≈ <strong style="color:#ff4444;">−$181k/yr</strong>). The selective RTH config (PF 2.0–2.2) is <em>why</em> RTH is profitable. Left here only because you asked — strongly recommend OFF.
+                    ON = RTH keeps its <strong>proven model</strong> but fires at ETH's lower thresholds → <strong style="color:var(--neon-green);">~2.5× more day trades</strong>. Backtest 365d: NQ +$101k→<strong style="color:var(--neon-green);">+$164k</strong>, ES +$61k→<strong style="color:var(--neon-green);">+$70k</strong> (≈ +$72k/yr more) — but PF eases <strong>2.1→1.5</strong> (more trades + total profit, lower win-rate &amp; deeper swings). OFF = current selective RTH (default — what ran this morning). <em>Note: the old "run the ETH brain in RTH" version was −$181k/yr; this is the safe threshold-only version.</em>
                   </div>
                 </div>
               </label>
@@ -825,7 +825,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260609rthmirror"></script>
+  <script src="js/app.js?v=20260609rththresh"></script>
   <script src="js/terminal.js?v=20260529v1"></script>
 </body>
 </html>

@@ -1176,7 +1176,7 @@ function _wireRthMirror() {
   const cb = document.getElementById('rthmirror-checkbox');
   if (!cb) return;
   cb.addEventListener('change', async () => {
-    if (cb.checked && !confirm('Backtest says this LOSES ~$181k/yr (turns RTH from +$163k to -$18k).\n\nThe ETH model is trained on overnight data and bleeds in the day session.\n\nAre you sure you want RTH to use ETH settings?')) {
+    if (cb.checked && !confirm('RTH at ETH thresholds: ~2.5× more day trades, +$72k/yr more profit (backtest) — but PF eases 2.1→1.5, so more losing trades and deeper drawdowns too.\n\nKeeps the proven RTH model; only the firing bar drops. Turn ON?')) {
       cb.checked = false; return;
     }
     const enabled = cb.checked;
@@ -1191,8 +1191,8 @@ function _syncRthMirror(on) {
   const status = document.getElementById('rthmirror-status');
   const row = document.getElementById('rthmirror-row');
   if (cb) cb.checked = !!on;
-  if (status) { status.textContent = on ? '● ON ⚠️' : '○ OFF'; status.style.color = on ? '#ff4444' : 'var(--text-secondary)'; }
-  if (row) row.style.borderColor = on ? 'rgba(255,68,68,0.6)' : 'rgba(255,68,68,0.25)';
+  if (status) { status.textContent = on ? '● ON (more trades)' : '○ OFF'; status.style.color = on ? 'var(--cyan-glow)' : 'var(--text-secondary)'; }
+  if (row) row.style.borderColor = on ? 'rgba(0,240,255,0.5)' : 'rgba(0,240,255,0.15)';
 }
 document.addEventListener('DOMContentLoaded', _wireRthMirror);
 
