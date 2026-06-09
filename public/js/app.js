@@ -26,6 +26,7 @@ async function updateDashboard() {
     safe('renderTradeHistory', () => renderTradeHistory(data.history));
     safe('renderDailyStats',   () => renderDailyStats(data.history, data.dailyRealized));
     safe('syncGuards',         () => { if (data.exhaustGuard && Array.isArray(data.exhaustGuard.symbols)) { _syncNqGuardUI(data.exhaustGuard.symbols.includes('NQ')); _syncEsGuardUI(data.exhaustGuard.symbols.includes('ES')); } });
+    safe('syncStopCap',        () => { if (data.stopCap) _syncStopCapUI(data.stopCap); });
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -1094,6 +1095,38 @@ function _syncEsGuardUI(on) {
   if (row) row.style.borderColor = on ? 'rgba(0,230,118,0.4)' : 'rgba(255,255,255,0.06)';
 }
 document.addEventListener('DOMContentLoaded', _wireEsGuardCheckbox);
+
+// ─── Per-trade dollar-risk stop cap checkbox ────────────────────────────────
+function _wireStopCapCheckbox() {
+  const cb = document.getElementById('stopcap-checkbox');
+  if (!cb) return;
+  cb.addEventListener('change', async () => {
+    const enabled = cb.checked;
+    try {
+      const r = await fetch('/api/stop-cap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      if (r.ok) { const d = await r.json(); _syncStopCapUI(d.stopCap); }
+    } catch (e) { console.warn('stop-cap toggle failed', e); cb.checked = !enabled; }
+  });
+}
+function _syncStopCapUI(sc) {
+  if (!sc) return;
+  const cb = document.getElementById('stopcap-checkbox');
+  const status = document.getElementById('stopcap-status');
+  const row = document.getElementById('stopcap-row');
+  const val = document.getElementById('stopcap-value');
+  if (cb) cb.checked = !!sc.enabled;
+  if (val && sc.maxDollar) val.textContent = '$' + sc.maxDollar;
+  if (status) {
+    status.textContent = sc.enabled ? '● ON ($' + sc.maxDollar + ')' : '○ OFF';
+    status.style.color = sc.enabled ? 'var(--neon-orange)' : 'var(--text-secondary)';
+  }
+  if (row) row.style.borderColor = sc.enabled ? 'rgba(255,152,0,0.4)' : 'rgba(255,255,255,0.06)';
+}
+document.addEventListener('DOMContentLoaded', _wireStopCapCheckbox);
 
 // Render Daily Stats Card — shows today's trade count, win rate, and P&L
 // with per-symbol breakdown when more than one symbol traded.

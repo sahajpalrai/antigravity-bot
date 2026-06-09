@@ -582,10 +582,17 @@ const server = http.createServer((req, res) => {
           exhaustGuard = { enabled: !!eg.enabled, symbols: Array.isArray(eg.symbols) ? eg.symbols : ['ES'] };
         } catch (e) { /* non-fatal */ }
 
+        let stopCap = { enabled: false, maxDollar: 900 };
+        try {
+          const sc = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'stop_cap.json'), 'utf-8'));
+          stopCap = { enabled: !!sc.enabled, maxDollar: sc.maxDollar || 900 };
+        } catch (e) { /* non-fatal */ }
+
         return res.end(JSON.stringify({
           ...portfolioState,
           dailyRealized,
           exhaustGuard,
+          stopCap,
           livePrices,
           lastDecisions,
           schedule,
@@ -730,6 +737,23 @@ const server = http.createServer((req, res) => {
         } catch (e) { /* non-fatal */ }
         res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', symbol: sym, enabled, symbols }));
+      }
+
+      // POST /api/stop-cap — toggle / set the per-trade dollar-risk stop cap.
+      // Body: { enabled: true|false, maxDollar?: <number> }. Hot-reloads (≤10s).
+      if (pathname === '/api/stop-cap' && req.method === 'POST') {
+        const cf = path.join(__dirname, 'models', 'stop_cap.json');
+        let ok = false, cfg = { enabled: false, maxDollar: 900 };
+        try {
+          try { cfg = JSON.parse(fs.readFileSync(cf, 'utf-8')); } catch (e) {}
+          if (typeof reqBody.enabled === 'boolean') cfg.enabled = reqBody.enabled;
+          if (reqBody.maxDollar != null && +reqBody.maxDollar > 0) cfg.maxDollar = +reqBody.maxDollar;
+          fs.writeFileSync(cf, JSON.stringify(cfg, null, 2));
+          ok = true;
+          eventBus.emit('INFO', null, `Stop cap → ${cfg.enabled ? 'ON $' + cfg.maxDollar + '/contract' : 'OFF (raw ATR stops)'}`);
+        } catch (e) { /* non-fatal */ }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', stopCap: cfg }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config

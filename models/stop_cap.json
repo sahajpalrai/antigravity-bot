@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "maxDollar": 900,
+  "_note": "Per-trade dollar-risk cap. enabled+maxDollar => no single trade can lose more than ~$maxDollar/contract (caps the ATR stop distance; TP keeps ATR size). Validated 365d backtest 2026-06-08: $900 erases ALL >$1k losses on NQ+ES (worst -$2,571 -> -$904). Cost: NQ net -9% ($550k->$500k), ES ~free (+$700). Toggle via Settings checkbox. env SL_DOLLAR_CAP overrides for backtest."
+}
