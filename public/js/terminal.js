@@ -436,6 +436,30 @@
         </div>`;
     }
 
+    // ── Daily-loss status line (bold, top of card) ───────────────────────
+    // Shows today's P&L for this symbol, the daily cap, room left, and whether
+    // the symbol is HALTED by the cap. Data from /api/state.dailyStatus.
+    const ds = (data && data.dailyStatus && data.dailyStatus[family]) || null;
+    let dailyLine = '';
+    if (ds) {
+      const loss      = ds.pnl || 0;                       // today's P&L (neg = loss)
+      const lossColor = loss < 0 ? 'var(--neon-red)' : loss > 0 ? 'var(--neon-green)' : 'var(--text-secondary)';
+      const lossTxt   = `${loss >= 0 ? '+' : ''}${formatCurrency(loss)}`;
+      const tail      = ds.halted
+        ? `<span style="color:#fff; background:var(--neon-red); padding:1px 7px; border-radius:5px; margin-left:8px; font-size:10px;">⛔ HALTED</span>`
+        : `<span style="color:var(--neon-green); margin-left:8px;">$${Math.round(ds.remaining).toLocaleString()} left</span>`;
+      dailyLine = `<div style="display:flex; justify-content:space-between; align-items:center; padding:5px 9px; margin:0 0 6px 0;
+                        background:rgba(5,7,12,0.5); border:1px solid ${ds.halted ? 'rgba(255,56,56,0.4)' : 'rgba(255,255,255,0.07)'};
+                        border-radius:7px; font-size:11.5px; font-weight:800;">
+        <span style="color:var(--text-secondary); letter-spacing:0.5px;">DAILY</span>
+        <span>
+          <span style="color:${lossColor};">${lossTxt}</span>
+          <span style="color:var(--text-secondary); font-weight:600;"> / −${formatCurrency(ds.cap)}</span>
+          ${tail}
+        </span>
+      </div>`;
+    }
+
     // ── Assemble ─────────────────────────────────────────────────────────
     return `
       <div class="v6card ${fireClass}"${isMismatch ? ' style="border-color:rgba(255,152,0,0.6);"' : ''}>
@@ -448,6 +472,7 @@
           <span class="v6c-onoff ${enabled ? 'on' : 'off'}"
                 onclick="toggleSymbolState('${sym}', ${!enabled})">${enabled ? '● ON' : '○ OFF'}</span>
         </div>
+        ${dailyLine}
         <div class="v6c-row2">
           <span class="v6c-sess">${session} · ${px != null ? px.toFixed(2) : '—'}</span>
           ${verdictBadge}

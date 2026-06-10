@@ -615,6 +615,22 @@ const server = http.createServer((req, res) => {
           rthMirrorEth: (() => { try { return !!JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'rth_mirror_eth.json'), 'utf-8')).enabled; } catch (e) { return false; } })(),
           tightBeNq: (() => { try { const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'tight_be_nq.json'), 'utf-8')); return { enabled: j.enabled === true, beTicks: parseFloat(j.beTicks) || 25 }; } catch (e) { return { enabled: false, beTicks: 25 }; } })(),
           dailyCaps: (() => { try { return getDailyCaps(); } catch (e) { return { default: 1500, perSymbol: {} }; } })(),
+          // Per-symbol daily-loss status for the cards: today's P&L, the cap, room left, halted?
+          dailyStatus: (() => {
+            try {
+              const caps = getDailyCaps();
+              const ss = getSafetyState();
+              const etDate = new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10);  // ET day
+              const out = {};
+              ['NQ', 'ES', 'CL', 'GC'].forEach(fam => {
+                const rec = ss && ss.dailyPnL && ss.dailyPnL[fam + '=F'];
+                const cap = (caps.perSymbol && caps.perSymbol[fam]) || caps.default || 1500;
+                const pnl = (rec && rec.date === etDate) ? (rec.pnl || 0) : 0;   // today only
+                out[fam] = { pnl, cap, remaining: Math.max(0, cap + pnl), halted: pnl <= -cap };
+              });
+              return out;
+            } catch (e) { return {}; }
+          })(),
           livePrices,
           lastDecisions,
           schedule,
