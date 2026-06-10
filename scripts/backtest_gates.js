@@ -59,6 +59,11 @@ const EXIT_MODEL  = process.env.EXIT_MODEL || 'static';
 const BE_ATR      = parseFloat(process.env.BE_ATR      || '0.8');
 const TRAIL_ATR   = parseFloat(process.env.TRAIL_ATR   || '1.0');
 const SL_ATR_MULT = parseFloat(process.env.SL_ATR_MULT || '1.4');
+// Absolute-tick BE/trail override (tighter-BE checkbox A/B). When > 0, BE arms at
+// BE_TICKS ticks of favorable move and the trail distance is TRAIL_TICKS ticks —
+// fixed, not ATR-scaled. 0 = use the ATR-multiple model above.
+const BE_TICKS    = parseFloat(process.env.BE_TICKS    || '0');
+const TRAIL_TICKS = parseFloat(process.env.TRAIL_TICKS || '0');
 
 // ─── args ───
 const args = process.argv.slice(2);
@@ -155,8 +160,9 @@ async function simulateSymbol(symbol, gateNum) {
         // No exit this bar — ratchet breakeven + trailing stop using THIS bar's
         // favorable extreme (tested on the NEXT bar, so no intrabar look-ahead).
         const slD = openPos.slDistance;
-        const beTrig = (BE_ATR    / SL_ATR_MULT) * slD;  // favorable move that arms breakeven
-        const trailD = (TRAIL_ATR / SL_ATR_MULT) * slD;  // trailing distance
+        // Absolute-tick override (tighter-BE A/B) takes precedence; else ATR-multiple.
+        const beTrig = BE_TICKS    > 0 ? BE_TICKS    * spec.tickSize : (BE_ATR    / SL_ATR_MULT) * slD;  // arms breakeven
+        const trailD = TRAIL_TICKS > 0 ? TRAIL_TICKS * spec.tickSize : (TRAIL_ATR / SL_ATR_MULT) * slD;  // trailing distance
         if (openPos.direction === 'Long') {
           openPos.maxFav = Math.max(openPos.maxFav, bar.high);
           if (!openPos.beActive && (openPos.maxFav - openPos.entryPrice) >= beTrig) {

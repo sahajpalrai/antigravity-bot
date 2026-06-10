@@ -29,6 +29,7 @@ async function updateDashboard() {
     safe('syncStopCap',        () => { if (data.stopCap) _syncStopCapUI(data.stopCap); });
     safe('sessionTrading',     () => { if (data.sessionTrading) _renderSessionTrading(data.sessionTrading); });
     safe('rthMirror',          () => { _syncRthMirror(!!data.rthMirrorEth); });
+    safe('tightBe',            () => { if (data.tightBeNq) _syncTightBe(data.tightBeNq); });
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -1129,6 +1130,41 @@ function _syncStopCapUI(sc) {
   if (row) row.style.borderColor = sc.enabled ? 'rgba(255,152,0,0.4)' : 'rgba(255,255,255,0.06)';
 }
 document.addEventListener('DOMContentLoaded', _wireStopCapCheckbox);
+
+// ─── Tighter NQ Breakeven checkbox ──────────────────────────────────────────
+function _wireTightBe() {
+  const cb = document.getElementById('tightbe-checkbox');
+  if (!cb) return;
+  cb.addEventListener('change', async () => {
+    const enabled = cb.checked;
+    if (enabled && !confirm('Turn ON tighter NQ breakeven?\n\nNQ moves to breakeven at a fixed 25 ticks instead of 0.8×ATR — locks winners in sooner.\nBacktest 365d: PF 1.28→1.45, net +$152k, drawdown −31% (holds at 2× slippage).\nDirection is solid; dollar size runs optimistic — A/B it live before trusting the magnitude.\nNQ only. SL/TP unchanged. Hot-reloads in ≤5s.')) {
+      cb.checked = false; return;
+    }
+    try {
+      const r = await fetch('/api/tight-be-nq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      if (r.ok) { const d = await r.json(); _syncTightBe(d.tightBeNq); }
+    } catch (e) { console.warn('tight-be toggle failed', e); cb.checked = !enabled; }
+  });
+}
+function _syncTightBe(tbe) {
+  if (!tbe) return;
+  const cb = document.getElementById('tightbe-checkbox');
+  const status = document.getElementById('tightbe-status');
+  const row = document.getElementById('tightbe-row');
+  const val = document.getElementById('tightbe-value');
+  if (cb) cb.checked = !!tbe.enabled;
+  if (val && tbe.beTicks) val.textContent = tbe.beTicks;
+  if (status) {
+    status.textContent = tbe.enabled ? '● ON (' + tbe.beTicks + 't)' : '○ OFF';
+    status.style.color = tbe.enabled ? 'var(--cyan-glow)' : 'var(--text-secondary)';
+  }
+  if (row) row.style.borderColor = tbe.enabled ? 'rgba(0,240,255,0.5)' : 'rgba(0,240,255,0.15)';
+}
+document.addEventListener('DOMContentLoaded', _wireTightBe);
 
 // ─── Per-symbol Session Trading (RTH/ETH) checkboxes ────────────────────────
 function _renderSessionTrading(st) {

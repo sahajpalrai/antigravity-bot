@@ -613,6 +613,7 @@ const server = http.createServer((req, res) => {
           stopCap,
           sessionTrading: _loadSessionTrading(),
           rthMirrorEth: (() => { try { return !!JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'rth_mirror_eth.json'), 'utf-8')).enabled; } catch (e) { return false; } })(),
+          tightBeNq: (() => { try { const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'tight_be_nq.json'), 'utf-8')); return { enabled: j.enabled === true, beTicks: parseFloat(j.beTicks) || 25 }; } catch (e) { return { enabled: false, beTicks: 25 }; } })(),
           livePrices,
           lastDecisions,
           schedule,
@@ -812,6 +813,23 @@ const server = http.createServer((req, res) => {
         } catch (e) { /* non-fatal */ }
         res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', rthMirrorEth: cfg.enabled }));
+      }
+
+      // POST /api/tight-be-nq — toggle tighter NQ breakeven. Body: { enabled: bool, beTicks?: number }.
+      // Hot-reloads (paperEngine, 5s). NQ-family only; SL/TP untouched. Default OFF.
+      if (pathname === '/api/tight-be-nq' && req.method === 'POST') {
+        const tf = path.join(__dirname, 'models', 'tight_be_nq.json');
+        let ok = false, cfg = { enabled: false, beTicks: 25 };
+        try {
+          try { cfg = JSON.parse(fs.readFileSync(tf, 'utf-8')); } catch (e) {}
+          if (typeof reqBody.enabled === 'boolean') cfg.enabled = reqBody.enabled;
+          if (reqBody.beTicks != null && !isNaN(parseFloat(reqBody.beTicks))) cfg.beTicks = parseFloat(reqBody.beTicks);
+          fs.writeFileSync(tf, JSON.stringify(cfg, null, 2));
+          ok = true;
+          eventBus.emit('INFO', null, `Tighter NQ breakeven → ${cfg.enabled ? `ON (BE @ ${cfg.beTicks} ticks)` : 'OFF (0.8-ATR default)'}`);
+        } catch (e) { /* non-fatal */ }
+        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: ok ? 'success' : 'failed', tightBeNq: cfg }));
       }
 
       // POST /api/exits — update a single SYMBOL+session config
