@@ -28,7 +28,7 @@
 const fs    = require('fs');
 const path  = require('path');
 const http  = require('http');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 
 const ROOT       = path.join(__dirname, '..');
 const LOG_FILE   = path.join(ROOT, 'gate2', 'shadow_log.json');
@@ -46,19 +46,47 @@ const ENGINE_PORT = 3100;
 const PY = fs.existsSync('C:\\Python314\\python.exe') ? 'C:\\Python314\\python.exe' : 'python';
 const ENGINE_ALERT_THROTTLE_MIN = 30;
 
+// Probe /health and parse ml_loaded — a stale engine can be PORT-UP but running
+// UNFILTERED (ml_loaded=false) if it started before the lightgbm deps were healthy.
+// That trap silently disabled the ML filter once already, so we treat it as a
+// restart-worthy fault, not "up".
 function probeEngine() {
   return new Promise(resolve => {
-    const req = http.get({ host: 'localhost', port: ENGINE_PORT, path: '/', timeout: 2500 }, res => { res.resume(); resolve(true); });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
+    const req = http.get({ host: 'localhost', port: ENGINE_PORT, path: '/health', timeout: 2500 }, res => {
+      let d = '';
+      res.on('data', c => (d += c));
+      res.on('end', () => {
+        try { const j = JSON.parse(d); resolve({ up: true, mlLoaded: j.ml_loaded === true }); }
+        catch { resolve({ up: true, mlLoaded: false }); }
+      });
+    });
+    req.on('error', () => resolve({ up: false, mlLoaded: false }));
+    req.on('timeout', () => { req.destroy(); resolve({ up: false, mlLoaded: false }); });
+  });
+}
+
+// Kill whatever process is LISTENING on ENGINE_PORT (used to evict a stale
+// ml_loaded=false engine before respawning a healthy one — you can't bind the
+// port twice).
+function killEnginePort() {
+  return new Promise(resolve => {
+    const cmd = `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${ENGINE_PORT} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`;
+    exec(cmd, () => resolve());
   });
 }
 
 async function ensureEngineUp(state, now) {
-  if (await probeEngine()) return { up: true, restarted: false };
-  // Down -> relaunch detached with the pinned interpreter (stdlib only, no deps).
+  const h = await probeEngine();
+  if (h.up && h.mlLoaded) return { up: true, restarted: false };
+  // Either down, OR up-but-unfiltered (ml_loaded=false). Both need a fresh start.
+  const stale = h.up && !h.mlLoaded;
   let restarted = false;
   try {
+    if (stale) {
+      // Evict the stale process so the port frees up before we respawn.
+      await killEnginePort();
+      await new Promise(r => setTimeout(r, 1500));
+    }
     const out = fs.openSync(path.join(ROOT, 'logs', 'pattern_engine.log'), 'a');
     const err = fs.openSync(path.join(ROOT, 'logs', 'pattern_engine.err'), 'a');
     const child = spawn(PY, ['gate2/scripts/pattern_engine.py'], { cwd: ROOT, detached: true, stdio: ['ignore', out, err] });
@@ -67,10 +95,11 @@ async function ensureEngineUp(state, now) {
   } catch (e) { console.error('[gate2-watchdog] engine spawn failed:', e.message); }
   const since = (now - (state.lastEngineAlertMs || 0)) / 60000;
   if (since > ENGINE_ALERT_THROTTLE_MIN) {
-    _tg(`♻️ Gate 2 pattern engine (port ${ENGINE_PORT}) was DOWN — watchdog restarted it. Shadow signals resume; nothing live is affected.`);
+    const why = stale ? `was UP but ML filter was DEAD (ml_loaded=false) — running UNFILTERED` : `was DOWN`;
+    _tg(`♻️ Gate 2 pattern engine (port ${ENGINE_PORT}) ${why} — watchdog restarted it. Shadow signals resume; nothing live is affected.`);
     state.lastEngineAlertMs = +now;
   }
-  return { up: false, restarted };
+  return { up: h.up, restarted };
 }
 
 // 1-contract point values (mini family). Commission = round-trip.
