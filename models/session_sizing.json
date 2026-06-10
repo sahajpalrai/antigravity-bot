@@ -1,4 +1,7 @@
 {
-  "_note": "reverted to inert 2026-06-10 (live-safety). Add NQ:{RTH:1} to re-enable.",
-  "_updatedAt": "2026-06-10-reverted"
+  "_note": "Per-session position-size ceiling, mini family -> session. NQ RTH=1 so an RTH stop (~$833) fits the -$500 RTH budget. ETH uncapped (overnight = profitable engine). Hot-reloaded ~5s.",
+  "NQ": {
+    "RTH": 1
+  },
+  "_updatedAt": "2026-06-10-ACTIVE"
 }

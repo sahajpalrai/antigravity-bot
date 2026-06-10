@@ -3,6 +3,11 @@
   "default": {
     "single": 1500
   },
-  "perSymbol": {},
-  "_updatedAt": "2026-06-10-reverted-live-safety"
+  "perSymbol": {
+    "NQ": {
+      "ETH": 1000,
+      "RTH": 500
+    }
+  },
+  "_updatedAt": "2026-06-10-ACTIVE"
 }
