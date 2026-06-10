@@ -1,5 +1,4 @@
 {
-  "_note": "Per-session position-size ceiling, keyed by mini family then session (RTH/ETH). Caps the DD-sizer's contract count for that session. NQ RTH -> 1 so an RTH stop (~$833 at the $900 stop-cap) fits inside the smaller RTH daily-loss budget (see daily_loss_caps.json). ETH is left uncapped (overnight is the profitable engine). Hot-reloaded ~5s. Remove a key to lift the cap. Applies to MNQ too (same family).",
-  "NQ": { "RTH": 1 },
-  "_updatedAt": "2026-06-10"
+  "_note": "reverted to inert 2026-06-10 (live-safety). Add NQ:{RTH:1} to re-enable.",
+  "_updatedAt": "2026-06-10-reverted"
 }

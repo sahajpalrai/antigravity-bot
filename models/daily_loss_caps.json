@@ -1,8 +1,8 @@
 {
   "_note": "Session-scoped daily-loss caps. A symbol in perSymbol with ETH+RTH gets SEPARATE per-session budgets: RTH's counter resets FRESH at the RTH open each day, so an overnight ETH drawdown can no longer pre-block the RTH day session (the reason NQ never traded in RTH). ETH+RTH SUM to the daily max, so total daily risk is unchanged vs the old single -1500. Symbols not listed use default.single. Hot-reloaded ~10s. NQ pairs with session_sizing.json (RTH=1 contract) so an RTH stop (~$833) fits the -$500 RTH budget. Tune freely; keep ETH+RTH <= intended daily max.",
-  "default": { "single": 1500 },
-  "perSymbol": {
-    "NQ": { "ETH": 1000, "RTH": 500 }
+  "default": {
+    "single": 1500
   },
-  "_updatedAt": "2026-06-10"
+  "perSymbol": {},
+  "_updatedAt": "2026-06-10-reverted-live-safety"
 }
