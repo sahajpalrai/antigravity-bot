@@ -40,10 +40,16 @@ const STATE_FILE = path.join(ROOT, 'gate2', 'shadow_watchdog_state.json');
 let _tg = () => {};
 try { _tg = require(path.join(ROOT, 'lib', 'telegram')).sendTelegramMessage; } catch (e) {}
 
-// Gate 2's pattern engine is a stdlib-only Python HTTP service on port 3100.
-// decide2 calls it per bar; if it's down, shadow logs dead FLATs. Keep it alive.
+// Gate 2's pattern engine is a Python HTTP service on port 3100. It loads a lightgbm
+// model (ml_filter.pkl) for the ML filter, so it MUST run on an interpreter that can
+// import lightgbm. Prefer the dedicated retrain venv (deps in its own site-packages,
+// always importable) over C:\Python314 (whose lightgbm lives in the per-user roaming
+// site that a Scheduled-Task context can't see → ml_loaded:false → engine runs
+// UNFILTERED). Same root-cause fix as the retrain.
 const ENGINE_PORT = 3100;
-const PY = fs.existsSync('C:\\Python314\\python.exe') ? 'C:\\Python314\\python.exe' : 'python';
+const _VENV_PY = path.join(ROOT, '.retrain_venv', 'Scripts', 'python.exe');
+const PY = fs.existsSync(_VENV_PY) ? _VENV_PY
+         : fs.existsSync('C:\\Python314\\python.exe') ? 'C:\\Python314\\python.exe' : 'python';
 const ENGINE_ALERT_THROTTLE_MIN = 30;
 
 // Probe /health and parse ml_loaded — a stale engine can be PORT-UP but running
