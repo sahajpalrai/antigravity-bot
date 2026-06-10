@@ -86,3 +86,6 @@ gate2/shadow_log.json
 gate2/shadow_trades.json
 gate2/shadow_scorecard.json
 gate2/shadow_watchdog_state.json
+
+# Dedicated retrain venv (self-contained ML deps; rebuilt on demand, never committed)
+.retrain_venv/

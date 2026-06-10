@@ -97,7 +97,12 @@ if (Test-Path $userSite) {
 }
 
 # Candidate interpreters (all must be Python 3.14 to load the 3.14-built deps), priority order.
+# TOP priority: the dedicated retrain venv. Its python carries the 4 ML deps in its OWN
+# site-packages, ALWAYS on sys.path by construction — immune to the per-user-site visibility
+# trap that broke 1 AM tasks for days (no %APPDATA%/profile dependency, no logon-type, no admin).
+# This is the structural fix; the rest are fallbacks if the venv is ever deleted.
 $candidates = @(
+    (Join-Path $PSScriptRoot '..\.retrain_venv\Scripts\python.exe'),
     'C:\Python314\python.exe',
     'C:\Users\mrrai\AppData\Local\Python\pythoncore-3.14-64\python.exe'
 )
@@ -107,10 +112,25 @@ if ($pc -and $pc.Source) { $candidates += $pc.Source }
 $REQUIRED = "import importlib`n[importlib.import_module(m) for m in ['lightgbm','numpy','pandas','sklearn']]`nprint('DEPS_OK')"
 
 function Test-PyDeps([string]$exe) {
+    # Robust: (1) -W ignore so import-time Deprecation/Future/UserWarnings never hit stderr;
+    # (2) stdout captured to a temp file, stderr discarded separately (NOT 2>&1 — on PS 5.1
+    #     merging native stderr wraps each line in a NativeCommandError which, under
+    #     ErrorActionPreference='Stop', THROWS and false-fails a perfectly good interpreter);
+    # (3) EAP forced to Continue locally so nothing can throw; (4) verdict from stdout DEPS_OK
+    #     + real process exit code only.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $tmp = [System.IO.Path]::GetTempFileName()
     try {
-        $out = & $exe -c $REQUIRED 2>&1
-        return (($LASTEXITCODE -eq 0) -and ($out -match 'DEPS_OK'))
+        & $exe -s -W ignore -c $REQUIRED 1>$tmp 2>$null
+        $code = $LASTEXITCODE
+        $out  = Get-Content $tmp -Raw -ErrorAction SilentlyContinue
+        return (($code -eq 0) -and ($out -match 'DEPS_OK'))
     } catch { return $false }
+    finally {
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+        $ErrorActionPreference = $prev
+    }
 }
 
 $pythonExe = $null
@@ -120,18 +140,30 @@ foreach ($c in ($candidates | Select-Object -Unique)) {
     Log ("  candidate missing deps, skipping: " + $c)
 }
 
-# Self-heal: no interpreter had the deps -> install them (--user) with the best 3.14 exe, retry.
+# Self-heal: no interpreter had the deps -> REBUILD the dedicated venv (permanent, self-
+# contained). This is the durable repair: a fresh venv carries the deps in its own
+# site-packages, so it can't regress to the user-site visibility trap. NO --upgrade
+# (re-resolving numpy/pandas/sklearn can hang the 1 AM task); --no-input avoids prompts.
 if (-not $pythonExe) {
-    $installer = @($candidates) | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($installer) {
-        Log ("!! No interpreter had the ML deps -- AUTO-INSTALLING (--user) via " + $installer)
-        # NO --upgrade: it re-resolves/rebuilds numpy+pandas+sklearn (slow, can hang the
-        # 1 AM task before training ever starts, as on 2026-06-08). Install only what's
-        # MISSING, non-interactive, fast. --no-input avoids any prompt hang.
-        & $installer -m pip install --user --no-input --disable-pip-version-check lightgbm numpy pandas scikit-learn 2>&1 |
-            ForEach-Object { Log ("   pip: " + $_) }
-        if (Test-PyDeps $installer) { $pythonExe = $installer; Log ("Self-heal OK -- deps installed, using " + $installer) }
-        else { Log ("!! Self-heal re-test still failed right after install (deps may finish installing async) — next scheduled run will pick them up") }
+    $venvDir = Join-Path $PSScriptRoot '..\.retrain_venv'
+    $venvPy  = Join-Path $venvDir 'Scripts\python.exe'
+    $bootstrap = @($candidates) | Where-Object { (Test-Path $_) -and ($_ -notlike '*\.retrain_venv\*') } | Select-Object -First 1
+    if ($bootstrap) {
+        Log ("!! No interpreter had the ML deps -- REBUILDING dedicated venv via " + $bootstrap)
+        if (-not (Test-Path $venvPy)) { & $bootstrap -m venv $venvDir 2>&1 | ForEach-Object { Log ("   venv: " + $_) } }
+        if (Test-Path $venvPy) {
+            & $venvPy -m pip install --no-input --disable-pip-version-check lightgbm numpy pandas scikit-learn 2>&1 |
+                ForEach-Object { Log ("   pip: " + $_) }
+            if (Test-PyDeps $venvPy) { $pythonExe = $venvPy; Log ("Self-heal OK -- venv rebuilt, using " + $venvPy) }
+        }
+        # Last-ditch fallback: --user install on the bootstrap interpreter (old behavior).
+        if (-not $pythonExe) {
+            Log ("!! venv rebuild did not satisfy deps -- falling back to --user install via " + $bootstrap)
+            & $bootstrap -m pip install --user --no-input --disable-pip-version-check lightgbm numpy pandas scikit-learn 2>&1 |
+                ForEach-Object { Log ("   pip: " + $_) }
+            if (Test-PyDeps $bootstrap) { $pythonExe = $bootstrap; Log ("Self-heal OK -- deps installed (--user), using " + $bootstrap) }
+            else { Log ("!! Self-heal re-test still failed right after install (deps may finish async) — next run will pick them up") }
+        }
     }
 }
 
