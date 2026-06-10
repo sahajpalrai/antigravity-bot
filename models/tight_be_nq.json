@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "beTicks": 25,
   "_note": "Tighter NQ breakeven (Settings checkbox). When enabled, NQ-family (NQ=F/MNQ=F) BE arms — and the trail starts, since trailTriggerPrice==beTriggerPrice — at a FIXED 25 ticks (6.25 pts) of favorable move instead of 0.8*ATR. SL/TP untouched; trail DISTANCE stays 1.0 ATR (hardcoded in AntigravityBotBridge.cs). Default OFF = current 0.8-ATR behavior. Hot-reloaded (5s). env TIGHT_BE_NQ_TICKS overrides for backtest. Validated 365d (trail held at live 1.0 ATR): BE@25t vs current 0.8-ATR => PF 1.28->1.45, net +$498k->+$650k (+$152k), MaxDD -31%; robust at 2-tick slippage (+$143k). Monotonic across 25/30/35t with 25 best. Magnitude is optimistic (bar-based trailing-stop runs hot) but direction is robust on every metric. Recommend A/B live before trusting the size.",
   "_createdAt": "2026-06-09"

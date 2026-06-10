@@ -46,7 +46,7 @@
     "totalTestTrades": 78,
     "sharpeRatio": 1.9238630341712402
   },
-  "trainedAt": "2026-06-01T12:36:23.255549+00:00",
+  "trainedAt": "2026-06-10T08:03:16.967983+00:00",
   "model": {
     "name": "tree",
     "version": "v4",

@@ -1,4 +1,4 @@
 {
-  "enabled": false,
+  "enabled": true,
   "_note": "When true, RTH keeps its own model but fires at the matching ETH bundle THRESHOLD (lower bar) -> ~2.5x more day trades. Validated 365d: NQ +$101k->+$164k, ES +$61k->+$70k (+$72k/yr), PF eases 2.1->1.5. OFF by default (current selective RTH). NOT the old model-swap (that was -$181k/yr). env RTH_MIRROR_ETH overrides for backtest."
 }
