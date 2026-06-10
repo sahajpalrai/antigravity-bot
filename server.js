@@ -51,7 +51,7 @@ const {
   startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
   broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols, isNT8Connected
 } = require('./lib/nt8Bridge');
-const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8 } = require('./lib/decisionEngine');
+const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8, resetDailyPnL } = require('./lib/decisionEngine');
 const { decide2, decide2Shadow } = require('./lib/gate2Engine');
 const llmAnalyst = require('./lib/llmAnalyst');
 
@@ -917,7 +917,18 @@ const server = http.createServer((req, res) => {
         const symbol = reqBody.symbol;
         const r = symbol ? resetDrawdown(symbol) : { ok: false, error: 'symbol required' };
         if (r.ok) {
-          eventBus.emit('INFO', null, `Drawdown reset — ${symbol}: floor -> ${r.drawdownFloor.toFixed(0)}, buffer restored ~$${Math.round(r.bufferRestored)}`);
+          // Also clear today's daily-loss halt so the bot RESUMES trading this symbol
+          // (re-anchor today's P&L to current realized). Trades until a limit is hit again.
+          let dailyCleared = false;
+          try {
+            const acc = getPortfolioState().accounts[symbol] || {};
+            const realized = (typeof acc.nt8RealizedPnL === 'number') ? acc.nt8RealizedPnL
+                           : (typeof acc.realizedPnL === 'number') ? acc.realizedPnL : undefined;
+            resetDailyPnL(symbol, realized);
+            dailyCleared = true;
+          } catch (e) { /* non-fatal — DD floor still reset */ }
+          r.dailyCleared = dailyCleared;
+          eventBus.emit('INFO', null, `Drawdown reset — ${symbol}: floor -> ${r.drawdownFloor.toFixed(0)}, buffer ~$${Math.round(r.bufferRestored)}${dailyCleared ? ', daily-loss cap CLEARED — trading resumes' : ''}`);
         }
         res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: r.ok ? 'success' : 'failed', ...r }));
