@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "allow": [
+    "RTH_TREND_UP",
+    "ETH_TREND_DOWN"
+  ],
+  "_note": "Gate 2 regime allow-list (SHADOW forward-validation). Only the regimes net-positive on BOTH NQ and ES across the full 365d backtest are allowed: RTH_TREND_UP (+$11k NQ / +$5.1k ES) and ETH_TREND_DOWN (+$3k NQ / +$6.1k ES). All other regimes flip sign between symbols or bleed (RTH_CHOP, ETH_TREND_UP). Keys = `${session}_${regime}`. enabled:false = trade all tradeable regimes (pre-allowlist behavior). Hot-reloaded (5s). Gate 2 is SHADOW-only — this does not touch live trading. Selected 2026-06-09; forward-validate ~2-3 weeks before considering live.",
+  "_createdAt": "2026-06-09"
+}
