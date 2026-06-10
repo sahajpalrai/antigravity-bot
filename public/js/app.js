@@ -1845,7 +1845,7 @@ async function resetSingleAccount(symbol) {
 // buffer) WITHOUT touching balance, P&L, or trade history. Non-destructive.
 async function resetDrawdownConfirm(symbol) {
   const clean = symbol.replace('=F','');
-  if (!confirm(`Reset ${clean} drawdown + resume trading?\n\n• Re-anchors the trailing drawdown floor to your CURRENT equity (restores the full buffer)\n• CLEARS today's daily-loss cap so ${clean} starts trading again until a limit is hit again\n\nYour balance, realized P&L, and trade history are NOT touched.`)) return;
+  if (!confirm(`Reset ${clean} drawdown?\n\nRe-anchors the trailing drawdown floor to your CURRENT equity, restoring the full buffer.\n\nYour balance, realized P&L, and trade history are NOT touched — only the trailing-DD reference point moves.`)) return;
   try {
     const r = await fetch('/api/reset-drawdown', {
       method: 'POST',
