@@ -360,6 +360,11 @@ function renderAccounts(accounts) {
                          font-family: inherit; font-size: 9px; font-weight: 800;
                          padding: 4px 10px; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;"
                   title="Wipe this account back to $50K for ${cleanSymbol}">↻ RESET</button>
+          <button onclick="resetDrawdownConfirm('${sym}')"
+                  style="border: 1px solid rgba(0,240,255,0.35); background: rgba(0,240,255,0.07); color: var(--cyan-glow);
+                         font-family: inherit; font-size: 9px; font-weight: 800;
+                         padding: 4px 10px; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;"
+                  title="Re-anchor the trailing drawdown floor to current equity — restores the full buffer. Keeps balance, P&L and trade history.">↺ RESET DD</button>
           <span style="font-size:9px; color:var(--neon-orange); font-weight:800;">⚡ LIVE — orders via NT8</span>
         </div>
       </div>
@@ -1827,6 +1832,29 @@ async function resetSingleAccount(symbol) {
     const j = await r.json();
     if (r.ok) {
       console.log(`[Dashboard] ${symbol} reset`);
+      updateDashboard();
+    } else {
+      alert('Failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+}
+
+// Re-anchors the trailing drawdown floor to current equity (restores the full
+// buffer) WITHOUT touching balance, P&L, or trade history. Non-destructive.
+async function resetDrawdownConfirm(symbol) {
+  const clean = symbol.replace('=F','');
+  if (!confirm(`Reset ${clean} drawdown?\n\nRe-anchors the trailing drawdown floor to your CURRENT equity, restoring the full buffer.\n\nYour balance, realized P&L, and trade history are NOT touched — only the trailing-DD reference point moves.`)) return;
+  try {
+    const r = await fetch('/api/reset-drawdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol })
+    });
+    const j = await r.json();
+    if (r.ok && j.status === 'success') {
+      console.log(`[Dashboard] ${symbol} drawdown reset — buffer restored ~$${Math.round(j.bufferRestored)}`);
       updateDashboard();
     } else {
       alert('Failed: ' + (j.error || 'unknown'));

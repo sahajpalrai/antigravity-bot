@@ -42,7 +42,7 @@ const {
   setContractMode, getContractMode, activeSymbols,
   ALL_SYMBOLS, MINI_SYMBOLS, MICRO_SYMBOLS, CONTRACT_SPECS,
   familyMiniSymbol, familyMicroSymbol, activeContractFor,
-  resetAllAccounts, resetSymbolAccount,
+  resetAllAccounts, resetSymbolAccount, resetDrawdown,
   setFamilyContract, getFamilyContracts,
   setOnPositionClose
 } = require('./lib/paperEngine');
@@ -909,6 +909,18 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: ok ? 'success' : 'failed' }));
+      }
+
+      // POST /api/reset-drawdown — re-anchor the trailing DD floor to current equity
+      // (restores the full buffer) WITHOUT wiping balance / P&L / history. Body: { symbol }.
+      if (pathname === '/api/reset-drawdown' && req.method === 'POST') {
+        const symbol = reqBody.symbol;
+        const r = symbol ? resetDrawdown(symbol) : { ok: false, error: 'symbol required' };
+        if (r.ok) {
+          eventBus.emit('INFO', null, `Drawdown reset — ${symbol}: floor -> ${r.drawdownFloor.toFixed(0)}, buffer restored ~$${Math.round(r.bufferRestored)}`);
+        }
+        res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: r.ok ? 'success' : 'failed', ...r }));
       }
 
       // POST /api/contract-mode — switch between MINI and MICRO globally
