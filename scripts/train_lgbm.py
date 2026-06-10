@@ -804,3 +804,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # main() returning normally IS success. On Windows/Py3.14 the lightgbm/OpenMP
+    # teardown after main() can make the interpreter exit non-zero with NO traceback,
+    # which the retrain wrapper read as FAIL and false-alarmed the watchdog (deployed=4
+    # but "FAIL rc=1"). Flush, then hard-exit 0 to bypass the noisy teardown. A real
+    # failure raises INSIDE main() -> traceback -> non-zero exit before this line, so
+    # genuine crashes are still reported.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
