@@ -1,7 +1,4 @@
 {
-  "_note": "Per-session position-size ceiling, mini family -> session. NQ RTH=1 so an RTH stop (~$833) fits the -$500 RTH budget. ETH uncapped (overnight = profitable engine). Hot-reloaded ~5s.",
-  "NQ": {
-    "RTH": 1
-  },
-  "_updatedAt": "2026-06-10-ACTIVE"
+  "_note": "Per-session position-size ceiling (inert — split dropped 2026-06-10, one cap per symbol now). Add e.g. NQ:{RTH:1} to cap a session.",
+  "_updatedAt": "2026-06-10-inert"
 }

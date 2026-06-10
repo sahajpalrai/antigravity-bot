@@ -51,7 +51,7 @@ const {
   startNT8BridgeServer, sendSignalToNT8, getCandles, setOnBarCallback,
   broadcastBrainState, bootstrapBuffersFromCsv, getLinkedSymbols, isNT8Connected
 } = require('./lib/nt8Bridge');
-const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8 } = require('./lib/decisionEngine');
+const { decide, modelStatus, getQualityFloors, recordTradeResult, getSafetyState, seedDailyPnLFromNt8, resetDailyPnL, getDailyCaps, setDailyCap } = require('./lib/decisionEngine');
 const { decide2, decide2Shadow } = require('./lib/gate2Engine');
 const llmAnalyst = require('./lib/llmAnalyst');
 
@@ -614,6 +614,7 @@ const server = http.createServer((req, res) => {
           sessionTrading: _loadSessionTrading(),
           rthMirrorEth: (() => { try { return !!JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'rth_mirror_eth.json'), 'utf-8')).enabled; } catch (e) { return false; } })(),
           tightBeNq: (() => { try { const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'tight_be_nq.json'), 'utf-8')); return { enabled: j.enabled === true, beTicks: parseFloat(j.beTicks) || 25 }; } catch (e) { return { enabled: false, beTicks: 25 }; } })(),
+          dailyCaps: (() => { try { return getDailyCaps(); } catch (e) { return { default: 1500, perSymbol: {} }; } })(),
           livePrices,
           lastDecisions,
           schedule,
@@ -921,6 +922,39 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ status: r.ok ? 'success' : 'failed', ...r }));
+      }
+
+      // POST /api/reset-daily-cap — clear today's daily-loss halt for a symbol so the
+      // bot resumes trading it (until the cap is hit again). Body: { symbol }.
+      if (pathname === '/api/reset-daily-cap' && req.method === 'POST') {
+        const symbol = reqBody.symbol;
+        let r = { ok: false, error: 'symbol required' };
+        if (symbol) {
+          let realized;
+          try {
+            const acc = getPortfolioState().accounts[symbol] || {};
+            realized = (typeof acc.nt8RealizedPnL === 'number') ? acc.nt8RealizedPnL
+                     : (typeof acc.realizedPnL === 'number') ? acc.realizedPnL : undefined;
+          } catch (e) {}
+          r = resetDailyPnL(symbol, realized);
+          if (r.ok) eventBus.emit('INFO', null, `Daily-loss cap RESET — ${symbol}: today's P&L re-anchored to 0, trading resumes`);
+        }
+        res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: r.ok ? 'success' : 'failed', ...r }));
+      }
+
+      // GET /api/daily-cap — current per-symbol caps (Settings field reads this).
+      if (pathname === '/api/daily-cap' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'success', caps: getDailyCaps() }));
+      }
+
+      // POST /api/daily-cap — set a symbol's daily-loss cap ($). Body: { symbol, amount }.
+      if (pathname === '/api/daily-cap' && req.method === 'POST') {
+        const r = setDailyCap(reqBody.symbol, reqBody.amount);
+        if (r.ok) eventBus.emit('INFO', null, `Daily-loss cap set — ${r.symbol}: -$${r.amount}`);
+        res.writeHead(r.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: r.ok ? 'success' : 'failed', ...r, caps: getDailyCaps() }));
       }
 
       // POST /api/contract-mode — switch between MINI and MICRO globally

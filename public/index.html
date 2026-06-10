@@ -769,6 +769,16 @@
             <p>🔧 <strong>Global Broker Integration:</strong> Webhook credentials and Tastytrade integrations are written directly to your local encrypted process memory and synchronized asynchronously to your `.env` workspace variables for permanent system persistence across bot runtime starts.</p>
           </div>
 
+          <!-- ── Daily Loss Cap (per symbol, editable) ── -->
+          <div style="margin-top: 28px; padding-top: 22px; border-top: 1px solid rgba(255,193,7,0.25);">
+            <h3 style="font-size: 14px; font-weight: 800; color: #ffc107; margin: 0 0 6px 0;">🛑 Daily Loss Cap (per symbol)</h3>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 14px 0; line-height: 1.6;">
+              Max a symbol can lose in one futures day before the bot stops opening new trades on it (until the next day, or you click <strong>⟳ RESET CAP</strong> on its account card). Separate from the $6,000 APEX drawdown. Edits save instantly — no restart.
+            </p>
+            <div id="daily-cap-grid" style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;"></div>
+            <span id="daily-cap-status" style="display:inline-block; margin-top:10px; font-size:11px; color:var(--text-secondary);"></span>
+          </div>
+
           <!-- ── Account Reset ── -->
           <div style="margin-top: 28px; padding-top: 22px; border-top: 1px solid rgba(255,56,56,0.25);">
             <h3 style="font-size: 14px; font-weight: 800; color: var(--neon-red); margin: 0 0 8px 0;">⚠ Account Reset</h3>
@@ -839,7 +849,7 @@
     </main>
   </div>
 
-  <script src="js/app.js?v=20260610resetdd"></script>
+  <script src="js/app.js?v=20260610dailycap"></script>
   <script src="js/terminal.js?v=20260529v1"></script>
 </body>
 </html>

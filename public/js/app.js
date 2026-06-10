@@ -30,6 +30,7 @@ async function updateDashboard() {
     safe('sessionTrading',     () => { if (data.sessionTrading) _renderSessionTrading(data.sessionTrading); });
     safe('rthMirror',          () => { _syncRthMirror(!!data.rthMirrorEth); });
     safe('tightBe',            () => { if (data.tightBeNq) _syncTightBe(data.tightBeNq); });
+    safe('dailyCaps',          () => { if (data.dailyCaps) _renderDailyCaps(data.dailyCaps); });
     safe('renderRegime',       () => renderRegime(data.regime, data.schedule));
     safe('renderMarketClock',  () => renderMarketClock(data.schedule));
     safe('renderEngineStatus', () => renderEngineStatus(data.lastDecisions || {}, data.livePrices || {}, data.tradingMode));
@@ -365,6 +366,11 @@ function renderAccounts(accounts) {
                          font-family: inherit; font-size: 9px; font-weight: 800;
                          padding: 4px 10px; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;"
                   title="Re-anchor the trailing drawdown floor to current equity — restores the full buffer. Keeps balance, P&L and trade history.">↺ RESET DD</button>
+          <button onclick="resetDailyCapConfirm('${sym}')"
+                  style="border: 1px solid rgba(255,193,7,0.4); background: rgba(255,193,7,0.08); color: #ffc107;
+                         font-family: inherit; font-size: 9px; font-weight: 800;
+                         padding: 4px 10px; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;"
+                  title="Clear today's daily-loss cap for ${cleanSymbol} — re-anchors today's P&L to 0 so the bot resumes trading until the cap is hit again. Keeps balance, P&L and history.">⟳ RESET CAP</button>
           <span style="font-size:9px; color:var(--neon-orange); font-weight:800;">⚡ LIVE — orders via NT8</span>
         </div>
       </div>
@@ -1862,6 +1868,66 @@ async function resetDrawdownConfirm(symbol) {
   } catch (e) {
     alert('Network error: ' + e.message);
   }
+}
+
+// Clears today's daily-loss cap for a symbol so the bot resumes trading it.
+// Does NOT touch the drawdown floor, balance, P&L, or history.
+async function resetDailyCapConfirm(symbol) {
+  const clean = symbol.replace('=F','');
+  if (!confirm(`Reset ${clean} daily-loss cap?\n\nRe-anchors today's P&L to $0 for ${clean}, so it starts trading again until the daily cap is hit again.\n\nThis does NOT touch the drawdown floor, balance, realized P&L, or trade history.`)) return;
+  try {
+    const r = await fetch('/api/reset-daily-cap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol })
+    });
+    const j = await r.json();
+    if (r.ok && j.status === 'success') {
+      console.log(`[Dashboard] ${symbol} daily-loss cap reset — trading resumes`);
+      updateDashboard();
+    } else {
+      alert('Failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+}
+
+// Renders the per-symbol Daily Loss Cap fields in Settings and saves edits.
+function _renderDailyCaps(dc) {
+  const grid = document.getElementById('daily-cap-grid');
+  if (!grid || !dc) return;
+  const syms = ['NQ', 'ES', 'CL', 'GC'];
+  if (!grid.dataset.built) {
+    grid.innerHTML = syms.map(s => `
+      <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary);">
+        <span style="font-weight:800; color:#ffc107; min-width:30px;">${s}</span>
+        <span style="opacity:0.6;">−$</span>
+        <input type="number" id="dcap-${s}" min="100" step="50" class="dcap-input" data-sym="${s}"
+          style="width:92px; padding:5px 8px; background:rgba(5,7,12,0.6); border:1px solid rgba(255,193,7,0.3); border-radius:6px; color:var(--text-primary); font-family:inherit; font-size:12px;">
+      </label>`).join('');
+    grid.dataset.built = '1';
+    grid.querySelectorAll('.dcap-input').forEach(inp => {
+      inp.addEventListener('change', () => _saveDailyCap(inp.dataset.sym, inp.value));
+    });
+  }
+  syms.forEach(s => {
+    const inp = document.getElementById('dcap-' + s);
+    if (inp && document.activeElement !== inp) {  // don't clobber while typing
+      inp.value = (dc.perSymbol && dc.perSymbol[s]) || dc.default || 1500;
+    }
+  });
+}
+async function _saveDailyCap(sym, amount) {
+  const status = document.getElementById('daily-cap-status');
+  const amt = parseFloat(amount);
+  if (!(amt > 0)) { if (status) { status.textContent = 'Enter a positive number.'; status.style.color = 'var(--neon-red)'; } return; }
+  try {
+    const r = await fetch('/api/daily-cap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: sym, amount: amt }) });
+    const j = await r.json();
+    if (r.ok && j.status === 'success') { if (status) { status.textContent = `✓ ${sym} daily cap set to −$${amt.toLocaleString()}`; status.style.color = 'var(--neon-green)'; } }
+    else { if (status) { status.textContent = 'Failed: ' + (j.error || 'unknown'); status.style.color = 'var(--neon-red)'; } }
+  } catch (e) { if (status) { status.textContent = 'Network error: ' + e.message; status.style.color = 'var(--neon-red)'; } }
 }
 
 // Wipes all 8 accounts back to clean $50K + clears paper history.
