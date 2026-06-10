@@ -1,0 +1,6 @@
+{
+  "_note": "Session-scoped daily-loss caps. INERT BY DEFAULT — with perSymbol empty, every symbol uses default.single (-1500), identical to the legacy single daily cap (no behavior change). To give a symbol SEPARATE ETH/RTH budgets (so an overnight ETH drawdown can't pre-block the RTH day session), add it to perSymbol with ETH+RTH that SUM to your intended daily max, e.g. \"NQ\": { \"ETH\": 1000, \"RTH\": 500 }. RTH's counter resets fresh at the RTH open each day. Hot-reloaded ~10s. NOTE before enabling NQ: one 2-contract NQ stop (~-$1666) already exceeds -$1500 and the APEX buffer can be thin, so pair the split with 1-contract RTH sizing if you want RTH to tolerate a full stop within the buffer.",
+  "default": { "single": 1500 },
+  "perSymbol": {},
+  "_updatedAt": "2026-06-10"
+}
