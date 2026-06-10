@@ -204,17 +204,29 @@ try {
         Remove-Item -Force -ErrorAction SilentlyContinue
 } catch { Log ("  !! backup step failed (non-fatal, retrain continues): " + $_.Exception.Message) }
 
-$proc = Start-Process `
-    -FilePath         $pythonExe `
-    -ArgumentList     $pyArgs `
-    -WorkingDirectory $projectDir `
-    -RedirectStandardOutput $outLog `
-    -RedirectStandardError  $errLog `
-    -PassThru `
-    -WindowStyle      Hidden
+# Launch via [Diagnostics.Process], NOT Start-Process. Start-Process -PassThru's
+# .ExitCode is UNRELIABLE when stdout/stderr are redirected — in this env it returned
+# 1 for EVERY run regardless of the real code (verified: even os._exit(0)/sys.exit(7)
+# came back as 1). That made the wrapper report a PERMANENT false "FAIL rc=1" while the
+# trainer was actually deploying models fine — the root cause of the "retrain looks
+# broken" loop. Process.Start reads the TRUE exit code. Streams are drained async so a
+# full stderr pipe (the trainer emits ~32 KB of benign sklearn warnings) can't deadlock.
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName               = $pythonExe
+$psi.Arguments              = ($pyArgs -join ' ')   # safe: no element contains a space
+$psi.WorkingDirectory       = $projectDir
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError  = $true
+$psi.UseShellExecute        = $false
+$psi.CreateNoWindow         = $true
+$proc = [System.Diagnostics.Process]::Start($psi)
 
 Log ("PID " + $proc.Id + " - waiting for completion...")
+$stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+$stderrTask = $proc.StandardError.ReadToEndAsync()
 $proc.WaitForExit()
+try { [System.IO.File]::WriteAllText($outLog, $stdoutTask.Result) } catch {}
+try { [System.IO.File]::WriteAllText($errLog, $stderrTask.Result) } catch {}
 
 $elapsedMin = [math]::Round(((Get-Date) - $startTime).TotalMinutes, 1)
 $rc         = $proc.ExitCode
